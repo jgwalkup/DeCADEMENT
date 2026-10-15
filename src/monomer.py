@@ -37,6 +37,12 @@ class Monomer:
         self.Uptake_per_monomer = int(
             parameters.loc["Uptake_per_monomer", 1]
         )  # number of transporters per monomer;default:1
+        # 1: deterministic one-to-one monomer-transporter map (needs n_uptake == n_monomers); 0: random assignment
+        if "Uptake_identity_map" in parameters.index:
+            self.Uptake_identity_map = int(parameters.loc["Uptake_identity_map", 1])
+        else:
+            self.Uptake_identity_map = 0
+            print("  parameters.csv has no 'Uptake_identity_map' row -- using random monomer-transporter assignment (0)")
         self.Init_NH4 = parameters.loc["Init_NH4", 1]  # Initial NH4
         self.Init_PO4 = parameters.loc["Init_PO4", 1]  # Initial PO4
         self.Init_FermProd = parameters.loc[
@@ -146,8 +152,13 @@ class Monomer:
         index = ["NH4", "PO4"] + list(self.Monomer_energy.index)
         columns = ["Upt" + str(i) for i in range(1, self.n_uptake + 1)]
 
-        # One transporter per monomer with none to spare: the only valid assignment is one-to-one, so skip the random draw
-        if self.n_uptake == self.n_monomers and self.Uptake_per_monomer == 1:
+        # Deterministic one-to-one map (Uptake_identity_map = 1): monomer i is taken up by transporter i only.
+        # No random numbers are drawn, so the random stream differs from the random-assignment path.
+        if self.Uptake_identity_map == 1:
+            if self.n_uptake != self.n_monomers:
+                raise ValueError(
+                    f"Uptake_identity_map = 1 needs n_uptake == n_monomers (n_substrates + 3); "
+                    f"got n_uptake = {self.n_uptake}, n_monomers = {self.n_monomers}")
             return pd.DataFrame(
                 data=np.eye(self.n_monomers, dtype="int8"),
                 index=index,

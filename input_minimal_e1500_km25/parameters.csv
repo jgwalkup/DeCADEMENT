@@ -118,3 +118,4 @@ Ferm_Cond,0.1
 Km_Ea,20000.0
 Uptake_psi_slope,0.25
 Enzyme_psi_slope,0.25
+Uptake_identity_map,1

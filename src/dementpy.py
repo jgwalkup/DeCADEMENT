@@ -24,7 +24,6 @@ import resource
 from initialization import initialize_data
 from grid import Grid
 from output import Output
-from utility import export
 
 
 def main():
@@ -66,19 +65,6 @@ def main():
     # Export_format = str(runtime.loc['output_format', 1]).strip().lower() # output file format (CSV, NetCDF, Zarr)
     mic_reinit = True  # indicate reinitialization of microbial community
 
-    # ...Optional: stream buffered output to disk every N days instead of holding
-    #   the full pulse's history in RAM until the single export_to_*() call at
-    #   the end. Off by default (0) for full backward compatibility -- add a
-    #   'stream_interval' row to runtime.txt to enable it for long/large runs.
-    #   e.g. stream_interval = 20 flushes buffers to a scratch Zarr chunk every
-    #   20 days, bounding peak RAM to roughly 20 days' worth of buffered output
-    #   regardless of total pulse length.
-    stream_interval = (
-        int(runtime.loc["stream_interval", 1])
-        if "stream_interval" in runtime.index
-        else 0
-    )
-
     # ...Initialize data by calling the Function: Initialize_Data()
     data_initialization = initialize_data(runtime, climate_file)
 
@@ -88,35 +74,12 @@ def main():
     # ...Create an instance of the Grid class
     Ecosystem = Grid(runtime, data_initialization)
 
-    # ...Temporary diagnostic: print NaN/Inf checks for every major intermediate
-    #   quantity inside metabolism(), for the first debug_metabolism_days days.
-    #   Used to pinpoint exactly which line first introduces NaN into Microbes['E'].
-    #   Root cause found and fixed 2026-07-22 (LHS() zero-width-range bug in
-    #   utility.py); leaving this wired up but disabled (0) in case it's ever
-    #   needed again -- set > 0 to re-enable.
-    Ecosystem.debug_metabolism_days = 0
-
     # ...Temporary diagnostic: print the actual shapes of every array feeding
     #   into degradation()'s Michaelis-Menten / ReqEnz calculation, for the
     #   first debug_degradation_days days. Needed to confirm real data shapes
     #   before vectorizing degradation() -- confirmed and now disabled.
     #   Set > 0 to re-enable if needed.
     Ecosystem.debug_degradation_days = 0
-
-    # ...Scratch directory for streamed output chunks (only used if stream_interval > 0).
-    #   Computed as an absolute path since cwd changes later (os.chdir(out_path) below).
-    scratch_dir = os.path.abspath(
-        os.path.join("..", output_folder, f".{outname}_scratch")
-    )
-    if stream_interval > 0:
-        # Always start from a clean scratch dir. Re-running with the same outname
-        # (e.g. while testing) would otherwise leave old chunk_*.zarr files on disk,
-        # and Zarr refuses to re-write an existing variable with new encoding --
-        # producing exactly the "variable already exists, but encoding was provided"
-        # error this comment is here to prevent.
-        import shutil
-
-        shutil.rmtree(scratch_dir, ignore_errors=True)
 
     # ...Verbose argument
     verbose = False
@@ -202,7 +165,7 @@ def main():
             t0 = time.perf_counter()
             try:
                 Ecosystem.metabolism(i)
-            except Exception as e:
+            except Exception:
                 print(f"CRASH in metabolism() on day {i}:", flush=True)
                 traceback.print_exc()
                 sys.exit(1)
@@ -230,11 +193,6 @@ def main():
             Output_init.microbes_abundance(Ecosystem, i)
             t_pulse["microbes_abundance"] += time.perf_counter() - t0
 
-            # ...Periodically flush buffered output to the scratch Zarr store and
-            #   clear it from memory, instead of letting it grow for the whole pulse.
-            if stream_interval > 0 and (i + 1) % stream_interval == 0:
-                Output_init.flush_chunk_to_scratch(scratch_dir, f"{i:07d}")
-
             t0 = time.perf_counter()
             if i == (p + 1) * cycle - 1:
                 Output_init.flush_pulse_buffers()
@@ -252,23 +210,7 @@ def main():
         flush=True,
     )
 
-    # ...If streaming was used, flush any remaining tail buffer and stitch all
-    #   scratch chunks back into Output_init's normal attributes before export.
-    #   export_to_csv()/export_to_netcdf()/export_to_zarr() are unmodified and
-    #   read those attributes exactly as they did before streaming existed.
-    if stream_interval > 0:
-        t0 = time.perf_counter()
-        Output_init.flush_chunk_to_scratch(scratch_dir, "final")
-        Output_init.reassemble_from_scratch(scratch_dir)
-        print(
-            f"    {'Reassemble from scratch':22s}  {_fmt(time.perf_counter() - t0)}",
-            flush=True,
-        )
-        # Scratch chunks are left on disk (under scratch_dir) for inspection/
-        # debugging. Safe to delete once you've confirmed the exported output
-        # looks correct, e.g.: shutil.rmtree(scratch_dir)
-
-        # ...export the Output_init object to the output_folder using the export() funtion in the utility module
+    # ...Export the Output_init object to the output folder
     t0 = time.perf_counter()
     out_path = os.path.join("..", output_folder)
     os.makedirs(out_path, exist_ok=True)

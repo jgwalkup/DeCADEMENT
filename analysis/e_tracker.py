@@ -85,9 +85,7 @@ def run(job):
                 eco.uptake(pl, i)
                 Mu = eco.Microbes.to_numpy(dtype=np.float64).reshape(G, T, 4)          # state used by uptake and metabolism
                 upC, upBC, upE = f32(eco.Taxon_Uptake_C), f32(eco.Taxon_Uptake_BC), f32(eco.Taxon_Uptake_E)
-                with np.errstate(invalid="ignore", divide="ignore"):
-                    ecr = Mu[..., 3] / Mu[..., 0]
-                    demand = 1 - (1 - (eco.E_max - ecr) / eco.E_max) ** (eco.ferm_cond + 1)
+                demand = np.asarray(eco.Tax_E_demand, dtype=np.float64).reshape(G, T)  # published by Grid.uptake()
                 eco.metabolism(i)
                 Mm = eco.Microbes.to_numpy(dtype=np.float64).reshape(G, T, 4)
                 cost = {"maint": f32(eco.Taxon_Maint_E_Cost), "transport": f32(eco.Taxon_Transport_E_Cost),

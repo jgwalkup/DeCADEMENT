@@ -117,3 +117,4 @@ Arrhenius_Tref,0
 Ferm_Cond,0.1
 Km_Ea,20000
 Osmo_tol_ref,0.055
+Uptake_identity_map,0

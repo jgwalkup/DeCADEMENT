@@ -43,16 +43,6 @@ def _enz_sum(arr, gridsize, n_enzymes, index):
     result = vals.reshape(gridsize, n_enzymes).sum(axis=0)
     return pd.Series(result, index=index, dtype=arr.dtype if hasattr(arr, "dtype") else None)
 
-def _mon_sum(arr, gridsize, n_monomers, index):
-    """Sum a (gridsize*n_monomers, n_taxa) DataFrame over the grid dimension."""
-    vals = arr.values if hasattr(arr, "values") else np.asarray(arr)
-    if vals.ndim == 1:
-        result = vals.reshape(gridsize, n_monomers).sum(axis=0)
-        return pd.Series(result, index=index)
-    else:
-        result = vals.reshape(gridsize, n_monomers, vals.shape[1]).sum(axis=0)
-        return pd.DataFrame(result, index=index, columns=arr.columns)
-
 def _limit_ratio(*pairs):
     """Joint resource limitation: for (cost, available) pairs of per-row arrays, return the per-row factor in [0, 1]
     by which production must be scaled so that no cost exceeds what is available (rows without cost: 1)."""
@@ -165,11 +155,6 @@ class Grid():
         self.Uptake_Enz_Cost = data_init['UptakeGenesCost']  # Cost of encoding each uptake gene
         self.Uptake_Prod_Cost = data_init['UptakeProdCost']  # C Cost of transporter production
         self.UptakeProd_E_Cost = data_init['Uptake_prod_E_cost']  # Energy cost of transporter production per mg C
-        self.Taxon_Uptake_C = np.float32('nan')  # taxon total C uptake
-        self.Taxon_Uptake_BC = np.float32('nan')  # taxon uptake of C allocated to biomass
-        self.Taxon_Uptake_N = np.float32('nan')  # taxon uptake of N
-        self.Taxon_Uptake_P = np.float32('nan')  # taxon uptake of P
-        self.Taxon_Uptake_E = np.float32('nan')  # taxon uptake of Energy
         self.Microbe_E_Gain = np.float32('nan')  # taxon net energy gain
         self.Microbe_E_Cost = np.float32('nan')  # taxon net energy costs
         self.Uptake_Vmax_Km_slope = data_init['uptake_mmrt_Vmax_Km_slope']  # slope of the Uptake Vmax/Km relationship
@@ -196,13 +181,7 @@ class Grid():
         self.HSP_E_cost = data_init['HSPProd_E_cost']  # E cost per unit of HSP-C production
         self.HSP_N_cost = data_init['HSPProd_N_cost']  # N cost per unit of HSP-C production
         # self.Osmo_Maint_cost_constant = data_init['Osmo_Maint_cost_constant']       # Respiration cost constant for osmolyte production
-        self.Respiration = np.float32('nan')  # Respiration
         self.Taxon_Resp = np.float32('nan')  # Taxon specific Respiration
-        self.Taxon_C_Uptake = np.float32('nan')  # Taxon-specific total C uptake
-        self.Taxon_E_Uptake = np.float32('nan')  # Taxon-specific E production
-        self.Taxon_E_Prod = np.float32('nan')  # Taxon-specific E production
-        self.Taxon_BC_Uptake = np.float32('nan')  # Taxon-specific C uptake allocated to biomass
-        self.Taxon_Total_Uptake = np.float32('nan')  # Taxon-specific biomass uptake (C+N+P)
         self.Enzyme_Loss_Rate = data_init['Enzyme_Loss_Rate']
         self.OSmo_Loss_Rate = data_init['Osmo_Loss_Rate']
         self.maint_E_HSP_Ea_slope = data_init['HSP_Ea_slope']
@@ -245,13 +224,16 @@ class Grid():
         self.E_range = data_init['Erange']  # tolerance on energy:biomass C ratio
         self.E_ratb = data_init['Eratb']  # ideal E:MBC ratio for bacteria
         self.E_ratf = data_init['Eratf']  # ideal E:MBC ratio for fungi
+        # Maximum energy:C ratio of each cell (bacteria Erat_b, fungi Erat_f, plus Erange); fixed for the run
+        self.E_max = np.where(np.asarray(data_init['fb']) == 1, self.E_ratf, self.E_ratb).astype(np.float32) \
+            + np.float32(self.E_range)
         self.basal_death_prob = data_init['basal_death_prob']  # Basal death probability of microbes
         self.death_rate = data_init['death_rate']  # Change rate of mortality with water potential
         self.Osmo_tol_K = data_init['Osmo_tol_K']  # osmolyte share of biomass giving drought tolerance 0.5
         self.Drought_tol = np.zeros(len(data_init['Microbes']), dtype=np.float32)  # per cell, set in mortality()
         self.wp_fc = data_init['wp_fc']  # -1.0
-        self.uptake_psi_slope = float(data_init.get('Uptake_psi_slope', 0.5))  # moisture sensitivity of the uptake (default 0.5)
-        self.enzyme_psi_slope = float(data_init.get('Enzyme_psi_slope', 0.25))  # moisture sensitivity of the enzyme Vmax (default 0.25)
+        self.uptake_psi_slope = data_init['Uptake_psi_slope']  # moisture sensitivity of uptake
+        self.enzyme_psi_slope = data_init['Enzyme_psi_slope']  # moisture sensitivity of enzyme Vmax
         self.wp_th = data_init['wp_th']  # -6.0
         self.alpha = data_init['alpha']  # integer;1
         self.Kill = np.float32('nan')  # total number of cells stochastically killed
@@ -263,7 +245,7 @@ class Grid():
         self.x = int(runtime.loc['x', 1])  # x dimension of grid
         self.y = int(runtime.loc['y', 1])  # y dimension of grid
         self.dist = int(runtime.loc['dist', 1])  # maximum dispersal distance: 1 cell
-        self.direct = int(runtime.loc['direct', 1])  # dispersal direction: 0.95
+        self.direct = float(runtime.loc['direct', 1])  # probability that fungal daughters disperse straight (no y shift)
 
         # Climate data
         self.temp = data_init['Temp']  # series; temperature
@@ -280,7 +262,6 @@ class Grid():
         self.gas_const = np.float32(const.R)  # Universal gas constant
         self.boltz_const = np.float32(const.k)  # Boltzmann's constant
         self.planck_const = np.float32(const.h)  # Planck's constant
-        self.Substrates_id = data_init['Substrate_index']
         self.monomer_index = data_init['Monomer_index']
         # self.monomer_index = ["NH4", "PO4", "FermProd", "DeadMic", "DeadEnz"] + ["Mon" + str(i) for i in range(4, self.n_monomers - 2 + 1)]
 
@@ -598,24 +579,20 @@ class Grid():
         self.Monomers -= mon_depl.reshape(G * M, 3)
 
         # ── Step 3: C uptake allocation to energy vs biomass ─────────────────────
-        self.E_max    = self.E_ratb + self.E_range
-        Tax_E_demand  = 1 - ((1 - ((self.E_max - (self.Microbes['E'] /
-                                self.Microbes['C'])) / self.E_max)) ** (self.ferm_cond + 1))
+        Mic_C_v = self.Microbes['C'].to_numpy(dtype=np.float32)
+        Mic_E_v = self.Microbes['E'].to_numpy(dtype=np.float32)
+        with np.errstate(divide='ignore', invalid='ignore'):
+            Tax_E_demand = 1 - ((1 - ((self.E_max - Mic_E_v / Mic_C_v) / self.E_max)) ** (self.ferm_cond + 1))
+        self.Tax_E_demand = Tax_E_demand  # fraction of uptake C routed to energy (per cell; NaN in empty cells)
 
         Org_Mon_E_value = self.Monomer_energy['E_value'] ** (
             (2 / np.log10(self.Monomer_energy['E_ferm'])) ** self.ferm_cond)
         Mon_E_value = np.concatenate([[0, 0], Org_Mon_E_value.values]).astype(np.float32)  # (M,)
-        # Tax_E_alloc: (M, G*T) → reshape to (G, M, T)
+        # fraction of each monomer's C routed to energy, per cell: (M, G*T) -> (G, M, T)
         Tea_3d = np.outer(Mon_E_value,
-                          Tax_E_demand.values.astype(np.float32)
+                          Tax_E_demand.astype(np.float32)
                           ).reshape(M, G, T).transpose(1, 0, 2).astype(np.float32)  # (G,M,T)
         Tea_3d = np.nan_to_num(Tea_3d, nan=0.0)
-
-        # Store Tax_E_alloc as DataFrame for any downstream code that reads it
-        self.Tax_E_alloc = pd.DataFrame(
-            Tea_3d.transpose(1, 0, 2).reshape(M, G * T),
-            index=self.monomer_index,
-            columns=self.Microbes.index)
 
         c_upt_3d  = upt * MR_C[:, :, None]                             # (G, M, T) C uptake
         ce_3d     = (c_upt_3d * Tea_3d).astype(np.float32)             # (G, M, T) C→energy
@@ -652,29 +629,15 @@ class Grid():
         # Monomers has G*M rows; FermProd is the 3rd monomer (index 2).
         self.Monomers.loc['FermProd', 'C'] += FermProd_C
 
-        # ── Reconstruct DataFrames needed by the rest of uptake() ─────────────────
-        # TUC_df etc. are (G, T) DataFrames indexed by grid cell with taxon columns.
-        # We build them directly from the numpy arrays to avoid extra copies.
-        tax_cols = mic_idx[:T]
-        TUC_df  = pd.DataFrame(TUC,  columns=tax_cols)
-        TUCb_df = pd.DataFrame(TUCb, columns=tax_cols)
-        TUE_df  = pd.DataFrame(TUE,  columns=tax_cols)
-        TUN_df  = pd.DataFrame(TUN,  columns=tax_cols)
-        TUP_df  = pd.DataFrame(TUP,  columns=tax_cols)
-        TU_df   = pd.DataFrame(TU,   columns=tax_cols)
-
-        # Update these global variables
-        # self.Taxon_Uptake_C = TUC_df.stack().values.astype(np.float32)  # spatial total C uptake
-        # self.Taxon_Uptake_BC = TUCb_df.stack().values  # spatial biomass C uptake: array
-        # self.Taxon_Uptake_N = TUN_df.stack().values  # spatial N uptake: array
-        # self.Taxon_Uptake_P = TUP_df.stack().values  # spatial P uptake: array
-        # self.Taxon_Uptake_E = TUE_df.stack().values.astype(np.float32)  # spatial Energy uptake: array
-        self.Taxon_Uptake_C = pd.Series(TUC_df.values.ravel(order='C').astype(np.float32), index=self.Microbes.index)
-        self.Taxon_Uptake_BC = pd.Series(TUCb_df.values.ravel(order='C').astype(np.float32), index=self.Microbes.index)
-        self.Taxon_Uptake_N = pd.Series(TUN_df.values.ravel(order='C').astype(np.float32), index=self.Microbes.index)
-        self.Taxon_Uptake_P = pd.Series(TUP_df.values.ravel(order='C').astype(np.float32), index=self.Microbes.index)
-        self.Taxon_Uptake_E = pd.Series(TUE_df.values.ravel(order='C').astype(np.float32), index=self.Microbes.index)
-        self.Taxon_Uptake_Total = TU_df.values.ravel(order='C').astype(np.float32)  # total biomass (C, N, & P)
+        # Taxon-cell uptake (G*T,) in Microbes' row order (grid outer, taxon inner)
+        def _cell(x):
+            return pd.Series(x.ravel(order='C').astype(np.float32), index=self.Microbes.index)
+        self.Taxon_Uptake_C = _cell(TUC)      # total C taken up
+        self.Taxon_Uptake_BC = _cell(TUCb)    # C routed to biomass
+        self.Taxon_Uptake_N = _cell(TUN)
+        self.Taxon_Uptake_P = _cell(TUP)
+        self.Taxon_Uptake_E = _cell(TUE)      # energy produced from the C routed to energy
+        self.Taxon_Total_Uptake = _cell(TU)   # biomass C + N + P taken up
 
         # Taxon-specific C assimilation efficiency (CAE)
         #
@@ -704,28 +667,6 @@ class Grid():
         else:
             self.CAE_system = Taxon_Uptake_BC_grid / Taxon_Uptake_C_grid
 
-        ## Respiration from Constitutive + Inducible(NOTE: missing sum(MicLoss[,"C"]) in the Mortality below)
-        # self.Respiration = (
-        #        Taxon_Transporter_Maint + Taxon_Growth_Respiration + Taxon_Osmo_Consti_Maint + Taxon_Osmo_Induci_Maint + Taxon_Enzyme_Consti_Maint + Taxon_Enzyme_Induci_Maint).sum(
-        #    axis=0)
-
-        # Carbon uptake
-        # self.Taxon_C_Uptake = TUC_df
-        self.Taxon_C_Uptake = self.CAE_taxon.copy()
-        self.Taxon_C_Uptake[:] = self.Taxon_Uptake_C
-        self.Taxon_BC_Uptake = self.CAE_taxon.copy()
-        self.Taxon_BC_Uptake[:] = self.Taxon_Uptake_BC
-        # self.Taxon_BC_Uptake = TUCb_df
-        self.Taxon_E_Uptake = pd.Series(
-            TUE_df.values.ravel(order='C').astype(np.float32),
-            index=self.Microbes.index
-        )
-        self.Taxon_E_Prod = self.CAE_taxon.copy()
-        self.Taxon_E_Prod[:] = self.Taxon_Uptake_E
-        self.Taxon_Total_Uptake = pd.Series(
-            TU_df.values.ravel(order='C').astype(np.float32),
-            index=self.Microbes.index
-        )
 
     def metabolism(self, day):
         """
@@ -1165,7 +1106,7 @@ class Grid():
         with np.errstate(invalid='ignore', divide='ignore'):
             Tax_E_ratio = Mic[:, 3] / Mic[:, 0]
         e_cap_index = Tax_E_ratio > self.E_max
-        Mic[e_cap_index, 3] = Mic[e_cap_index, 0] * self.E_max
+        Mic[e_cap_index, 3] = Mic[e_cap_index, 0] * self.E_max[e_cap_index]
 
         # Leaching of monomers
         Leaching_N = self.Monomers.loc[is_NH4, "N"] * Leaching * np.exp(Psi_slope_leach * (self.psi[day] - self.wp_fc))
@@ -1179,8 +1120,6 @@ class Grid():
 
         # Restore Microbes to a DataFrame with the original taxon-repeated index
         self.Microbes = pd.DataFrame(Mic, index=Mic_index, columns=['C', 'N', 'P', 'E'])
-        # system respiration
-        self.Respiration = self.Taxon_Resp.sum()
 
         # Update the death toll of cells
         self.Kill = np.uint32(kill.sum())

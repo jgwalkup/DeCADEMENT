@@ -110,7 +110,7 @@ def run_one(src_input, changes, side, days, seed, temp=None):
                 monomer_pool=ps(eco.Monomers.loc[mon, "C"]) / G,
                 C_uptake=ps(eco.Taxon_Uptake_C) / nn,
                 C_to_biomass=ps(eco.Taxon_Uptake_BC) / nn,
-                E_production=ps(eco.Taxon_E_Prod) / nn,
+                E_production=ps(eco.Taxon_Uptake_E) / nn,
                 E_cost_total=ps(eco.Microbe_E_Cost) / nn,
                 E_cost_maintenance=ps(eco.Tax_cell_maint_E_cost) / nn,
                 net_energy=ps(eco.Microbe_E_Gain) / nn,
@@ -124,7 +124,7 @@ def run_one(src_input, changes, side, days, seed, temp=None):
             if n:
                 ec_min = min(ec_min, E[alive].sum() / C[alive].sum())
                 if i >= days - 30:
-                    tail["E_prod"].append(float(np.asarray(eco.Taxon_E_Prod).sum()) / n)
+                    tail["E_prod"].append(float(np.asarray(eco.Taxon_Uptake_E).sum()) / n)
                     tail["E_cost"].append(float(np.asarray(eco.Microbe_E_Cost).sum()) / n)
                     tail["maint"].append(float(np.asarray(eco.Tax_cell_maint_E_cost).sum()) / n)
                     tail["CUE"].append(float(eco.CUE_system))

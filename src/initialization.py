@@ -22,6 +22,22 @@ from microbe import Microbe
 from utility import expand
 
 
+def _validate_monomer_energy(mon_energy):
+    """Fail early on monomer energy values that would make the energy allocation undefined.
+
+    The monomer energy value used in uptake is E_value ** ((2 / log10(E_ferm)) ** Ferm_Cond): E_ferm = 1 divides by
+    zero and E_ferm < 1 gives a negative base for the fractional power (NaN, silently zeroed downstream)."""
+    problems = []
+    for col, ok, rule in (("E_ferm", mon_energy["E_ferm"] > 1, "> 1"),
+                          ("E_resp", mon_energy["E_resp"] >= 0, ">= 0"),
+                          ("E_value", mon_energy["E_value"] >= 0, ">= 0")):
+        bad = list(mon_energy.index[~ok])
+        if bad:
+            problems.append(f"{col} must be {rule} (rows: {', '.join(map(str, bad))})")
+    if problems:
+        raise ValueError("monomer_energy.csv: " + "; ".join(problems))
+
+
 def _optional(parameters, name, default):
     """Value of an optional parameters.csv row; prints a notice when the row is absent and the default is used."""
     if name in parameters.index:
@@ -62,7 +78,8 @@ def initialize_data(runtime_parameters, climate_file="climate.csv", community_di
     )  # enzyme activation energy
     mon_energy = pd.read_csv("monomer_energy.csv", header=0, index_col=0).astype(
         "float32"
-    )  # enzyme activation energy
+    )  # energy yield of each organic monomer (respiration, fermentation, value)
+    _validate_monomer_energy(mon_energy)
     # HT0_input        = pd.read_csv("enzyme_H.csv",          header=0,    index_col=0).astype('float32')   # enzyme enthalpy
     ST0_input = pd.read_csv("enzyme_S.csv", header=0, index_col=0).astype(
         "float32"
@@ -175,7 +192,6 @@ def initialize_data(runtime_parameters, climate_file="climate.csv", community_di
         # Infer n_taxa and taxon index from EnzGenes (always present)
         _EnzGenes = load_csv("EnzGenes", header=0, index_col=0)
         n_taxa_community = len(_EnzGenes)
-        taxon_index = list(_EnzGenes.index)
 
         # Override n_taxa in runtime so downstream code uses the right count
         runtime_parameters = runtime_parameters.copy()
@@ -603,9 +619,6 @@ def initialize_data(runtime_parameters, climate_file="climate.csv", community_di
         "km_tref": parameters.loc[
             "Km_Tref", 1
         ],  # Temperature to calculate Km, if Km is temperature independent
-        "km_ea": parameters.loc[
-            "Km_Ea", 1
-        ],  # kj mol-1;activation energy for both enzyme and transporter
         "Arrhenius_tref": parameters.loc[
             "Arrhenius_Tref", 1
         ],  # reference temperature to normalize temperature response (default = 0)

@@ -186,21 +186,6 @@ class Microbe:
         ]  # Fungal basal mortality probability
         self.beta_bac = parameters.loc["beta_bac", 1]  # Bacterial mortality coefficient
         self.beta_fun = parameters.loc["beta_fun", 1]  # Fungal mortality coefficient
-        # Optional absolute drought tolerance (added for the single-taxon minimal scenario). If a row "Osmo_tol_ref" > 0 is
-        # present in parameters.csv, tolerance = min(1, total osmolyte allocation / Osmo_tol_ref); otherwise (absent or <= 0)
-        # the original behaviour applies (allocation scaled between the community's min and max -> 0 for a single taxon).
-        self.Osmo_tol_ref = (
-            float(parameters.loc["Osmo_tol_ref", 1]) if "Osmo_tol_ref" in parameters.index else 0.0
-        )
-        # Lower bound of the relative drought tolerance scale (used when Osmo_tol_ref is absent or <= 0): tolerance =
-        # (allocation - Osmo_tol_lower) / (community max allocation - Osmo_tol_lower), clipped to [0, 1]. Optional row
-        # "Osmo_tol_lower" in parameters.csv; default 0. A negative value selects the community's minimum allocation as the
-        # lower bound, which is the original method (0 for every taxon when all allocations are identical).
-        self.Osmo_tol_lower = (
-            float(parameters.loc["Osmo_tol_lower", 1]) if "Osmo_tol_lower" in parameters.index else 0.0
-        )
-        # thermal response
-        # self.TR_mag_Cp_Slope = parameters.loc['TR_mag_Cp_slope',1]         # Slope for calculating Cp of maintenance respiration to adjust temperature sensitivity by thermal adaptation magnitude
 
     def microbial_pool_initialization(self):
         """
@@ -772,35 +757,16 @@ class Microbe:
 
     def microbe_drought_tol(self, Tax_Consti_Osmo_C, Tax_Induci_Osmo_C):
         """
-        Derive taxon-specific drought tolerance value.
+        Relative osmolyte-allocation index of each taxon (0-1), for the trait table only.
 
-        Drought tolerance is postively correlated with taxon-specific inducible osmotic allocation efficiency.
-
-        Relative tolerance = (allocation - Osmo_tol_lower) / (max allocation - Osmo_tol_lower), clipped to [0, 1], with
-        Osmo_tol_lower = 0 by default; Osmo_tol_lower < 0 uses the community minimum allocation (the original method).
-        If Osmo_tol_ref > 0, absolute tolerance min(1, allocation / Osmo_tol_ref) is used instead.
-
-        Parameter:
-            Tax_Induci_Osmo_C: dataframe
-        Return:
-            Tax_tolerance: series;float32
+        NOT used in mortality: drought tolerance is computed per cell each day from the cell's osmolyte content
+        (Grid.mortality). Index = (allocation - min) / (max - min) across the community; 0 when all are equal.
         """
-
         Tax_Osmo_Alloc = Tax_Induci_Osmo_C.sum(axis=1) + Tax_Consti_Osmo_C.sum(axis=1)
-        if self.Osmo_tol_ref > 0:
-            # absolute scale: fraction of the reference allocation, capped at 1
-            return (Tax_Osmo_Alloc / self.Osmo_tol_ref).clip(0, 1).astype("float32")
-        # Tax_tolerance = Tax_Osmo_Alloc.rank(axis=0,method='min')/self.n_taxa
-        # Relative tolerance on a scale from Osmo_tol_lower (default 0) to the community's maximum allocation
-        lower = Tax_Osmo_Alloc.min() if self.Osmo_tol_lower < 0 else self.Osmo_tol_lower
-        span = Tax_Osmo_Alloc.max() - lower
+        span = Tax_Osmo_Alloc.max() - Tax_Osmo_Alloc.min()
         if span > 0:
-            Tax_tolerance = ((Tax_Osmo_Alloc - lower) / span).clip(0, 1)
-        else:  # the maximum allocation does not exceed the lower bound: no tolerance
-            Tax_tolerance = Tax_Osmo_Alloc * 0
-        Tax_tolerance = Tax_tolerance.fillna(0)
-
-        return Tax_tolerance
+            return ((Tax_Osmo_Alloc - Tax_Osmo_Alloc.min()) / span).astype("float32")
+        return (Tax_Osmo_Alloc * 0).astype("float32")
 
     def microbe_mortality(self, fb_grid):
         """

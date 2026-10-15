@@ -116,3 +116,4 @@ HSP_Induci_Ea,30000.0
 Arrhenius_Tref,0.0
 Ferm_Cond,0.1
 Km_Ea,20000.0
+Uptake_identity_map,1

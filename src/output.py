@@ -420,15 +420,14 @@ class Output():
         self._buf["Taxon_Osmo_Series"].append(osmo_stacked)
 
         # Microbe-Taxon-specific C Uptake
-        #C_Uptake_Taxon_grid = _taxa_sum(ecosystem.Taxon_C_Uptake, self.gridsize, self.n_taxa, self._taxa_index)
-        C_Uptake_Taxon_grid = _taxa_sum(ecosystem.Taxon_C_Uptake, self.gridsize, self.n_taxa, self._taxa_index)
+        C_Uptake_Taxon_grid = _taxa_sum(ecosystem.Taxon_Uptake_C, self.gridsize, self.n_taxa, self._taxa_index)
         C_Uptake_Taxon_grid = C_Uptake_Taxon_grid/self.taxon_count
         C_Uptake_Taxon_grid[np.isinf(C_Uptake_Taxon_grid)] = np.nan
         C_Uptake_Taxon_grid.name = day + 1
         self._buf["C_Uptake_Taxon"].append(C_Uptake_Taxon_grid)
 
         #C_Uptake_Taxon_grid = ecosystem.Taxon_C_Uptake.groupby(level=0,sort=False).sum()
-        BC_Uptake_Taxon_grid = _taxa_sum(ecosystem.Taxon_BC_Uptake, self.gridsize, self.n_taxa, self._taxa_index)
+        BC_Uptake_Taxon_grid = _taxa_sum(ecosystem.Taxon_Uptake_BC, self.gridsize, self.n_taxa, self._taxa_index)
         BC_Uptake_Taxon_grid = BC_Uptake_Taxon_grid/self.taxon_count
         BC_Uptake_Taxon_grid[np.isinf(BC_Uptake_Taxon_grid)] = np.nan
         BC_Uptake_Taxon_grid.name = day + 1
@@ -458,7 +457,7 @@ class Output():
             self._buf[attr].append(grid_val)
 
         # Microbe-Taxon-specific C Uptake
-        E_Prod_Taxon_grid = _taxa_sum(ecosystem.Taxon_E_Prod, self.gridsize, self.n_taxa, self._taxa_index)
+        E_Prod_Taxon_grid = _taxa_sum(ecosystem.Taxon_Uptake_E, self.gridsize, self.n_taxa, self._taxa_index)
         E_Prod_Taxon_grid = E_Prod_Taxon_grid/self.taxon_count
         E_Prod_Taxon_grid[np.isinf(E_Prod_Taxon_grid)] = np.nan
         E_Prod_Taxon_grid.name = day + 1
@@ -676,51 +675,6 @@ class Output():
             Taxon_index.values.reshape(self.gridsize, self.n_taxa).sum(axis=0).astype('uint32'),
             index=self._taxa_index)
         self._buf["Taxon_count_repop"].append(taxon_count)
-
-    def microbes_tradeoff(self, ecosystem, year, day):
-        """
-        Track allocation of C uptake to different components.
-
-        These components include: osmolytes, enzymes, and carbon gain
-        """
-
-        # Microbe-Transporters
-        # Transporter_grid = ecosystem.Transporters.groupby(level=0,sort=False).sum() #taxon-specific transpotors summed over the grid by taxon
-        # Transporter_grid.name = day + 1
-        # self.TransporterSeries = pd.concat([self.TransporterSeries,Transporter_grid],axis=1,sort=False)
-
-        # Microbe-Enzymes
-        # Constitutive
-        # Enzyme_Con_grid = ecosystem.Enzyme_Con.groupby(level=0,sort=False).sum() # Taxon-specific osmolytes summed over the grid by taxon
-        # Enzyme_Con_grid.name = day + 1
-        # self.EnzymeConSeries = pd.concat([self.EnzymeConSeries,Enzyme_Con_grid],axis=1,sort=False)
-        # Inducible
-        Enzyme_Ind_grid = _taxa_sum(ecosystem.Taxon_Enzyme_Cost_C, self.gridsize, self.n_taxa, self._taxa_index)
-        Enzyme_Ind_grid.name = self.cycle * year + (day + 1)
-        # self.EnzymeIndSeries = pd.concat([self.EnzymeIndSeries,Enzyme_Ind_grid],axis=1,sort=False)
-        # Total
-        self.Enzyme_TaxonSeries = pd.concat([self.Enzyme_TaxonSeries, Enzyme_Ind_grid], axis=1, sort=False)
-
-        # Microbe-Osmolytes
-        # Constitutive
-        # Osmolyte_Con_grid = ecosystem.Osmolyte_Con.groupby(level=0,sort=False).sum()
-        # Osmolyte_Con_grid.name = day + 1
-        # self.OsmolyteConSeries = pd.concat([self.OsmolyteConSeries,Osmolyte_Con_grid],axis=1,sort=False)
-        # Inducible
-        Osmolyte_Ind_grid = _taxa_sum(ecosystem.Taxon_Osmo_Cost_C, self.gridsize, self.n_taxa, self._taxa_index)
-        Osmolyte_Ind_grid.name = self.cycle * year + (day + 1)
-        # self.OsmolyteIndSeries = pd.concat([self.OsmolyteIndSeries,Osmolyte_Ind_grid],axis=1,sort=False)
-        # Total
-        self.Osmolyte_TaxonSeries = pd.concat([self.Osmolyte_TaxonSeries, Osmolyte_Ind_grid], axis=1, sort=False)
-
-        # Growth yield by Taxon
-        GY_grid = _taxa_sum(ecosystem.Microbe_C_Gain, self.gridsize, self.n_taxa, self._taxa_index)
-        GY_grid.name = self.cycle * year + (day + 1)
-        self.Growth_yield = pd.concat([self.Growth_yield, GY_grid], axis=1, sort=False)
-
-
-
-
 
     def flush_pulse_buffers(self):
         """Assemble Taxon_count_repop from its list buffer into a real DataFrame.

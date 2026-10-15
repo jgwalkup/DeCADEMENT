@@ -120,3 +120,4 @@ Osmo_tol_lower,0
 Osmo_tol_ref,0
 Uptake_psi_slope,0.25
 Enzyme_psi_slope,0.25
+Uptake_identity_map,0
