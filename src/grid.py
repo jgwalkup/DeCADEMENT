@@ -247,7 +247,8 @@ class Grid():
         self.E_ratf = data_init['Eratf']  # ideal E:MBC ratio for fungi
         self.basal_death_prob = data_init['basal_death_prob']  # Basal death probability of microbes
         self.death_rate = data_init['death_rate']  # Change rate of mortality with water potential
-        self.tolerance = data_init['TaxDroughtTol']  # taxon drought tolerance
+        self.Osmo_tol_K = data_init['Osmo_tol_K']  # osmolyte share of biomass giving drought tolerance 0.5
+        self.Drought_tol = np.zeros(len(data_init['Microbes']), dtype=np.float32)  # per cell, set in mortality()
         self.wp_fc = data_init['wp_fc']  # -1.0
         self.uptake_psi_slope = float(data_init.get('Uptake_psi_slope', 0.5))  # moisture sensitivity of the uptake (default 0.5)
         self.enzyme_psi_slope = float(data_init.get('Enzyme_psi_slope', 0.25))  # moisture sensitivity of the enzyme Vmax (default 0.25)
@@ -1021,7 +1022,14 @@ class Grid():
 
         # Kill microbes stochastically based on mortality prob as a function of water potential and drought tolerance
         # call the function, MMP:microbe_mortality_psi()
-        r_death = np.asarray(MMP(self.psi[day], self.wp_fc, self.basal_death_prob, self.death_rate, self.tolerance))
+        # Drought tolerance of each cell from its current osmolyte composition (saturating in the osmolyte share
+        # of biomass, same form as the HSP effect on maintenance Ea): tol = s / (s + Osmo_tol_K), s = osmolyte C / (C+N+P)
+        cnp = Mic[:, :3].sum(axis=1)
+        osmo_share = np.zeros_like(cnp)
+        has_mass = cnp > 0
+        osmo_share[has_mass] = self._osmo_pool.sum(axis=1)[has_mass] / cnp[has_mass]
+        self.Drought_tol = osmo_share / (osmo_share + np.float32(self.Osmo_tol_K))
+        r_death = np.asarray(MMP(self.psi[day], self.wp_fc, self.basal_death_prob, self.death_rate, self.Drought_tol))
         kill[mic_index] = r_death[mic_index] > np.random.uniform(0, 1, int(mic_index.sum())).astype('float32')
         # Index the dead, put them in Death, and set them to 0 in Microbes
         Death[kill] = Mic[kill]

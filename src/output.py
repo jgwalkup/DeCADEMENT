@@ -225,6 +225,9 @@ class Output():
         # Taxon-specific Carbon Use Efficiency (CUE)
         self.CUE_TaxonSeries = pd.Series(data=[0] * n_taxa, index=Mic_index)
 
+        # Taxon-specific drought tolerance (mean over living cells, from osmolyte content)
+        self.Drought_tol_Taxon = pd.Series(data=[0] * n_taxa, index=Mic_index)
+
         # Taxon-specific Respiration
         self.Respiration_Taxon = pd.Series(data=[0] * n_taxa, index=Mic_index)
 
@@ -327,7 +330,7 @@ class Output():
             "Enzyme_C_Taxon", "HSP_C_Taxon", "Osmo_C_Taxon", "Transport_C_Taxon",
             "Transport_E_Taxon", "Maint_E_Taxon", "Enzyme_E_Taxon", "Osmo_E_Taxon",
             "HSP_E_Taxon", "E_Prod_Taxon", "Microbe_E_Gain", "Microbe_E_Cost",
-            "CAE_TaxonSeries", "CAE_system", "CUE_TaxonSeries", "CUE_system",
+            "CAE_TaxonSeries", "CAE_system", "CUE_TaxonSeries", "CUE_system", "Drought_tol_Taxon",
             "Respiration_Taxon", "RespSeries", "EnzymesSeries", "EnzymesProduction",
             "EnzymesGain", "EnzymesLoss", "Kill", "Taxon_count_repop",
         ]:
@@ -564,6 +567,12 @@ class Output():
         CUE_Taxon_grid = CUE_Taxon_grid/self.taxon_count
         CUE_Taxon_grid.name = day + 1
         self._buf["CUE_TaxonSeries"].append(CUE_Taxon_grid)
+
+        # Microbe-Taxon-specific drought tolerance (mean over living cells)
+        tol_alive = np.asarray(ecosystem.Drought_tol) * (ecosystem.Microbes['C'].to_numpy() > 0)
+        Tol_Taxon_grid = _taxa_sum(tol_alive, self.gridsize, self.n_taxa, self._taxa_index) / self.taxon_count
+        Tol_Taxon_grid.name = day + 1
+        self._buf["Drought_tol_Taxon"].append(Tol_Taxon_grid)
 
         # Carbon use efficiency
         CUE_grid = pd.Series(data = [ecosystem.CUE_system])

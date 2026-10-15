@@ -863,7 +863,7 @@ def microbe_mortality_prob(wp, wp_fc, basal_death_prob, death_rate, Tax_toleranc
         wp_fc:            scalar; field capacity
         basal_death_prob: array; basal mortality prob. distinguished btw fungi and bacteria
         death_rate:       array; mortality change rate with moisture
-        Tax_tolerance:    dataframe; taxon-specific drought tolerance
+        Tax_tolerance:    array-like (0-1); drought tolerance of each cell (from its osmolyte content, Grid.mortality)
     Returns:
         mortality_rate:   taxon-specific mortality probability
     References:
@@ -873,7 +873,7 @@ def microbe_mortality_prob(wp, wp_fc, basal_death_prob, death_rate, Tax_toleranc
     if wp >= wp_fc:
         mortality_rate = basal_death_prob
     else:
-        tolerance = Tax_tolerance.to_numpy()
+        tolerance = np.asarray(Tax_tolerance, dtype=np.float32)
         # option 1
         mortality_rate = basal_death_prob * (
             1 - (1 - tolerance) * (wp - wp_fc) * death_rate

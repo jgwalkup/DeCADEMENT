@@ -490,7 +490,8 @@ def initialize_data(runtime_parameters, climate_file="climate.csv", community_di
         # "TaxHSPinit":         expand(microbial_heat_stress_protein_prod_rate[4],gridsize), # initial HSP concentrations
         "TaxDroughtTol": expand(
             microbial_drought_tol, gridsize
-        ),  # distribution of taxon-specific drought tol.
+        ),  # static allocation-based tolerance index: trait table / export only, NOT used in mortality
+        #     (mortality uses the per-cell osmolyte-content tolerance computed in Grid.mortality)
         "basal_death_prob": microbial_mortality[0],  # basal death probability
         "death_rate": microbial_mortality[
             1
@@ -553,6 +554,8 @@ def initialize_data(runtime_parameters, climate_file="climate.csv", community_di
         # (1 - share / max) and stops at the max (composition feedback, see Grid.metabolism)
         "HSP_max_frac": _optional(parameters, "HSP_max_frac", 0.2),
         "Osmo_max_frac": _optional(parameters, "Osmo_max_frac", 0.2),
+        # optional: osmolyte share of biomass at which drought tolerance is 0.5; tolerance = share / (share + K)
+        "Osmo_tol_K": _optional(parameters, "Osmo_tol_K", 0.05),
         "alpha": parameters.loc[
             "alpha", 1
         ],  # factor delineating curve concavity of microbial response to drought
