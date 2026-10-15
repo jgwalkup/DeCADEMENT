@@ -22,6 +22,14 @@ from microbe import Microbe
 from utility import expand
 
 
+def _optional(parameters, name, default):
+    """Value of an optional parameters.csv row; prints a notice when the row is absent and the default is used."""
+    if name in parameters.index:
+        return float(parameters.loc[name, 1])
+    print(f"  parameters.csv has no '{name}' row -- using the default {default}")
+    return float(default)
+
+
 def initialize_data(runtime_parameters, climate_file="climate.csv", community_dir=None):
     """
     Parameters:
@@ -537,10 +545,14 @@ def initialize_data(runtime_parameters, climate_file="climate.csv", community_di
         "wp_th": parameters.loc[
             "wp_th", 1
         ],  # threshold below which microbes in full swing to respond to drought
-        # optional: moisture sensitivity of the uptake (f_psi = exp(slope * (Psi - wp_fc)) below wp_fc); the row is optional, default 0.5
-        "Uptake_psi_slope": float(parameters.loc["Uptake_psi_slope", 1]) if "Uptake_psi_slope" in parameters.index else 0.5,
-        # optional: moisture sensitivity of the enzyme Vmax in the degradation (f_psi = exp(slope * (Psi - wp_fc)) below wp_fc); default 0.25
-        "Enzyme_psi_slope": float(parameters.loc["Enzyme_psi_slope", 1]) if "Enzyme_psi_slope" in parameters.index else 0.25,
+        # optional: moisture sensitivity of the uptake (f_psi = exp(slope * (Psi - wp_fc)) below wp_fc)
+        "Uptake_psi_slope": _optional(parameters, "Uptake_psi_slope", 0.5),
+        # optional: moisture sensitivity of the enzyme Vmax in the degradation (f_psi = exp(slope * (Psi - wp_fc)) below wp_fc)
+        "Enzyme_psi_slope": _optional(parameters, "Enzyme_psi_slope", 0.25),
+        # optional: maximum share of biomass (C+N+P) held as HSP C / osmolyte C; production of each compound is scaled by
+        # (1 - share / max) and stops at the max (composition feedback, see Grid.metabolism)
+        "HSP_max_frac": _optional(parameters, "HSP_max_frac", 0.2),
+        "Osmo_max_frac": _optional(parameters, "Osmo_max_frac", 0.2),
         "alpha": parameters.loc[
             "alpha", 1
         ],  # factor delineating curve concavity of microbial response to drought

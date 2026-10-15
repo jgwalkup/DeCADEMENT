@@ -182,6 +182,12 @@ class Output():
         hsp0_stacked.name = 0
         self.Taxon_HSP_Series = hsp0_stacked
 
+        # Taxon osmolyte pools: start empty, stacked to (taxon, osmolyte gene) × day
+        osmo0 = pd.DataFrame(0.0, index=self._taxa_index, columns=data_init['OsmoProdConsti'].columns)
+        osmo0_stacked = osmo0.stack()
+        osmo0_stacked.name = 0
+        self.Taxon_Osmo_Series = osmo0_stacked
+
         # Number of individuals of Taxon count
         #self.Taxon_index            = data_init['Microbes']['C'] > 0
         #self.Taxon_index.name       = 0
@@ -317,7 +323,7 @@ class Output():
         self._buf = {}
         for _s in [
             "SubstratesSeries", "MonomersSeries", "Taxon_count", "MicrobesSeries",
-            "EnergySeries", "Taxon_HSP_Series", "C_Uptake_Taxon", "BC_Uptake_Taxon",
+            "EnergySeries", "Taxon_HSP_Series", "Taxon_Osmo_Series", "C_Uptake_Taxon", "BC_Uptake_Taxon",
             "Enzyme_C_Taxon", "HSP_C_Taxon", "Osmo_C_Taxon", "Transport_C_Taxon",
             "Transport_E_Taxon", "Maint_E_Taxon", "Enzyme_E_Taxon", "Osmo_E_Taxon",
             "HSP_E_Taxon", "E_Prod_Taxon", "Microbe_E_Gain", "Microbe_E_Cost",
@@ -401,6 +407,14 @@ class Output():
         hsp_stacked = hsp_grid.stack()
         hsp_stacked.name = day + 1
         self._buf["Taxon_HSP_Series"].append(hsp_stacked)
+
+        # Taxon osmolyte pools: sum over grid, stack (taxon, osmolyte gene), append as new day column
+        osmo_grid = pd.DataFrame(
+            ecosystem.Taxon_Osmolyte.values.reshape(self.gridsize, self.n_taxa, -1).sum(axis=0),
+            index=self._taxa_index, columns=ecosystem.Taxon_Osmolyte.columns)
+        osmo_stacked = osmo_grid.stack()
+        osmo_stacked.name = day + 1
+        self._buf["Taxon_Osmo_Series"].append(osmo_stacked)
 
         # Microbe-Taxon-specific C Uptake
         #C_Uptake_Taxon_grid = _taxa_sum(ecosystem.Taxon_C_Uptake, self.gridsize, self.n_taxa, self._taxa_index)

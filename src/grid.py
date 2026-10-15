@@ -53,6 +53,20 @@ def _mon_sum(arr, gridsize, n_monomers, index):
         result = vals.reshape(gridsize, n_monomers, vals.shape[1]).sum(axis=0)
         return pd.DataFrame(result, index=index, columns=arr.columns)
 
+def _limit_ratio(*pairs):
+    """Joint resource limitation: for (cost, available) pairs of per-row arrays, return the per-row factor in [0, 1]
+    by which production must be scaled so that no cost exceeds what is available (rows without cost: 1)."""
+    r = None
+    for cost, avail in pairs:
+        cost = np.asarray(cost, dtype=np.float32)
+        avail = np.maximum(np.asarray(avail, dtype=np.float32), np.float32(0))
+        rk = np.ones_like(cost)
+        pos = cost > 0
+        rk[pos] = np.minimum(avail[pos] / cost[pos], np.float32(1))
+        r = rk if r is None else np.minimum(r, rk)
+    return r
+
+
 class Grid():
     """
     This class holds all variables related to microbe, substrate, monomer, and enzyme over the spatial grid.
@@ -209,14 +223,19 @@ class Grid():
         # self.Osmolyte_Ind = float('nan')
         # self.Enzyme_Con   = float('nan')
         # self.Enzyme_Ind   = float('nan')
-        self.HSP_Turnover = data_init['HSPturnover']
-        self.Taxon_HSP = data_init['Initial_HSP_Prop']  #
+        self.HSP_Turnover = data_init['HSPturnover']  # intracellular recycling rate of HSP (released C/N stay in the cell)
+        self.HSP_max_frac = data_init['HSP_max_frac']  # HSP C / biomass at which HSP production stops
+        self.Osmo_max_frac = data_init['Osmo_max_frac']  # osmolyte C / biomass at which osmolyte production stops
 
-        # Osmolyte pool: same structure as constitutive osmolyte production DataFrame
-        # (gridsize*n_taxa rows × osmolyte-gene columns), initialized to zero.
-        # Updated in metabolism() each step with production and turnover.
-        self.Taxon_Osmolyte = data_init['OsmoProdConsti'].copy().astype('float32')
-        self.Taxon_Osmolyte[:] = np.float32(0)
+        # Intracellular compound pools (C units; N = C x HSP_N_cost / Osmo_N_cost), part of biomass C and N.
+        # Rows follow Microbes (gridsize*n_taxa); columns are HSP / osmolyte genes. Start empty; carried through
+        # mortality (zeroed for dead cells), reproduction (split, translocated and dispersed with biomass) and
+        # repopulation (reset). Exposed as DataFrames through the Taxon_HSP / Taxon_Osmolyte properties.
+        self._hsp_cols = [c for c in data_init['Initial_HSP_Prop'].columns if c != 'Total_biomass']
+        self._osmo_cols = list(data_init['OsmoProdConsti'].columns)
+        n_rows = len(data_init['Microbes'])
+        self._hsp_pool = np.zeros((n_rows, len(self._hsp_cols)), dtype=np.float32)
+        self._osmo_pool = np.zeros((n_rows, len(self._osmo_cols)), dtype=np.float32)
 
         # Mortality
         self.MinRatios = data_init['MinRatios']  # Minimal cell quotas
@@ -276,6 +295,20 @@ class Grid():
         # Pre-built index arrays for reconstructing output Series/DataFrames
         self._taxa_index = self.Microbes.index[:self.n_taxa]
         self._enz_index  = self.Enzymes.index[:self.n_enzymes]
+
+        # Per-taxon production rates and per-enzyme costs as float32 arrays (fixed for the whole run)
+        self._hsp_consti_rate = self.HSP_consti_pre_exp.to_numpy(dtype=np.float32, copy=True)
+        self._hsp_induci_rate = self.HSP_induci_pre_exp.to_numpy(dtype=np.float32, copy=True)
+        self._osmo_consti_rate = self.Consti_Osmo_C.to_numpy(dtype=np.float32, copy=True)
+        self._osmo_induci_rate = self.Induci_Osmo_C.to_numpy(dtype=np.float32, copy=True)
+        self._enz_consti_rate = self.Consti_Enzyme_C.to_numpy(dtype=np.float32, copy=True)
+        self._enz_induci_rate = self.Induci_Enzyme_C.to_numpy(dtype=np.float32, copy=True)
+
+        def _enz_costs(cols, names):
+            return tuple(self.Enz_Attrib[n].reindex(cols).to_numpy(dtype=np.float32, copy=True) for n in names)
+        self._enz_cost_consti = _enz_costs(self.Consti_Enzyme_C.columns, ('N_cost', 'P_cost', 'E_cost'))
+        self._enz_cost_induci = _enz_costs(self.Induci_Enzyme_C.columns, ('N_cost', 'P_cost', 'E_cost'))
+        self._enz_cost_pool = _enz_costs(self._enz_index, ('N_cost', 'P_cost'))
 
     def degradation(self, pulse, day):
         """
@@ -695,442 +728,249 @@ class Grid():
 
     def metabolism(self, day):
         """
-        Explicitly calculate intra-cellular production of metabolites.
+        Intracellular production of enzymes, heat shock proteins (HSP) and osmolytes; emergent CUE.
 
-        Handles both constitutive (standing biomass) and inducible (immediate monomers uptake) pathways following:
-          1. constitutive enzyme and osmolyte production
-          2. inducible enzyme and osmolyte production
-          3. emergent CUE & Respiration
-          4. update both Enzymes (with production & loss) and Substrates (with dead enzymes)
-
-        NOTE: rewritten to numpy-native (G*T,)/(G*n_enz,)-flat array arithmetic, mirroring the
-        optimization already applied to uptake(). Unlike uptake(), nothing here needs to reduce
-        *across* taxa or grid cells within a row, so no 3-D (G,T,...) reshape is needed -- every
-        operation here is row-wise over the same (gridsize*n_taxa)-length axis Microbes.index
-        already uses. The original pandas version paid index-alignment/boolean-mask overhead on
-        every one of ~40 chained Series/DataFrame ops per call; this version does the identical
-        math on raw .values arrays and only re-wraps results in pandas objects where something
-        downstream actually needs one (self.Microbes, self.Enzymes, self.Substrates, self.Taxon_HSP,
-        self.Taxon_Osmolyte -- everything else metabolism() sets is read downstream only via
-        output.py's _taxa_sum()/_enz_sum(), which already fall back to np.asarray() for plain
-        arrays, so those are left as plain float32 numpy arrays).
-
-        BUGFIX (2026-07-22): the N/E "most limiting resource" ratio (ARROEHC / ARROEI)
-        used to be left undefined (NaN) for any row where its own E-cost was exactly 0
-        while the N-cost was positive -- mirroring the original pandas code, which built
-        this ratio only over the boolean subset where the E-cost was positive, then
-        aligned it against the (larger) N-cost-positive subset, silently introducing NaN
-        wherever a row was in the second subset but not the first. This is a genuine bug
-        in the original model, not an intentional design choice: neither pandas' nor
-        numpy's `x < 0` clipping catches NaN (comparisons against NaN are always False),
-        so a NaN in Microbes['E'] introduced this way propagates forward permanently once
-        introduced. Confirmed against a real run: energy production was legitimately
-        nonzero on day 0, then exactly 0/NaN every day after, because some cell first hit
-        this maskN-without-maskE condition during day 0's metabolism() call. Fixed by
-        falling back to the N-only ratio (ARRNOEHC / ARRNOEI, always defined wherever
-        N-cost is positive) instead of NaN when there's no E-cost to weigh against --
-        see the inline comment where ARROEHC/ARROEI are computed below. This does not
-        change behavior at all in the (typical) case where both costs are positive.
+        Compound classes
+          Enzymes are exported: their C, N and P leave the cell (to the Enzymes pool).
+          HSP and osmolytes are intracellular and part of biomass: their C and N stay in Microbes['C'/'N'] but are
+          bound in the compound pools (self._hsp_pool, self._osmo_pool; C units, N = C x *_N_cost) and so are not
+          available to other syntheses until turnover returns them to the free pool.
+        Turnover (HSP_turnover, Osmo_loss_rate) is intracellular recycling: each day a fraction of each pool is
+          released back to the free C and N of the same cell (no loss from the cell).
+        Composition feedback: production of each intracellular compound X is scaled by
+          g_X = clip(1 - f_X / X_max_frac, 0, 1),   f_X = X pool C / biomass (C + N + P),
+          so a cell cannot be made up of more than X_max_frac of X (HSP_max_frac, Osmo_max_frac).
+        Resource limitation (joint, all three compound classes, same factor for each class):
+          constitutive: free biomass C and N (total minus the C and N bound in HSP and osmolytes) and the energy left
+                        after transport and maintenance;
+          inducible:    the C routed to biomass and the N taken up this step, and the energy left after constitutive
+                        production.
+        Constitutive osmolyte production is not gated by water potential; inducible osmolyte production is
+          (microbe_osmo_psi).
+        Energy costs of production are paid from the energy pool; maintenance and transport costs are charged in full.
         """
-
         G, T = self.gridsize, self.n_taxa
-        idx = self.Microbes.index  # unchanged; row order for every (G*T,)-length quantity below
-
-        # index of dead enzyme in Substrates
         is_deadEnz = self.Substrates.index == "DeadEnz"
 
-        # Scalar of water potential impact: call the function microbe_osmo_psi()
+        # Moisture modifier of inducible osmolyte production
         f_psi = microbe_osmo_psi(self.psi[day], self.alpha, self.wp_fc, self.wp_th)
 
-        # ── Cache raw .values arrays once (avoid repeated pandas attribute access/overhead) ──
         Microbes_C = self.Microbes['C'].to_numpy(dtype=np.float32, copy=True)
         Microbes_N = self.Microbes['N'].to_numpy(dtype=np.float32, copy=True)
         Microbes_P = self.Microbes['P'].to_numpy(dtype=np.float32, copy=True)
         Microbes_E = self.Microbes['E'].to_numpy(dtype=np.float32, copy=True)
-        Microbes_CNP = Microbes_C + Microbes_N + Microbes_P  # == Microbes[['C','N','P']].sum(axis=1)
+        Microbes_CNP = Microbes_C + Microbes_N + Microbes_P
 
         Taxon_Total_Uptake_v = np.asarray(self.Taxon_Total_Uptake, dtype=np.float32)
-        Taxon_Uptake_BC_v    = np.asarray(self.Taxon_Uptake_BC, dtype=np.float32)
-        Taxon_Uptake_N_v     = np.asarray(self.Taxon_Uptake_N, dtype=np.float32)
-        Taxon_Uptake_P_v     = np.asarray(self.Taxon_Uptake_P, dtype=np.float32)
-        Taxon_Uptake_E_v     = np.asarray(self.Taxon_Uptake_E, dtype=np.float32)
-        Taxon_Uptake_C_v     = np.asarray(self.Taxon_Uptake_C, dtype=np.float32)
+        Taxon_Uptake_BC_v = np.asarray(self.Taxon_Uptake_BC, dtype=np.float32)
+        Taxon_Uptake_N_v = np.asarray(self.Taxon_Uptake_N, dtype=np.float32)
+        Taxon_Uptake_P_v = np.asarray(self.Taxon_Uptake_P, dtype=np.float32)
+        Taxon_Uptake_E_v = np.asarray(self.Taxon_Uptake_E, dtype=np.float32)
+        Taxon_Uptake_C_v = np.asarray(self.Taxon_Uptake_C, dtype=np.float32)
 
-        # taxon-specific energy cost of active monomer transport (mass of assimilated monomers * active uptake cost)
+        # ── Intracellular pools: turnover (recycling to the free pool), composition, free C and N ──────────
+        self._hsp_pool *= np.float32(1) - np.float32(self.HSP_Turnover)
+        self._osmo_pool *= np.float32(1) - np.float32(self.OSmo_Loss_Rate)
+        hsp_C = self._hsp_pool.sum(axis=1)
+        osmo_C = self._osmo_pool.sum(axis=1)
+        alive_cnp = Microbes_CNP > 0
+        HSP_prop = np.zeros_like(Microbes_CNP)
+        Osmo_prop = np.zeros_like(Microbes_CNP)
+        HSP_prop[alive_cnp] = hsp_C[alive_cnp] / Microbes_CNP[alive_cnp]
+        Osmo_prop[alive_cnp] = osmo_C[alive_cnp] / Microbes_CNP[alive_cnp]
+        g_hsp = np.clip(np.float32(1) - HSP_prop / np.float32(self.HSP_max_frac), 0, 1).astype(np.float32)
+        g_osmo = np.clip(np.float32(1) - Osmo_prop / np.float32(self.Osmo_max_frac), 0, 1).astype(np.float32)
+        free_C = np.maximum(Microbes_C - hsp_C - osmo_C, 0)
+        free_N = np.maximum(Microbes_N - np.float32(self.HSP_N_cost) * hsp_C - np.float32(self.Osmo_N_cost) * osmo_C, 0)
+
+        # ── Transport and maintenance energy (charged in full) ───────────────────────────────────────────────
         Tax_active_transport_E_cost = Taxon_Total_Uptake_v * np.float32(self.active_uptake_E_cost)
-
-        # calculate the proportion of microbial biomass that is HSPs
-        hsp_cols = [c for c in self.Taxon_HSP.columns if c != 'Total_biomass']
-        HSP_v = self.Taxon_HSP[hsp_cols].to_numpy(dtype=np.float32, copy=True)  # (G*T, n_HSP)
-        HSP_v *= np.float32(1) - np.float32(self.HSP_Turnover)
-        self.Taxon_HSP[hsp_cols] = HSP_v
-
-        Total_biomass_v = self.Taxon_HSP['Total_biomass'].to_numpy(dtype=np.float32, copy=True)
-        hsp_mass = HSP_v.sum(axis=1)  # total HSP mass per microbe
-        HSP_prop = hsp_mass.copy()
-        pos_tb = Total_biomass_v > 0
-        HSP_prop[pos_tb] = hsp_mass[pos_tb] / Total_biomass_v[pos_tb]
-
-        # Calculate temperature sensitivity of maintenance energy cost from HSP concentration
         maint_E_cost_Ea = ((HSP_prop / (HSP_prop + self.maint_E_HSP_Ea_n)) * self.maint_E_HSP_Ea_slope
                            ) + self.maint_E_HSP_Ea_int
         tax_maint_E_cost = self.maint_E_rate_const * Arrhenius(
             maint_E_cost_Ea, self.gas_const, self.temp[day], self.maint_E_rate_Tref)
         Tax_cell_maint_E_cost = tax_maint_E_cost * Microbes_CNP
-
-        # Transporter production
         Uptake_Prod_Cost_sum = self.Uptake_Prod_Cost.to_numpy(dtype=np.float32, copy=True).sum(axis=1)
         Tax_transport_prod_E_cost = (Taxon_Total_Uptake_v * Uptake_Prod_Cost_sum) * np.float32(self.UptakeProd_E_Cost)
 
-        # Pool of energy available for biomass production after uptake/transport/maintenance costs
         MicBio_avail_E = (Microbes_E + Taxon_Uptake_E_v - Tax_active_transport_E_cost
                           - Tax_transport_prod_E_cost - Tax_cell_maint_E_cost)
-        MicBio_avail_E = np.where(MicBio_avail_E < 0, np.float32(0), MicBio_avail_E)
+        MicBio_avail_E = np.maximum(MicBio_avail_E, np.float32(0))
 
-        if getattr(self, "debug_metabolism_days", 0) and day < self.debug_metabolism_days:
-            def _rep(name, arr):
-                a = np.asarray(arr, dtype=np.float64)
-                n_nan = np.isnan(a).sum()
-                n_inf = np.isinf(a).sum()
-                print(f"    [metab day {day}] {name}: n_nan={n_nan} n_inf={n_inf} "
-                      f"shape={a.shape} sum={np.nansum(a):.4g}")
+        Enz_N_cost_v, Enz_P_cost_v, Enz_E_cost_v = self._enz_cost_consti
+        Enz_N_cost_i, Enz_P_cost_i, Enz_E_cost_i = self._enz_cost_induci
+        HSP_N, HSP_E = np.float32(self.HSP_N_cost), np.float32(self.HSP_E_cost)
+        Osmo_N, Osmo_E = np.float32(self.Osmo_N_cost), np.float32(self.Osmo_E_cost)
+        Arr_hsp_consti = Arrhenius(self.HSP_consti_Ea, self.gas_const, self.temp[day], self.maint_E_rate_Tref)
+        Arr_hsp_induci = Arrhenius(self.HSP_induci_Ea, self.gas_const, self.temp[day], self.maint_E_rate_Tref)
 
-            def _rep_df(name, df):
-                a = np.asarray(df, dtype=np.float64)
-                n_nan = np.isnan(a).sum()
-                cols = getattr(df, "columns", None)
-                print(f"    [metab day {day}] {name}: n_nan={n_nan} shape={a.shape}")
-                if n_nan and cols is not None:
-                    col_nan = np.isnan(a).any(axis=0)
-                    bad_cols = [str(c) for c, bad in zip(cols, col_nan) if bad]
-                    print(f"        -> NaN-containing columns: {bad_cols}")
-                    row_nan = np.isnan(a).any(axis=1)
-                    print(f"        -> n_rows_with_any_nan={row_nan.sum()} "
-                          f"(of {a.shape[0]})")
+        # ── Constitutive production: potential, then joint C / N / E limitation on free resources ──────────────
+        tax_HSP_consti_prod = (self._hsp_consti_rate * Arr_hsp_consti
+                               * (Microbes_CNP * g_hsp)[:, None])                       # (G*T, n_HSP), C units
+        Taxon_Osmo_Consti = self._osmo_consti_rate * (Microbes_C * g_osmo)[:, None]     # (G*T, n_osmo), no Psi gate
+        Taxon_Enzyme_Consti = self._enz_consti_rate * Microbes_C[:, None]               # (G*T, n_enz)
 
-            print(f"  -- metabolism() checkpoint A (day {day}) --")
-            _rep_df("self.Consti_Enzyme_C (raw input)", self.Consti_Enzyme_C)
-            _rep_df("self.Induci_Enzyme_C (raw input)", self.Induci_Enzyme_C)
-            _rep_df("self.Consti_Osmo_C (raw input)", self.Consti_Osmo_C)
-            _rep_df("self.Induci_Osmo_C (raw input)", self.Induci_Osmo_C)
-            _rep_df("self.HSP_consti_pre_exp (raw input)", self.HSP_consti_pre_exp)
-            _rep_df("self.HSP_induci_pre_exp (raw input)", self.HSP_induci_pre_exp)
-            _rep_df("self.Uptake_Prod_Cost (raw input)", self.Uptake_Prod_Cost)
-            _rep("HSP_prop", HSP_prop)
-            _rep("maint_E_cost_Ea", maint_E_cost_Ea)
-            _rep("tax_maint_E_cost", tax_maint_E_cost)
-            _rep("Tax_cell_maint_E_cost", Tax_cell_maint_E_cost)
-            _rep("Uptake_Prod_Cost_sum", Uptake_Prod_Cost_sum)
-            _rep("Tax_transport_prod_E_cost", Tax_transport_prod_E_cost)
-            _rep("MicBio_avail_E (initial)", MicBio_avail_E)
+        cC = tax_HSP_consti_prod.sum(axis=1) + Taxon_Osmo_Consti.sum(axis=1) + Taxon_Enzyme_Consti.sum(axis=1)
+        cN = (tax_HSP_consti_prod.sum(axis=1) * HSP_N + Taxon_Osmo_Consti.sum(axis=1) * Osmo_N
+              + (Taxon_Enzyme_Consti * Enz_N_cost_v).sum(axis=1))
+        cE = (tax_HSP_consti_prod.sum(axis=1) * HSP_E + Taxon_Osmo_Consti.sum(axis=1) * Osmo_E
+              + (Taxon_Enzyme_Consti * Enz_E_cost_v).sum(axis=1))
+        r_consti = _limit_ratio((cC, free_C), (cN, free_N), (cE, MicBio_avail_E))
 
-        # ---------------------------------------------------------------------#
-        # ......................constitutive processes.........................#
-        # ---------------------------------------------------------------------#
+        tax_HSP_consti_prod *= r_consti[:, None]
+        Taxon_Osmo_Consti *= r_consti[:, None]
+        Taxon_Enzyme_Consti *= r_consti[:, None]
 
-        # Reindex the small (n_enzymes,)-length per-enzyme cost columns to match column order,
-        # once, defensively (cheap -- avoids relying on positional ordering happening to match).
-        consti_enz_cols = self.Consti_Enzyme_C.columns
-        Enz_N_cost_v = self.Enz_Attrib['N_cost'].reindex(consti_enz_cols).to_numpy(dtype=np.float32, copy=True)
-        Enz_P_cost_v = self.Enz_Attrib['P_cost'].reindex(consti_enz_cols).to_numpy(dtype=np.float32, copy=True)
-        Enz_E_cost_v = self.Enz_Attrib['E_cost'].reindex(consti_enz_cols).to_numpy(dtype=np.float32, copy=True)
-
-        # HSP before adjustment
-        HSP_consti_prod = self.HSP_consti_pre_exp.to_numpy(dtype=np.float32, copy=True) * Arrhenius(
-            self.HSP_consti_Ea, self.gas_const, self.temp[day], self.maint_E_rate_Tref)
-        tax_HSP_consti_prod = HSP_consti_prod * Microbes_CNP[:, None]
-        Taxon_HSP_Consti_Cost_N = (tax_HSP_consti_prod * self.HSP_N_cost).sum(axis=1)
-        Taxon_HSP_Consti_Cost_E = (tax_HSP_consti_prod * self.HSP_E_cost).sum(axis=1)
-
-        # Osmolyte before adjustment
-        Taxon_Osmo_Consti = self.Consti_Osmo_C.to_numpy(dtype=np.float32, copy=True) * Microbes_C[:, None] * f_psi
-        Taxon_Osmo_Consti_Cost_N = (Taxon_Osmo_Consti * self.Osmo_N_cost).sum(axis=1)
-        Taxon_Osmo_Consti_Cost_E = (Taxon_Osmo_Consti * self.Osmo_E_cost).sum(axis=1)
-
-        # Enzyme before adjustment
-        Taxon_Enzyme_Consti = self.Consti_Enzyme_C.to_numpy(dtype=np.float32, copy=True) * Microbes_C[:, None]
-        Taxon_Enzyme_Consti_Cost_N = (Taxon_Enzyme_Consti * Enz_N_cost_v).sum(axis=1)
-        Taxon_Enzyme_Consti_Cost_E = (Taxon_Enzyme_Consti * Enz_E_cost_v).sum(axis=1)
-
-        # N limitation across all three constitutive products
-        OEHCCN = Taxon_HSP_Consti_Cost_N + Taxon_Osmo_Consti_Cost_N + Taxon_Enzyme_Consti_Cost_N
-        maskN = OEHCCN > 0
-        MNAOEHC = np.minimum(OEHCCN, Microbes_N)
-        ARRNOEHC = np.where(maskN, MNAOEHC / np.where(maskN, OEHCCN, 1), np.nan)
-
-        # E limitation across all three constitutive products
-        OEHCCE = Taxon_HSP_Consti_Cost_E + Taxon_Osmo_Consti_Cost_E + Taxon_Enzyme_Consti_Cost_E
-        maskE = OEHCCE > 0
-        MEAOEHC = np.minimum(OEHCCE, MicBio_avail_E)
-        ARREOEHC = np.where(maskE, MEAOEHC / np.where(maskE, OEHCCE, 1), np.nan)
-
-        # Most limiting factor: use whichever of the N-ratio / E-ratio is more
-        # restrictive when BOTH costs are positive; fall back to the N-ratio
-        # alone when there's no E-cost to weigh against (maskE False).
-        #
-        # BUGFIX (was NaN-producing in both the original pandas code and an
-        # earlier version of this rewrite): the original computed ARROEHC as
-        # `ARREOEHC.copy()` where ARREOEHC is a Series indexed ONLY over the
-        # maskE==True subset (built via `OEHCCE[OEHCCE > 0]`-style boolean
-        # selection, which drops rows rather than keeping them as NaN). It
-        # then did `tax_HSP_consti_prod[OEHCCN > 0].mul(ARROEHC, axis=0)` --
-        # a pandas alignment between the maskN subset and the maskE subset.
-        # For any row where maskN is True but maskE is False (an N-cost with
-        # no corresponding E-cost that step), ARROEHC has no entry for that
-        # row, so the aligned multiply silently produces NaN, which then
-        # gets written into tax_HSP_consti_prod for that row. Since neither
-        # pandas' nor numpy's `x < 0` clipping catches NaN (NaN compares
-        # False against everything, so `Microbes['E'][Microbes['E']<0] = 0`
-        # never clears it), that NaN persists in self.Microbes['E'] from
-        # that day forward -- confirmed against a real run (E production
-        # legitimately nonzero on day 0, then NaN forever after day 0's
-        # metabolism() call once some cell first hit this maskN-without-
-        # maskE condition). Falling back to ARRNOEHC (the N-only ratio,
-        # always defined wherever maskN is True) instead of NaN fixes this
-        # without changing behavior in the maskE==True case at all.
-        ARROEHC = np.where(maskE, ARREOEHC, ARRNOEHC)
-        swap = maskE & maskN & (ARREOEHC > ARRNOEHC)
-        ARROEHC = np.where(swap, ARRNOEHC, ARROEHC)
-
-        if getattr(self, "debug_metabolism_days", 0) and day < self.debug_metabolism_days:
-            _rep("Enz_N_cost_v (consti, reindexed)", Enz_N_cost_v)
-            _rep("Enz_E_cost_v (consti, reindexed)", Enz_E_cost_v)
-            _rep("OEHCCN", OEHCCN)
-            _rep("OEHCCE", OEHCCE)
-            _rep("ARRNOEHC", ARRNOEHC)
-            _rep("ARREOEHC", ARREOEHC)
-            _rep("ARROEHC (final)", ARROEHC)
-            print(f"    [metab day {day}] maskN sum={maskN.sum()} maskE sum={maskE.sum()} "
-                  f"maskN&~maskE={int((maskN & ~maskE).sum())} ~maskN&maskE={int((~maskN & maskE).sum())}")
-
-        # HSP adjusted
-        tax_HSP_consti_prod = np.where(maskN[:, None], tax_HSP_consti_prod * ARROEHC[:, None], tax_HSP_consti_prod)
-        Taxon_HSP_Consti_Cost_N = (tax_HSP_consti_prod * self.HSP_N_cost).sum(axis=1)
         Taxon_HSP_Consti_Cost_C = tax_HSP_consti_prod.sum(axis=1)
-        Taxon_HSP_Consti_Cost_E = (tax_HSP_consti_prod * self.HSP_E_cost).sum(axis=1)
-
-        # Osmolyte adjusted
-        Taxon_Osmo_Consti = np.where(maskN[:, None], Taxon_Osmo_Consti * ARROEHC[:, None], Taxon_Osmo_Consti)
-        Taxon_Osmo_Consti_Cost_N = (Taxon_Osmo_Consti * self.Osmo_N_cost).sum(axis=1)
+        Taxon_HSP_Consti_Cost_E = Taxon_HSP_Consti_Cost_C * HSP_E
         Taxon_Osmo_Consti_Cost_C = Taxon_Osmo_Consti.sum(axis=1)
-        Taxon_Osmo_Consti_Cost_E = Taxon_Osmo_Consti_Cost_C * self.Osmo_E_cost
-
-        # Enzyme adjusted
-        Taxon_Enzyme_Consti = np.where(maskN[:, None], Taxon_Enzyme_Consti * ARROEHC[:, None], Taxon_Enzyme_Consti)
+        Taxon_Osmo_Consti_Cost_E = Taxon_Osmo_Consti_Cost_C * Osmo_E
+        Taxon_Enzyme_Consti_Cost_C = Taxon_Enzyme_Consti.sum(axis=1)
         Taxon_Enzyme_Consti_Cost_N = (Taxon_Enzyme_Consti * Enz_N_cost_v).sum(axis=1)
         Taxon_Enzyme_Consti_Cost_P = (Taxon_Enzyme_Consti * Enz_P_cost_v).sum(axis=1)
-        Taxon_Enzyme_Consti_Cost_C = Taxon_Enzyme_Consti.sum(axis=1)
         Taxon_Enzyme_Consti_Cost_E = (Taxon_Enzyme_Consti * Enz_E_cost_v).sum(axis=1)
 
-        # Deduct all constitutive E costs from available pool
-        MicBio_avail_E = MicBio_avail_E - (Taxon_HSP_Consti_Cost_E + Taxon_Osmo_Consti_Cost_E + Taxon_Enzyme_Consti_Cost_E)
-        MicBio_avail_E = np.where(MicBio_avail_E < 0, np.float32(0), MicBio_avail_E)
+        MicBio_avail_E = np.maximum(
+            MicBio_avail_E - (Taxon_HSP_Consti_Cost_E + Taxon_Osmo_Consti_Cost_E + Taxon_Enzyme_Consti_Cost_E),
+            np.float32(0))
 
-        if getattr(self, "debug_metabolism_days", 0) and day < self.debug_metabolism_days:
-            _rep("Taxon_HSP_Consti_Cost_E (adj)", Taxon_HSP_Consti_Cost_E)
-            _rep("Taxon_Osmo_Consti_Cost_E (adj)", Taxon_Osmo_Consti_Cost_E)
-            _rep("Taxon_Enzyme_Consti_Cost_E (adj)", Taxon_Enzyme_Consti_Cost_E)
-            _rep("MicBio_avail_E (post-consti)", MicBio_avail_E)
+        # ── Inducible production: potential, then joint C / N / E limitation on this step's uptake ──────────────
+        tax_HSP_induci_prod = (self._hsp_induci_rate * Arr_hsp_induci
+                               * (Taxon_Total_Uptake_v * g_hsp)[:, None])
+        Taxon_Osmo_Induci = self._osmo_induci_rate * (Taxon_Uptake_BC_v * g_osmo * f_psi)[:, None]
+        Taxon_Enzyme_Induci = self._enz_induci_rate * Taxon_Uptake_BC_v[:, None]
 
-        # --- Inducible production (HSP, Osmolyte, Enzyme) before resource adjustment ---
+        iC = tax_HSP_induci_prod.sum(axis=1) + Taxon_Osmo_Induci.sum(axis=1) + Taxon_Enzyme_Induci.sum(axis=1)
+        iN = (tax_HSP_induci_prod.sum(axis=1) * HSP_N + Taxon_Osmo_Induci.sum(axis=1) * Osmo_N
+              + (Taxon_Enzyme_Induci * Enz_N_cost_i).sum(axis=1))
+        iE = (tax_HSP_induci_prod.sum(axis=1) * HSP_E + Taxon_Osmo_Induci.sum(axis=1) * Osmo_E
+              + (Taxon_Enzyme_Induci * Enz_E_cost_i).sum(axis=1))
+        r_induci = _limit_ratio((iC, Taxon_Uptake_BC_v), (iN, Taxon_Uptake_N_v), (iE, MicBio_avail_E))
 
-        induci_enz_cols = self.Induci_Enzyme_C.columns
-        Enz_N_cost_i = self.Enz_Attrib['N_cost'].reindex(induci_enz_cols).to_numpy(dtype=np.float32, copy=True)
-        Enz_P_cost_i = self.Enz_Attrib['P_cost'].reindex(induci_enz_cols).to_numpy(dtype=np.float32, copy=True)
-        Enz_E_cost_i = self.Enz_Attrib['E_cost'].reindex(induci_enz_cols).to_numpy(dtype=np.float32, copy=True)
+        tax_HSP_induci_prod *= r_induci[:, None]
+        Taxon_Osmo_Induci *= r_induci[:, None]
+        Taxon_Enzyme_Induci *= r_induci[:, None]
 
-        tax_HSP_induci_prod_rate = self.HSP_induci_pre_exp.to_numpy(dtype=np.float32, copy=True) * Arrhenius(
-            self.HSP_induci_Ea, self.gas_const, self.temp[day], self.maint_E_rate_Tref)
-        tax_HSP_induci_prod = tax_HSP_induci_prod_rate * Taxon_Total_Uptake_v[:, None]
-        Taxon_HSP_Induci_Cost_N = (tax_HSP_induci_prod * self.HSP_N_cost).sum(axis=1)
-        Taxon_HSP_Induci_Cost_E = (tax_HSP_induci_prod * self.HSP_E_cost).sum(axis=1)
-
-        Taxon_Osmo_Induci = self.Induci_Osmo_C.to_numpy(dtype=np.float32, copy=True) * Taxon_Uptake_BC_v[:, None] * f_psi
-        Taxon_Osmo_Induci_Cost_N = (Taxon_Osmo_Induci * self.Osmo_N_cost).sum(axis=1)
-        Taxon_Osmo_Induci_Cost_E = (Taxon_Osmo_Induci * self.Osmo_E_cost).sum(axis=1)
-
-        Taxon_Enzyme_Induci = self.Induci_Enzyme_C.to_numpy(dtype=np.float32, copy=True) * Taxon_Uptake_BC_v[:, None]
-        Taxon_Enzyme_Induci_Cost_N = (Taxon_Enzyme_Induci * Enz_N_cost_i).sum(axis=1)
-        Taxon_Enzyme_Induci_Cost_E = (Taxon_Enzyme_Induci * Enz_E_cost_i).sum(axis=1)
-
-        # --- N limitation: HSP + Osmolyte + Enzyme inducible ---
-        OEIHCN = Taxon_HSP_Induci_Cost_N + Taxon_Osmo_Induci_Cost_N + Taxon_Enzyme_Induci_Cost_N
-        OEIHAN = Taxon_Uptake_N_v
-        maskNi = OEIHCN > 0
-        MNAOEIH = np.minimum(OEIHCN, OEIHAN)
-        ARRNOEI = np.where(maskNi, MNAOEIH / np.where(maskNi, OEIHCN, 1), np.nan)
-
-        # --- E limitation: HSP + Osmolyte + Enzyme inducible ---
-        OEIHCE = Taxon_HSP_Induci_Cost_E + Taxon_Osmo_Induci_Cost_E + Taxon_Enzyme_Induci_Cost_E
-        maskEi = OEIHCE > 0
-        MEAOEIH = np.minimum(OEIHCE, MicBio_avail_E)
-        ARREOEI = np.where(maskEi, MEAOEIH / np.where(maskEi, OEIHCE, 1), np.nan)
-
-        # Most limiting factor across N and E -- same bugfix as the constitutive
-        # block above: fall back to the N-only ratio (ARRNOEI) when there's no
-        # E-cost to weigh against, instead of the original's NaN.
-        ARROEI = np.where(maskEi, ARREOEI, ARRNOEI)
-        swap_i = maskEi & maskNi & (ARREOEI > ARRNOEI)
-        ARROEI = np.where(swap_i, ARRNOEI, ARROEI)
-
-        # --- Apply adjustment to all three inducible products ---
-
-        tax_HSP_induci_prod = np.where(maskNi[:, None], tax_HSP_induci_prod * ARROEI[:, None], tax_HSP_induci_prod)
-        Taxon_HSP_Induci_Cost_N = (tax_HSP_induci_prod * self.HSP_N_cost).sum(axis=1)
         Taxon_HSP_Induci_Cost_C = tax_HSP_induci_prod.sum(axis=1)
-        Taxon_HSP_Induci_Cost_E = (tax_HSP_induci_prod * self.HSP_E_cost).sum(axis=1)
-
-        Taxon_Osmo_Induci = np.where(maskNi[:, None], Taxon_Osmo_Induci * ARROEI[:, None], Taxon_Osmo_Induci)
-        Taxon_Osmo_Induci_Cost_N = (Taxon_Osmo_Induci * self.Osmo_N_cost).sum(axis=1)
+        Taxon_HSP_Induci_Cost_E = Taxon_HSP_Induci_Cost_C * HSP_E
         Taxon_Osmo_Induci_Cost_C = Taxon_Osmo_Induci.sum(axis=1)
-        Taxon_Osmo_Induci_Cost_E = (Taxon_Osmo_Induci * self.Osmo_E_cost).sum(axis=1)
-
-        Taxon_Enzyme_Induci = np.where(maskNi[:, None], Taxon_Enzyme_Induci * ARROEI[:, None], Taxon_Enzyme_Induci)
+        Taxon_Osmo_Induci_Cost_E = Taxon_Osmo_Induci_Cost_C * Osmo_E
+        Taxon_Enzyme_Induci_Cost_C = Taxon_Enzyme_Induci.sum(axis=1)
         Taxon_Enzyme_Induci_Cost_N = (Taxon_Enzyme_Induci * Enz_N_cost_i).sum(axis=1)
         Taxon_Enzyme_Induci_Cost_P = (Taxon_Enzyme_Induci * Enz_P_cost_i).sum(axis=1)
-        Taxon_Enzyme_Induci_Cost_C = Taxon_Enzyme_Induci.sum(axis=1)
         Taxon_Enzyme_Induci_Cost_E = (Taxon_Enzyme_Induci * Enz_E_cost_i).sum(axis=1)
 
-        # Derive C, N, & P deposited as biomass from Uptake; ensure no negative values
+        # ── Integration ─────────────────────────────────────────────────────────────────────────────────────────
+        # Only exported enzymes leave the cell; HSP and osmolyte C and N stay in biomass (moved to the bound pools).
         Microbe_C_Gain = Taxon_Uptake_BC_v - Taxon_Enzyme_Induci_Cost_C
         Microbe_N_Gain = Taxon_Uptake_N_v - Taxon_Enzyme_Induci_Cost_N
         Microbe_P_Gain = Taxon_Uptake_P_v - Taxon_Enzyme_Induci_Cost_P
 
-        # Derive total E costs and gains
-        Microbe_E_Cost = (Tax_active_transport_E_cost + Tax_transport_prod_E_cost
-                          + Tax_cell_maint_E_cost + Taxon_HSP_Consti_Cost_E
-                          + Taxon_HSP_Induci_Cost_E + Taxon_Enzyme_Induci_Cost_E
-                          + Taxon_Osmo_Induci_Cost_E + Taxon_Enzyme_Consti_Cost_E
-                          + Taxon_Osmo_Consti_Cost_E)
+        Microbe_E_Cost = (Tax_active_transport_E_cost + Tax_transport_prod_E_cost + Tax_cell_maint_E_cost
+                          + Taxon_HSP_Consti_Cost_E + Taxon_HSP_Induci_Cost_E
+                          + Taxon_Osmo_Consti_Cost_E + Taxon_Osmo_Induci_Cost_E
+                          + Taxon_Enzyme_Consti_Cost_E + Taxon_Enzyme_Induci_Cost_E)
         Microbe_E_Gain = Taxon_Uptake_E_v - Microbe_E_Cost
 
-        if getattr(self, "debug_metabolism_days", 0) and day < self.debug_metabolism_days:
-            _rep("Enz_N_cost_i (induci, reindexed)", Enz_N_cost_i)
-            _rep("Enz_E_cost_i (induci, reindexed)", Enz_E_cost_i)
-            _rep("OEIHCN", OEIHCN)
-            _rep("OEIHCE", OEIHCE)
-            _rep("ARROEI (final)", ARROEI)
-            print(f"    [metab day {day}] maskNi sum={maskNi.sum()} maskEi sum={maskEi.sum()} "
-                  f"maskNi&~maskEi={int((maskNi & ~maskEi).sum())} ~maskNi&maskEi={int((~maskNi & maskEi).sum())}")
-            _rep("Microbe_E_Cost", Microbe_E_Cost)
-            _rep("Microbe_E_Gain", Microbe_E_Gain)
-            _rep("Microbes_E (before integration)", Microbes_E)
-
-        # ---------------------------------------------------------------------#
-        # ...............................Integration...........................#
-        # ---------------------------------------------------------------------#
-        Microbes_C = Microbes_C + Microbe_C_Gain - Taxon_Enzyme_Consti_Cost_C
-        Microbes_N = Microbes_N + Microbe_N_Gain - Taxon_Enzyme_Consti_Cost_N
-        Microbes_P = Microbes_P + Microbe_P_Gain - Taxon_Enzyme_Consti_Cost_P
-        Microbes_E = Microbes_E + Microbe_E_Gain
-        Microbes_C = np.where(Microbes_C < 0, np.float32(0), Microbes_C)
-        Microbes_N = np.where(Microbes_N < 0, np.float32(0), Microbes_N)
-        Microbes_P = np.where(Microbes_P < 0, np.float32(0), Microbes_P)
-        Microbes_E = np.where(Microbes_E < 0, np.float32(0), Microbes_E)
+        Microbes_C = np.maximum(Microbes_C + Microbe_C_Gain - Taxon_Enzyme_Consti_Cost_C, np.float32(0))
+        Microbes_N = np.maximum(Microbes_N + Microbe_N_Gain - Taxon_Enzyme_Consti_Cost_N, np.float32(0))
+        Microbes_P = np.maximum(Microbes_P + Microbe_P_Gain - Taxon_Enzyme_Consti_Cost_P, np.float32(0))
+        Microbes_E = np.maximum(Microbes_E + Microbe_E_Gain, np.float32(0))
         self.Microbes['C'] = Microbes_C
         self.Microbes['N'] = Microbes_N
         self.Microbes['P'] = Microbes_P
         self.Microbes['E'] = Microbes_E
 
-        if getattr(self, "debug_metabolism_days", 0) and day < self.debug_metabolism_days:
-            _rep("Microbes_E (final, post-clip)", Microbes_E)
-            n_alive = int(((Microbes_C + Microbes_N + Microbes_P) > 0).sum())
-            print(f"    [metab day {day}] n_alive (CNP>0) = {n_alive}")
+        self._hsp_pool += tax_HSP_consti_prod + tax_HSP_induci_prod
+        self._osmo_pool += Taxon_Osmo_Consti + Taxon_Osmo_Induci
+        self._clip_pools(Microbes_C, Microbes_N)
 
-        # Taxon-specific emergent CUE
+        # ── Emergent CUE (HSP and osmolyte C is retained in biomass) ─────────────────────────────────────────────
         CUE_taxon = np.zeros(G * T, dtype=np.float32)
         pos_uptake_index = Taxon_Uptake_C_v > 0
         Mic_BC_Use = Microbe_C_Gain - Taxon_Enzyme_Consti_Cost_C
         CUE_taxon[pos_uptake_index] = Mic_BC_Use[pos_uptake_index] / Taxon_Uptake_C_v[pos_uptake_index]
-
-        # System-level emergent CUE
         Taxon_Use_C_grid = Taxon_Uptake_C_v.sum()
-        if Taxon_Use_C_grid == 0:
-            CUE_system = np.float32(0)
-        else:
-            CUE_system = Mic_BC_Use.sum() / Taxon_Use_C_grid
+        CUE_system = np.float32(0) if Taxon_Use_C_grid == 0 else Mic_BC_Use.sum() / Taxon_Use_C_grid
 
-        # Heat stress protein production
-        HSP_v = HSP_v + tax_HSP_consti_prod + tax_HSP_induci_prod
-        self.Taxon_HSP[hsp_cols] = HSP_v
-        self.Taxon_HSP['Total_biomass'] = Microbes_C + Microbes_N + Microbes_P
-
-        # Osmolyte pool
-        Osmo_v = self.Taxon_Osmolyte.to_numpy(dtype=np.float32, copy=True)
-        Osmo_v = Osmo_v + Taxon_Osmo_Consti + Taxon_Osmo_Induci
-        Osmo_v = Osmo_v * (np.float32(1) - np.float32(self.OSmo_Loss_Rate))
-        self.Taxon_Osmolyte[:] = Osmo_v
-
-        Taxon_Osmo_Cost_C = (Taxon_Osmo_Consti + Taxon_Osmo_Induci).sum(axis=1)
-        Taxon_Enzyme_Cost_C = Taxon_Enzyme_Consti_Cost_C + Taxon_Enzyme_Induci_Cost_C
-        Taxon_HSP_Cost_C = Taxon_HSP_Consti_Cost_C + Taxon_HSP_Induci_Cost_C
-        Taxon_Transport_Cost_C = Tax_transport_prod_E_cost / np.float32(self.UptakeProd_E_Cost)
-        Taxon_Transport_E_Cost = Tax_active_transport_E_cost + Tax_transport_prod_E_cost
-        Taxon_Maint_E_Cost = Tax_cell_maint_E_cost
-        Taxon_Enzyme_E_Cost = Taxon_Enzyme_Consti_Cost_E + Taxon_Enzyme_Induci_Cost_E
-        Taxon_Osmo_E_Cost_total = Taxon_Osmo_Consti_Cost_E + Taxon_Osmo_Induci_Cost_E
-        Taxon_HSP_E_Cost = Taxon_HSP_Consti_Cost_E + Taxon_HSP_Induci_Cost_E
-
-        # ── Publish taxon-level results (plain float32 arrays; output.py's _taxa_sum()/
-        #    _enz_sum() already accept either pandas or plain-array input) ──────────────
+        # ── Publish taxon-level results (plain float32 arrays) ───────────────────────────────────────────────────
         self.Tax_active_transport_E_cost = Tax_active_transport_E_cost
-        self.Tax_cell_maint_E_cost       = Tax_cell_maint_E_cost
-        self.Taxon_HSP_Consti_Cost_E     = Taxon_HSP_Consti_Cost_E
-        self.Taxon_HSP_Induci_Cost_E     = Taxon_HSP_Induci_Cost_E
-        self.Microbe_E_Cost              = Microbe_E_Cost
-        self.Microbe_E_Gain              = Microbe_E_Gain
-        self.CUE_taxon                   = CUE_taxon
-        self.CUE_system                  = CUE_system
-        self.Taxon_Osmo_Cost_C           = Taxon_Osmo_Cost_C
-        self.Taxon_Enzyme_Cost_C         = Taxon_Enzyme_Cost_C
-        self.Taxon_HSP_Cost_C            = Taxon_HSP_Cost_C
-        self.Taxon_Transport_Cost_C      = Taxon_Transport_Cost_C
-        self.Taxon_Transport_E_Cost      = Taxon_Transport_E_Cost
-        self.Taxon_Maint_E_Cost          = Taxon_Maint_E_Cost
-        self.Taxon_Enzyme_E_Cost         = Taxon_Enzyme_E_Cost
-        self.Taxon_Osmo_E_Cost_total     = Taxon_Osmo_E_Cost_total
-        self.Taxon_HSP_E_Cost            = Taxon_HSP_E_Cost
-        self.HSP_prop                    = HSP_prop            # taxon-cell HSP mass / total biomass
-        self.maint_E_cost_Ea             = maint_E_cost_Ea     # HSP-modulated effective activation energy for maintenance
-        self.tax_maint_E_cost            = tax_maint_E_cost    # pure per-unit-biomass maintenance rate (pre-Microbes_CNP scaling)
+        self.Tax_cell_maint_E_cost = Tax_cell_maint_E_cost
+        self.Taxon_HSP_Consti_Cost_E = Taxon_HSP_Consti_Cost_E
+        self.Taxon_HSP_Induci_Cost_E = Taxon_HSP_Induci_Cost_E
+        self.Microbe_E_Cost = Microbe_E_Cost
+        self.Microbe_E_Gain = Microbe_E_Gain
+        self.CUE_taxon = CUE_taxon
+        self.CUE_system = CUE_system
+        self.Taxon_Osmo_Cost_C = Taxon_Osmo_Consti_Cost_C + Taxon_Osmo_Induci_Cost_C     # C moved into the pool
+        self.Taxon_Enzyme_Cost_C = Taxon_Enzyme_Consti_Cost_C + Taxon_Enzyme_Induci_Cost_C
+        self.Taxon_HSP_Cost_C = Taxon_HSP_Consti_Cost_C + Taxon_HSP_Induci_Cost_C          # C moved into the pool
+        self.Taxon_Transport_Cost_C = Tax_transport_prod_E_cost / np.float32(self.UptakeProd_E_Cost)
+        self.Taxon_Transport_E_Cost = Tax_active_transport_E_cost + Tax_transport_prod_E_cost
+        self.Taxon_Maint_E_Cost = Tax_cell_maint_E_cost
+        self.Taxon_Enzyme_E_Cost = Taxon_Enzyme_Consti_Cost_E + Taxon_Enzyme_Induci_Cost_E
+        self.Taxon_Osmo_E_Cost_total = Taxon_Osmo_Consti_Cost_E + Taxon_Osmo_Induci_Cost_E
+        self.Taxon_HSP_E_Cost = Taxon_HSP_Consti_Cost_E + Taxon_HSP_Induci_Cost_E
+        self.HSP_prop = HSP_prop                  # HSP C / biomass (C+N+P), start of step after turnover
+        self.Osmo_prop = Osmo_prop                # osmolyte C / biomass (C+N+P), start of step after turnover
+        self.HSP_regulation = g_hsp               # composition feedback on HSP production (1 = none)
+        self.Osmo_regulation = g_osmo             # composition feedback on osmolyte production (1 = none)
+        self.Consti_limitation = r_consti         # joint C/N/E limitation of constitutive production (1 = none)
+        self.Induci_limitation = r_induci         # joint C/N/E limitation of inducible production (1 = none)
+        self.maint_E_cost_Ea = maint_E_cost_Ea
+        self.tax_maint_E_cost = tax_maint_E_cost
 
-        # Derive Enzyme production: gene-specific production of each taxon (G*T, n_enzymes),
-        # reduced across taxa within each grid cell -> (G, n_enzymes) -> flattened to match
-        # self.Enzymes' (G*n_enzymes,) index order (grid outer, enzyme inner -- same convention
-        # _enz_sum()/_taxa_sum() rely on elsewhere). No MultiIndex is built (nothing downstream
-        # reads self.Taxon_Enzyme_Production's index -- only output.py's _taxa_sum(), which
-        # works off .values regardless of index).
-        Taxon_Enzyme_Production_v = Taxon_Enzyme_Consti + Taxon_Enzyme_Induci  # (G*T, n_enzymes)
-        self.Taxon_Enzyme_Production = pd.DataFrame(Taxon_Enzyme_Production_v, index=idx, columns=consti_enz_cols)
+        # ── Enzyme pools: production (summed over taxa per cell), turnover, dead enzymes to DeadEnz ──────────────
+        Taxon_Enzyme_Production_v = Taxon_Enzyme_Consti + Taxon_Enzyme_Induci                # (G*T, n_enz)
         Enzyme_Production_v = Taxon_Enzyme_Production_v.reshape(G, T, self.n_enzymes).sum(axis=1).reshape(-1)
-
-        # Derive Enzyme turnover
         Enzymes_v = self.Enzymes.to_numpy(dtype=np.float32, copy=True)
         Enzyme_Loss_v = Enzymes_v * np.float32(self.Enzyme_Loss_Rate)
-
-        # Update Enzyme pools by adding enzymes produced and subtracting the 'dead' enzymes
         self.Enzymes[:] = Enzymes_v + Enzyme_Production_v - Enzyme_Loss_v
         self.Enzymes_gain = Enzyme_Production_v - Enzyme_Loss_v
         self.Enzyme_Production = Enzyme_Production_v
         self.Enzyme_Loss = Enzyme_Loss_v
 
-        # Update Substrates pools with dead enzymes: reshape (G*n_enzymes,) -> (G, n_enzymes),
-        # sum across enzymes per grid cell to get total dead-enzyme C/N/P mass added to each
-        # cell's 'DeadEnz' substrate row.
-        n_enz = self.n_enzymes
-        EnzLoss_2d = Enzyme_Loss_v.reshape(G, n_enz)
-        # Reindex defensively to self._enz_index (the per-cell enzyme order Enzymes/Enzyme_Loss's
-        # flat (G*n_enz,) layout uses), rather than assuming Enz_Attrib's row order already matches.
-        N_cost_enz = self.Enz_Attrib['N_cost'].reindex(self._enz_index).to_numpy(dtype=np.float32, copy=True)
-        P_cost_enz = self.Enz_Attrib['P_cost'].reindex(self._enz_index).to_numpy(dtype=np.float32, copy=True)
+        EnzLoss_2d = Enzyme_Loss_v.reshape(G, self.n_enzymes)
+        N_cost_enz, P_cost_enz = self._enz_cost_pool
         DeadEnz_C = EnzLoss_2d.sum(axis=1)
         DeadEnz_N = (EnzLoss_2d * N_cost_enz[None, :]).sum(axis=1)
         DeadEnz_P = (EnzLoss_2d * P_cost_enz[None, :]).sum(axis=1)
-        dead_cols = list(self.Substrates.columns[:3])  # original relied on positional [C,N,P] order too
+        dead_cols = list(self.Substrates.columns[:3])
         self.Substrates.loc[is_deadEnz, dead_cols] = (
             self.Substrates.loc[is_deadEnz, dead_cols].to_numpy(dtype=np.float32, copy=True)
             + np.stack([DeadEnz_C, DeadEnz_N, DeadEnz_P], axis=1)
         )
+
+    def _clip_pools(self, C, N):
+        """Keep the bound pools inside the cell: bound C <= biomass C and bound N <= biomass N (pools of empty cells -> 0).
+
+        Production never violates this by construction; it is needed after mortality, where stoichiometric
+        rebalancing can remove biomass C or N from a living cell."""
+        hsp_C = self._hsp_pool.sum(axis=1)
+        osmo_C = self._osmo_pool.sum(axis=1)
+        bC = hsp_C + osmo_C
+        bN = np.float32(self.HSP_N_cost) * hsp_C + np.float32(self.Osmo_N_cost) * osmo_C
+        f = np.ones_like(bC)
+        over_C = bC > C
+        over_N = bN > N
+        f[over_C] = C[over_C] / bC[over_C]
+        f[over_N] = np.minimum(f[over_N], N[over_N] / bN[over_N])
+        f[C <= 0] = 0
+        if (f < 1).any():
+            self._hsp_pool *= f[:, None]
+            self._osmo_pool *= f[:, None]
+
+    @property
+    def Taxon_HSP(self):
+        """HSP pools (C units) per cell and gene, with the cell's biomass (C+N+P) -- same layout output.py reads."""
+        df = pd.DataFrame(self._hsp_pool, index=self.Microbes.index, columns=self._hsp_cols)
+        df['Total_biomass'] = self.Microbes[['C', 'N', 'P']].to_numpy(dtype=np.float32).sum(axis=1)
+        return df
+
+    @property
+    def Taxon_Osmolyte(self):
+        """Osmolyte pools (C units) per cell and gene."""
+        return pd.DataFrame(self._osmo_pool, index=self.Microbes.index, columns=self._osmo_cols)
 
     def mortality(self, day):
         """
@@ -1174,6 +1014,8 @@ class Grid():
         # Index the dead, put them in Death, and set them to 0 in Microbes
         Death[starve_index] = Mic[starve_index]
         Mic[starve_index] = np.float32(0)
+        self._hsp_pool[starve_index] = np.float32(0)   # pool C/N is part of the dead biomass (-> DeadMic)
+        self._osmo_pool[starve_index] = np.float32(0)
         # Index the locations where microbial cells remain alive
         mic_index = Mic[:, 0] > 0
 
@@ -1184,6 +1026,8 @@ class Grid():
         # Index the dead, put them in Death, and set them to 0 in Microbes
         Death[kill] = Mic[kill]
         Mic[kill] = np.float32(0)
+        self._hsp_pool[kill] = np.float32(0)
+        self._osmo_pool[kill] = np.float32(0)
         # Index locations where microbes remain alive
         mic_index = Mic[:, 0] > 0
 
@@ -1322,6 +1166,9 @@ class Grid():
         self.Monomers.loc[is_NH4, "N"] -= Leaching_N
         self.Monomers.loc[is_PO4, "P"] -= Leaching_P
 
+        # Rebalancing may have removed C or N from living cells: keep the bound pools inside the cell
+        self._clip_pools(Mic[:, 0], Mic[:, 1])
+
         # Restore Microbes to a DataFrame with the original taxon-repeated index
         self.Microbes = pd.DataFrame(Mic, index=Mic_index, columns=['C', 'N', 'P', 'E'])
         # system respiration
@@ -1355,7 +1202,12 @@ class Grid():
         # pandas per-op overhead) and, under pandas 3.0, can fall into an
         # expensive non-unique-index join in some cases (see uptake()'s
         # CAE_taxon fix) -- positional numpy indexing sidesteps both issues.
-        Mic = self.Microbes.to_numpy(dtype=np.float32, copy=True)   # (N,4): C,N,P,E
+        # Intracellular pools travel with biomass: appended as extra columns so that fungal translocation
+        # (averaging), cell division (halving) and dispersal/colonization (adding) treat them like C, N, P and E.
+        n_hsp = self._hsp_pool.shape[1]
+        Mic = np.hstack([self.Microbes.to_numpy(dtype=np.float32, copy=True),
+                         self._hsp_pool, self._osmo_pool])          # (N, 4 + n_HSP + n_osmo)
+        K = Mic.shape[1]
         fb = np.asarray(self.fb)                                    # (N,) 0/1
 
         # STEP 1: Fungal translocation by calculating average biomass within fungal taxa
@@ -1372,12 +1224,12 @@ class Grid():
         Fungi_count = fungi_flags.reshape(gridsize, n_taxa).sum(axis=0)   # (n_taxa,)
 
         # Derive average biomass of fungal taxa
-        Microbes_grid = Mic.reshape(gridsize, n_taxa, 4).sum(axis=0)      # (n_taxa,4)
+        Microbes_grid = Mic.reshape(gridsize, n_taxa, K).sum(axis=0)      # (n_taxa,K)
         with np.errstate(invalid='ignore', divide='ignore'):
             Mean_fungi = Microbes_grid / Fungi_count[:, None]
         Mean_fungi[Fungi_count == 0] = np.float32(0)
         # Expand the fungal average across the grid
-        eMF = np.tile(Mean_fungi, (gridsize, 1)).astype(np.float32)      # (N,4)
+        eMF = np.tile(Mean_fungi, (gridsize, 1)).astype(np.float32)      # (N,K)
 
         # STEP 2: Cell division & translocate nutrients
         MicrobesBeforeDivision = Mic.copy()
@@ -1427,13 +1279,15 @@ class Grid():
 
         # Step 4: colonization of dispersed microbes
         # Use np.add.at to accumulate biomass, correctly handling multiple daughters landing on the same grid location.
-        Colonization = np.zeros((N, 4), dtype=np.float32)
+        Colonization = np.zeros((N, K), dtype=np.float32)
         np.add.at(Colonization, index_series[daughters_b], Reprod[daughters_b])
         np.add.at(Colonization, index_series[daughters_f], Reprod[daughters_f])
         # Colonization of dispersing microbes
         Mic += Colonization
 
-        self.Microbes = pd.DataFrame(Mic, index=Mic_index, columns=['C', 'N', 'P', 'E'])
+        self.Microbes = pd.DataFrame(Mic[:, :4], index=Mic_index, columns=['C', 'N', 'P', 'E'])
+        self._hsp_pool = np.ascontiguousarray(Mic[:, 4:4 + n_hsp])
+        self._osmo_pool = np.ascontiguousarray(Mic[:, 4 + n_hsp:])
 
     def repopulation(self, output, day, mic_reinit):
         """
@@ -1455,6 +1309,8 @@ class Grid():
         self.Substrates = self.Substrates_init.copy(deep=True)
         self.Monomers = self.Monomers_init.copy(deep=True)
         self.Enzymes = self.Enzymes_init.copy(deep=True)
+        self._hsp_pool[:] = np.float32(0)
+        self._osmo_pool[:] = np.float32(0)
 
         # reinitialize microbial community in a new pulse if True
         if mic_reinit:
