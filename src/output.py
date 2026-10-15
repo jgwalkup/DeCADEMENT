@@ -263,6 +263,7 @@ class Output():
         self.HSP_C_Taxon        = pd.Series(data=[0] * n_taxa, index=Mic_index)
         self.Osmo_C_Taxon       = pd.Series(data=[0] * n_taxa, index=Mic_index)
         self.Transport_C_Taxon  = pd.Series(data=[0] * n_taxa, index=Mic_index)
+        self.Erosion_C_Taxon    = pd.Series(data=[0] * n_taxa, index=Mic_index)  # biomass C respired for energy deficits
 
         # Per-taxon E allocation tracking by pathway (per alive microbe, time series)
         self.Transport_E_Taxon = pd.Series(data=[0] * n_taxa, index=Mic_index)
@@ -270,6 +271,7 @@ class Output():
         self.Enzyme_E_Taxon    = pd.Series(data=[0] * n_taxa, index=Mic_index)
         self.Osmo_E_Taxon      = pd.Series(data=[0] * n_taxa, index=Mic_index)
         self.HSP_E_Taxon       = pd.Series(data=[0] * n_taxa, index=Mic_index)
+        self.E_unpaid_Taxon    = pd.Series(data=[0] * n_taxa, index=Mic_index)   # energy shortfall left unpaid
 
 
         # Enzymes
@@ -334,7 +336,7 @@ class Output():
             "EnergySeries", "Taxon_HSP_Series", "Taxon_Osmo_Series", "C_Uptake_Taxon", "BC_Uptake_Taxon",
             "Enzyme_C_Taxon", "HSP_C_Taxon", "Osmo_C_Taxon", "Transport_C_Taxon",
             "Transport_E_Taxon", "Maint_E_Taxon", "Enzyme_E_Taxon", "Osmo_E_Taxon",
-            "HSP_E_Taxon", "E_Prod_Taxon", "Microbe_E_Gain", "Microbe_E_Cost",
+            "HSP_E_Taxon", "E_Prod_Taxon", "Erosion_C_Taxon", "E_unpaid_Taxon", "Microbe_E_Gain", "Microbe_E_Cost",
             "CAE_TaxonSeries", "CAE_system", "CUE_TaxonSeries", "CUE_system", "Drought_tol_Taxon",
             "Respiration_Taxon", "RespSeries", "EnzymesSeries", "EnzymesProduction",
             "EnzymesGain", "EnzymesLoss", "Kill", "Taxon_count_repop", "LeachingSeries",
@@ -442,7 +444,8 @@ class Output():
         for attr, eco_attr in [("Enzyme_C_Taxon",    "Taxon_Enzyme_Cost_C"),
                                 ("HSP_C_Taxon",       "Taxon_HSP_Cost_C"),
                                 ("Osmo_C_Taxon",      "Taxon_Osmo_Cost_C"),
-                                ("Transport_C_Taxon", "Taxon_Transport_Cost_C")]:
+                                ("Transport_C_Taxon", "Taxon_Transport_Cost_C"),
+                                ("Erosion_C_Taxon",   "Taxon_Erosion_C")]:
             grid_val = _taxa_sum(getattr(ecosystem, eco_attr), self.gridsize, self.n_taxa, self._taxa_index)
             grid_val = grid_val / self.taxon_count
             grid_val[np.isinf(grid_val)] = np.nan
@@ -454,7 +457,8 @@ class Output():
                                 ("Maint_E_Taxon",     "Taxon_Maint_E_Cost"),
                                 ("Enzyme_E_Taxon",    "Taxon_Enzyme_E_Cost"),
                                 ("Osmo_E_Taxon",      "Taxon_Osmo_E_Cost_total"),
-                                ("HSP_E_Taxon",       "Taxon_HSP_E_Cost")]:
+                                ("HSP_E_Taxon",       "Taxon_HSP_E_Cost"),
+                                ("E_unpaid_Taxon",    "Taxon_E_unpaid")]:
             grid_val = _taxa_sum(getattr(ecosystem, eco_attr), self.gridsize, self.n_taxa, self._taxa_index)
             grid_val = grid_val / self.taxon_count
             grid_val[np.isinf(grid_val)] = np.nan

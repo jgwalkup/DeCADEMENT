@@ -168,6 +168,17 @@ class Grid():
         # fermentation condition score (0-1): reflects environmental favorability of fermentation vs respiration
         self.ferm_cond = data_init['FermCond']  # currently set to 0.1; can update to vary with environmental conditions
         self.active_uptake_E_cost = data_init['ActiveUptakeE_cost']  # energy cost of transporting monomers
+        # Energy deficit: when on, a cell whose energy costs exceed its energy pays the shortfall by respiring free
+        # biomass C (C not bound in HSP/osmolytes) at the energy yield of the necromass monomer, split between
+        # respiration and fermentation as in uptake; when off, the shortfall is floored away (E set to 0).
+        self.E_deficit_erosion = bool(data_init['E_deficit_erosion'])
+        if self.E_deficit_erosion:
+            if 'Mon_DeadMic' not in self.Monomer_energy.index:
+                raise ValueError("E_deficit_erosion = 1 needs a 'Mon_DeadMic' row in monomer_energy.csv")
+            _dm = self.Monomer_energy.loc['Mon_DeadMic']
+            _fc = np.float32(self.ferm_cond)
+            self._erosion_E_yield = np.float32((1 - _fc) * _dm['E_resp'] + _fc * _dm['E_ferm'])  # energy per C eroded
+            self._erosion_CO2_frac = np.float32((1 - _fc) + _fc * self.Pox_Ferm)               # C respired as CO2
 
         # Metabolism
         self.Consti_Enzyme_C = data_init["EnzProdConstit"]  # C cost of encoding constitutive enzyme
@@ -840,7 +851,8 @@ class Grid():
         Microbes_C = np.maximum(Microbes_C + Microbe_C_Gain - Taxon_Enzyme_Consti_Cost_C, np.float32(0))
         Microbes_N = np.maximum(Microbes_N + Microbe_N_Gain - Taxon_Enzyme_Consti_Cost_N, np.float32(0))
         Microbes_P = np.maximum(Microbes_P + Microbe_P_Gain - Taxon_Enzyme_Consti_Cost_P, np.float32(0))
-        Microbes_E = np.maximum(Microbes_E + Microbe_E_Gain, np.float32(0))
+        E_raw = Microbes_E + Microbe_E_Gain
+        Microbes_E = np.maximum(E_raw, np.float32(0))
         self.Microbes['C'] = Microbes_C
         self.Microbes['N'] = Microbes_N
         self.Microbes['P'] = Microbes_P
@@ -850,10 +862,27 @@ class Grid():
         self._osmo_pool += Taxon_Osmo_Consti + Taxon_Osmo_Induci
         self._clip_pools(Microbes_C, Microbes_N)
 
+        # ── Energy deficit: energy costs (transport, maintenance) above the energy available ──────────────────────
+        # Production is limited to the energy available, so a shortfall comes from transport and maintenance only.
+        E_deficit = np.maximum(-E_raw, np.float32(0))
+        C_eroded = np.zeros_like(E_deficit)
+        if self.E_deficit_erosion and E_deficit.any():
+            free_C_now = np.maximum(Microbes_C - self._hsp_pool.sum(axis=1) - self._osmo_pool.sum(axis=1), 0)
+            C_eroded = np.minimum(E_deficit / self._erosion_E_yield, free_C_now).astype(np.float32)
+            Microbes_C = Microbes_C - C_eroded           # E stays at 0: the shortfall is paid, not stored
+            self.Microbes['C'] = Microbes_C
+            erosion_CO2 = C_eroded * self._erosion_CO2_frac
+            self.Taxon_resp_df += erosion_CO2.reshape(G, T)                       # respired with this day's uptake CO2
+            self.Monomers.loc['FermProd', 'C'] += (C_eroded - erosion_CO2).reshape(G, T).sum(axis=1)  # fermentation C
+        # energy that was not paid for (with erosion off, all of the shortfall; on, what free C could not cover)
+        E_unpaid = np.maximum(E_deficit - C_eroded * (self._erosion_E_yield if self.E_deficit_erosion else 0), 0)
+
         # ── Emergent CUE (HSP and osmolyte C is retained in biomass) ─────────────────────────────────────────────
         CUE_taxon = np.zeros(G * T, dtype=np.float32)
         pos_uptake_index = Taxon_Uptake_C_v > 0
         Mic_BC_Use = Microbe_C_Gain - Taxon_Enzyme_Consti_Cost_C
+        if self.E_deficit_erosion:
+            Mic_BC_Use = Mic_BC_Use - C_eroded           # biomass respired to pay energy deficits
         CUE_taxon[pos_uptake_index] = Mic_BC_Use[pos_uptake_index] / Taxon_Uptake_C_v[pos_uptake_index]
         Taxon_Use_C_grid = Taxon_Uptake_C_v.sum()
         CUE_system = np.float32(0) if Taxon_Use_C_grid == 0 else Mic_BC_Use.sum() / Taxon_Use_C_grid
@@ -883,6 +912,9 @@ class Grid():
         self.Consti_limitation = r_consti         # joint C/N/E limitation of constitutive production (1 = none)
         self.Induci_limitation = r_induci         # joint C/N/E limitation of inducible production (1 = none)
         self.maint_E_cost_Ea = maint_E_cost_Ea
+        self.Taxon_E_deficit = E_deficit          # energy shortfall before any payment from biomass
+        self.Taxon_Erosion_C = C_eroded           # biomass C respired to pay the shortfall (0 when the switch is off)
+        self.Taxon_E_unpaid = E_unpaid            # shortfall left unpaid (floored away: energy not accounted for)
         self.tax_maint_E_cost = tax_maint_E_cost
 
         # ── Enzyme pools: production (summed over taxa per cell), turnover, dead enzymes to DeadEnz ──────────────
@@ -1016,8 +1048,10 @@ class Grid():
 
             # ...Update Substrates pool by adding dead microbial biomass
             self.Substrates.loc[is_DeadMic] += Death_gridcell
-            # NOTE: self.Taxon_Resp is deliberately left untouched here, matching
-            # the original -- it retains whatever value metabolism() last set.
+            # Respiration of the day (uptake CO2 and any deficit-erosion CO2; no rebalancing losses). Previously left
+            # untouched here, so the last value was repeated every day once all cells were dead.
+            self.Taxon_Resp = pd.Series(self.Taxon_resp_df.to_numpy(copy=True).ravel(order='C').astype(np.float32),
+                                        index=Mic_index)
 
         # Partly die and adjust stoichiometry of those remaining alive
         else:

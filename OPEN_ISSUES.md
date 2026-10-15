@@ -5,10 +5,6 @@ file as items are resolved (the git log has the details of each change).
 
 ## Decided, to implement next
 
-- **Energy deficit (optional mechanism).** When energy costs exceed the energy available, pay the deficit by respiring
-  free biomass C, with the energy yield of the necromass monomer (`Mon_DeadMic` in `monomer_energy.csv`). Off by
-  default; when off, the model behaves as now (the energy pool is floored at zero, so the shortfall is created from
-  nothing and an empty energy pool is never lethal).
 - **NH4 and PO4 inputs in both the minimal and the full model.** `Input_NH4`/`Input_PO4` already act in `Grid.uptake`
   for any input folder. Bin Wang's version also routed organic monomer inputs (with C:N:P from `elem_ratios.csv`)
   and added substrate inputs (`SubInput`) each day; decide whether to restore those too. The `Sub`/`Mon` columns of
@@ -36,6 +32,10 @@ file as items are resolved (the git log has the details of each change).
   biosynthesis energy reserve and the lower anchor of the energy-demand curve instead).
 - **Inducible osmolyte production is nearly inert under drought** (tied to uptake and leftover energy, both of which
   collapse); drought tolerance currently behaves as a constitutive trait.
+- **Energy deficit default.** `E_deficit_erosion` is 0 in every input folder (shortfalls floored away, energy not
+  accounted for; the output `E_unpaid_Taxon` shows how much). In a high-maintenance minimal test the population
+  persisted on ~68 unpaid energy units per day with the switch off and went extinct with it on. Decide which setting
+  the sensitivity runs use.
 - **Calibration**: `HSP_max_frac`, `Osmo_max_frac` (defaults 0.2) and `Osmo_tol_K` (default 0.05) are placeholders;
   the linear composition feedback acts as a constant tax well below the cap.
 
