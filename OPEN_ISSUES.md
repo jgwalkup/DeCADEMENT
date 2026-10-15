@@ -9,10 +9,6 @@ file as items are resolved (the git log has the details of each change).
   free biomass C, with the energy yield of the necromass monomer (`Mon_DeadMic` in `monomer_energy.csv`). Off by
   default; when off, the model behaves as now (the energy pool is floored at zero, so the shortfall is created from
   nothing and an empty energy pool is never lethal).
-- **One set of Km parameters for both kinetics models.** Merge `Vmax_Km`/`mmrt_Vmax_Km_slope`,
-  `Vmax_Km_int`/`mmrt_Vmax_Km_int`, `Uptake_Vmax_Km`/`Uptake_mmrt_Vmax_Km_slope`,
-  `Uptake_Vmax_Km_int`/`Uptake_mmrt_Vmax_Km_int`, `Km_error`/`mmrt_Km_error`. Reuse the Vmax thermodynamic tables
-  for Km instead of a second random draw (`Km_HT0`, `Km_ST0`, `Km_Cp`).
 - **NH4 and PO4 inputs in both the minimal and the full model.** `Input_NH4`/`Input_PO4` already act in `Grid.uptake`
   for any input folder. Bin Wang's version also routed organic monomer inputs (with C:N:P from `elem_ratios.csv`)
   and added substrate inputs (`SubInput`) each day; decide whether to restore those too. The `Sub`/`Mon` columns of
@@ -50,6 +46,7 @@ file as items are resolved (the git log has the details of each change).
 - Obsolete since the osmolyte-content tolerance: `analysis/full_climate_osmo_range.py`,
   `plot_full_climate_osmo_range.py`, `plot_full_climate.py`, `plot_full_climate_km25.py`,
   `build_full_input_osmo_range.py` (they set or label `Osmo_tol_ref`/`Osmo_tol_lower`, which no longer exist).
-- Parameter rows that are never read: `mmrt_Km_error`, `Uptake_H_S_error`, `HSP_prod_C_cost`, `HSP_prod_P_cost`,
-  `Km_Ea`.
+- Parameter rows that are never read: `Uptake_H_S_error`, `HSP_prod_C_cost`, `HSP_prod_P_cost`, `Km_Ea`.
+- Older module copies in `src/` (`grid_vJW.py`, `initialization_big_files.py`) still use the retired Km rows and
+  tables; they are not imported by the model.
 - Performance: stop expanding grid-uniform tables to every cell; cache temperature-dependent kinetics.

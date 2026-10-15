@@ -397,56 +397,52 @@ class Enzyme:
 
     def enzyme_Km(self, Vmax0):
         """
-        Derive Km through implementing a Vmax-Km tradeoff.
+        Derive Km through implementing a Vmax-Km tradeoff (Arrhenius pre-exponential Km0, and the per-enzyme error
+        factor used by both kinetics models).
 
-        The tradeoff is based on a linear correlation between Km and Vmax; minimum Km constrained to Km_min
+        Km = |Vmax * Vmax_Km * e + Vmax_Km_int|, at least Km_min, with a fixed error factor e ~ N(1, Km_error) per
+        substrate x enzyme (e = 1 when Km_error = 0). For Arrhenius kinetics Vmax is the pre-exponential Vmax0 and the
+        result is Km0 (scaled by the Arrhenius factor each day); for MMRT kinetics the same relationship is applied to
+        the MMRT Vmax each day (Grid.degradation), using the factor returned here.
 
         Parameters:
             Vmax0:       dataframe; from the above enzyme_Vmax() method
-            Vmax_Km:     slope for Km-Vmax relationship (1)
+            Vmax_Km:     slope for Km-Vmax relationship
             Vmax_Km_int: intercept (0)
-            Km_error:    error term (0);error term normally distributed with magnitude Km_error.)
+            Km_error:    relative standard deviation of the error factor (0)
             Km_min:      to which the minimum Km is constrained; 0.01
         Return:
-            Km: dataframe; substrate * enzyme
+            Km:        dataframe; substrate * enzyme (Arrhenius Km0)
+            Km_factor: dataframe; substrate * enzyme error factor e
         """
 
-        mean = Vmax0.mean().mean() * self.Km_error
-        Km = abs(
-            Vmax0.apply(lambda df: np.random.normal(df * self.Vmax_Km, mean), axis=0)
-            + self.Vmax_Km_int
-        )
+        Km_factor = pd.DataFrame(np.random.normal(1.0, self.Km_error, Vmax0.shape),
+                                 index=Vmax0.index, columns=Vmax0.columns)
+        Km = abs(Vmax0 * self.Vmax_Km * Km_factor + self.Vmax_Km_int)
         Km[Km < self.Km_min] = self.Km_min
         Km = Km.astype("float32")
 
-        return Km
+        return Km, Km_factor.astype("float32")
 
     def enzyme_uptake_Km(self, Uptake_Vmax0):
         """
-        Derive Uptake Km by implementing Vmax-Km tradeoff.
-
-        The tradeoff is based on a linear correlation between Km and Vmax; minimum Uptake_Km constrained to Uptake_Km_min
+        Derive Uptake Km by implementing Vmax-Km tradeoff (same form as enzyme_Km, with Uptake_Vmax_Km,
+        Uptake_Vmax_Km_int, Uptake_Km_min and the shared Km_error).
 
         Parameters:
-            Uptake_HT0:       dataframe; from the above enzyme_uptake_Vmax() method
-            Uptake_H_S_slope:     slope of HT0-ST0 correlation (0.002469)
-            Uptake_H_S_int: intercept (-152.684)
-            Uptake_H_S_error:           error term normally distributed with magnitude (0)
+            Uptake_Vmax0: dataframe; from the above enzyme_uptake_Vmax() method
         Return:
-            Uptake_Km: dataframe; row:monomer; col:enzyme
+            Uptake_Km:        dataframe; row:monomer; col:enzyme (Arrhenius Uptake_Km0)
+            Uptake_Km_factor: dataframe; row:monomer; col:enzyme error factor
         """
 
-        mean = Uptake_Vmax0.mean().mean() * self.Km_error
-        Uptake_Km = abs(
-            Uptake_Vmax0.apply(
-                lambda df: np.random.normal(df * self.Uptake_Vmax_Km, mean), axis=0
-            )
-            + self.Uptake_Vmax_Km_int
-        )
+        Uptake_Km_factor = pd.DataFrame(np.random.normal(1.0, self.Km_error, Uptake_Vmax0.shape),
+                                        index=Uptake_Vmax0.index, columns=Uptake_Vmax0.columns)
+        Uptake_Km = abs(Uptake_Vmax0 * self.Uptake_Vmax_Km * Uptake_Km_factor + self.Uptake_Vmax_Km_int)
         Uptake_Km[Uptake_Km < self.Uptake_Km_min] = self.Uptake_Km_min
         Uptake_Km = Uptake_Km.astype("float32")
 
-        return Uptake_Km
+        return Uptake_Km, Uptake_Km_factor.astype("float32")
 
     def enzyme_Vmax(self, ReqEnz):
         """

@@ -106,21 +106,19 @@ class Grid():
         self.HT0 = data_init['Vmax_HT0']  # Enzyme enthalpy
         self.ST0 = data_init['Vmax_ST0']  # Enzyme entropy
         self.Cp = data_init['Vmax_Cp']  # Enzyme heat capacity
-        self.Km_HT0 = data_init['Km_HT0']  # Enzyme enthalpy (for Km calculation)
-        self.Km_ST0 = data_init['Km_ST0']  # Enzyme entropy (for Km calculation)
-        self.Km_Cp = data_init['Km_Cp']  # Enzyme heat capacity (for Km calculation)
         self.Vmax0 = data_init['Vmax0']  # Max. reaction speed # not used in MMRT model (Jeth)
         self.Km0 = data_init['Km0']  # Half-saturation constant # not used in MMRT model (Jeth)
         self.SubstrateRatios = np.float32('nan')  # Substrate stoichiometry
         self.DecayRates = np.float32('nan')  # Substrate decay rate
-        self.Vmax_Km_slope = data_init['mmrt_Vmax_Km_slope']  # slope of the enzyme Vmax/Km relationship
-        self.Vmax_Km_int = data_init['mmrt_Vmax_Km_int']  # intercept of the Uptake Vmax/Km relationship
+        # Vmax-Km relationship (both kinetics models): Km = Vmax x slope x error factor + intercept, at least Km_min
+        self.Vmax_Km_slope = np.float32(data_init['Vmax_Km'])
+        self.Vmax_Km_int = np.float32(data_init['Vmax_Km_int'])
+        self.Km_min = np.float32(data_init['Km_min'])
+        self.Km_factor = data_init['Km_factor']  # (G*M, NE) error factor, or None (Km_error = 0)
         self.Enz_Vmax_sub_spec = data_init[
             'Enz_vmax_sub_spec']  # substrate specificity-efficiency adjustment for degradation Vmax
-        self.Enz_Km_sub_spec = data_init[
-            'Enz_km_sub_spec']  # substrate specificity-efficiency adjustment for degradation Km
         self.Enz_Km_Temp_Sens = data_init[
-            'Enz_km_temp_sens']  # substrate specificity-efficiency adjustment for monomer uptake Vmax
+            'Enz_km_temp_sens']  # 1: Km follows the daily temperature; 0: Km is evaluated at Km_Tref
         self.Arrh_Tref = data_init['Arrhenius_tref']
 
         # Uptake
@@ -157,13 +155,15 @@ class Grid():
         self.UptakeProd_E_Cost = data_init['Uptake_prod_E_cost']  # Energy cost of transporter production per mg C
         self.Microbe_E_Gain = np.float32('nan')  # taxon net energy gain
         self.Microbe_E_Cost = np.float32('nan')  # taxon net energy costs
-        self.Uptake_Vmax_Km_slope = data_init['uptake_mmrt_Vmax_Km_slope']  # slope of the Uptake Vmax/Km relationship
-        self.Uptake_Vmax_Km_int = data_init['uptake_mmrt_Vmax_Km_int']  # intercept for the Uptake Vmax/Km relationship
+        self.Uptake_Vmax_Km_slope = np.float32(data_init['Uptake_Vmax_Km'])  # slope of the uptake Vmax-Km relationship
+        self.Uptake_Vmax_Km_int = np.float32(data_init['Uptake_Vmax_Km_int'])  # intercept of the uptake Vmax-Km relationship
+        self.Uptake_Km_min = np.float32(data_init['Uptake_Km_min'])
+        self.Uptake_Km_factor = data_init['Uptake_Km_factor']  # (G*M, n_uptake) error factor, or None (Km_error = 0)
         self.Uptake_sub_spec = data_init[
             'Uptake_Vmax_sub_spec']  # substrate specificity-efficiency adjustment for monomer uptake Vmax
         self.Uptake_Km_Temp_Sens = data_init[
-            'Uptake_km_temp_sens']  # substrate specificity-efficiency adjustment for monomer uptake Vmax
-        self.km_Tref = data_init['km_tref']  # substrate specificity-efficiency adjustment for monomer uptake Vmax
+            'Uptake_km_temp_sens']  # 1: uptake Km follows the daily temperature; 0: evaluated at Km_Tref
+        self.km_Tref = data_init['km_tref']  # temperature (deg C) at which Km is evaluated when not temperature sensitive
         self.Pox_Ferm = data_init['Fermoxp']  # proportion of fermented monomer converted to CO2
         # fermentation condition score (0-1): reflects environmental favorability of fermentation vs respiration
         self.ferm_cond = data_init['FermCond']  # currently set to 0.1; can update to vary with environmental conditions
@@ -372,20 +372,28 @@ class Grid():
         else:
             f_psi = np.exp(self.enzyme_psi_slope * (self.psi[day] - self.wp_fc)).astype('float32')
 
-        # calculate enzyme Vmax using the user specified kinetics model (MMRT = 1; Arrhenius = 0)
+        # calculate enzyme Vmax and Km using the user specified kinetics model (MMRT = 1; Arrhenius = 0).
+        # Km follows the Vmax-Km relationship in both: Km = Vmax(T_Km) x Vmax_Km x error factor + Vmax_Km_int, where
+        # T_Km is the day's temperature (Enz_Km_temp_sens = 1) or Km_Tref (0); Vmax here excludes the moisture factor.
+        def _sub_major(x):  # (G*NE, M) -> (G*M, NE)
+            return x.reshape(G, NE, M).transpose(0, 2, 1).reshape(G * M, NE)
+
         if self.kinetics_model > 0:
             Vmax_mmrt = MMRT(_v(self.Cp), _v(self.HT0), _v(self.ST0), self.temp[day], self.MMRT_Tref,
                              self.boltz_const, self.planck_const, self.gas_const)
             Vmax_mmrt_sub_spec = Vmax_mmrt * _v(self.Enz_Vmax_sub_spec)
             Vmax_v = Vmax_mmrt_sub_spec * f_psi  # (G*NE, M)
             if self.Enz_Km_Temp_Sens == 1:
-                Km_mmrt = MMRT(_v(self.Km_Cp), _v(self.Km_HT0), _v(self.Km_ST0), self.temp[day], self.MMRT_Tref,
-                               self.boltz_const, self.planck_const, self.gas_const)
+                Km_vmax = _sub_major(np.asarray(Vmax_mmrt_sub_spec, dtype=np.float32))
             else:
-                Km_mmrt = MMRT(_v(self.Km_Cp), _v(self.Km_HT0), _v(self.Km_ST0), self.km_Tref, self.MMRT_Tref,
-                               self.boltz_const, self.planck_const, self.gas_const)
-            Km_mmrt_sub_spec = Km_mmrt * _v(self.Enz_Km_sub_spec)
-            Km_v = (Km_mmrt_sub_spec * self.Vmax_Km_slope) + self.Vmax_Km_int  # (G*M, NE)
+                if not hasattr(self, "_km_vmax_tref"):  # constant for the run
+                    self._km_vmax_tref = _sub_major(np.asarray(
+                        MMRT(_v(self.Cp), _v(self.HT0), _v(self.ST0), self.km_Tref, self.MMRT_Tref,
+                             self.boltz_const, self.planck_const, self.gas_const) * _v(self.Enz_Vmax_sub_spec),
+                        dtype=np.float32))
+                Km_vmax = self._km_vmax_tref
+            Km_slope = self.Vmax_Km_slope if self.Km_factor is None else self.Vmax_Km_slope * _v(self.Km_factor)
+            Km_v = np.maximum(Km_vmax * Km_slope + self.Vmax_Km_int, self.Km_min)  # (G*M, NE)
         else:
             # NOTE (fix 2026-07-23): Km's Arrhenius shrink factor previously used a
             # hardcoded, model-wide self.Km_Ea = 20 -- completely decoupled from each
@@ -405,8 +413,9 @@ class Grid():
                 self._ea_km_v = self._ea_v.reshape(G, NE, M).transpose(0, 2, 1).reshape(G * M, NE)  # (G*M, NE)
             Vmax_v = _v(self.Vmax0) * Arrhenius(self._ea_v, self.gas_const, self.temp[day],
                                                 self.Arrh_Tref) * f_psi          # (G*NE, M)
-            Km_v = _v(self.Km0) * Arrhenius(self._ea_km_v, self.gas_const, self.temp[day],
-                                            self.Arrh_Tref)                       # (G*M, NE)
+            T_km = self.temp[day] if self.Enz_Km_Temp_Sens == 1 else self.km_Tref
+            Km_v = np.maximum(_v(self.Km0) * Arrhenius(self._ea_km_v, self.gas_const, T_km, self.Arrh_Tref),
+                              self.Km_min)                                        # (G*M, NE)
 
         Vmax_v = np.asarray(Vmax_v, dtype=np.float32)
         Km_v = np.asarray(Km_v, dtype=np.float32)
@@ -522,14 +531,18 @@ class Grid():
             Uptake_Vmax_sub_spec = Uptake_Vmax_mmrt * self.Uptake_sub_spec  # account for substrate specificity-efficiency tradeoff
             Uptake_Vmax = Uptake_Vmax_sub_spec * f_psi  # account for moisture limitation
 
-            # If specified, derive Km_mmrt based on Vmax-Km tradeoff; otherwise, calculate Km assuming
+            # Km from the Vmax-Km relationship, at the day's temperature or at Km_Tref (see degradation())
             if self.Uptake_Km_Temp_Sens == 1:
-                Uptake_Km = (Uptake_Vmax_sub_spec * self.Uptake_Vmax_Km_slope) + self.Uptake_Vmax_Km_int
+                Uptake_Km_vmax = Uptake_Vmax_sub_spec
             else:
-                Uptake_Km_mmrt = MMRT(self.Uptake_Cp, self.Uptake_HT0, self.Uptake_ST0, self.km_Tref, self.MMRT_Tref,
-                                      self.boltz_const, self.planck_const, self.gas_const)
-                Uptake_Km_sub_spec = Uptake_Km_mmrt * self.Uptake_sub_spec
-                Uptake_Km = (Uptake_Km_sub_spec * self.Uptake_Vmax_Km_slope) + self.Uptake_Vmax_Km_int
+                if not hasattr(self, "_uptake_km_vmax_tref"):  # constant for the run
+                    self._uptake_km_vmax_tref = MMRT(self.Uptake_Cp, self.Uptake_HT0, self.Uptake_ST0, self.km_Tref,
+                                                     self.MMRT_Tref, self.boltz_const, self.planck_const,
+                                                     self.gas_const) * self.Uptake_sub_spec
+                Uptake_Km_vmax = self._uptake_km_vmax_tref
+            Uptake_Km_slope = (self.Uptake_Vmax_Km_slope if self.Uptake_Km_factor is None
+                               else self.Uptake_Km_factor.to_numpy(dtype=np.float32) * self.Uptake_Vmax_Km_slope)
+            Uptake_Km = ((Uptake_Km_vmax * Uptake_Km_slope) + self.Uptake_Vmax_Km_int).clip(lower=self.Uptake_Km_min)
 
         else:
             # NOTE (fix 2026-07-23): same fix as degradation()'s Arrhenius branch --
@@ -542,7 +555,9 @@ class Grid():
             # other) no reshape is needed here.
             Uptake_Vmax = self.Uptake_Vmax0 * Arrhenius(self.Uptake_Ea, self.gas_const, self.temp[day],
                                                         self.Arrh_Tref) * f_psi
-            Uptake_Km = self.Uptake_Km0 * Arrhenius(self.Uptake_Ea, self.gas_const, self.temp[day], self.Arrh_Tref)
+            T_km = self.temp[day] if self.Uptake_Km_Temp_Sens == 1 else self.km_Tref
+            Uptake_Km = (self.Uptake_Km0 * Arrhenius(self.Uptake_Ea, self.gas_const, T_km, self.Arrh_Tref)
+                         ).clip(lower=self.Uptake_Km_min)
 
         # Equation for hypothetical potential uptake (per unit of compatible uptake protein)
         Potential_Uptake = (self.Uptake_ReqEnz * Uptake_Vmax).mul(rsm.values, axis=0) / Uptake_Km.add(rsm.values,

@@ -46,11 +46,6 @@ Vmax_Km_int,0
 Uptake_Vmax_Km,2.5
 Uptake_Vmax_Km_int,0
 Km_error,0
-mmrt_Vmax_Km_slope,2.5
-mmrt_Vmax_Km_int,0
-Uptake_mmrt_Vmax_Km_slope,2.5
-Uptake_mmrt_Vmax_Km_int,0
-mmrt_Km_error,0
 Specif_factor,1
 Enzymes_per_sub,1
 Avg_extra_req_enz,1

@@ -56,6 +56,18 @@ def _validate_energy_ratios(parameters):
         raise ValueError("parameters.csv: " + "; ".join(problems))
 
 
+def _check_retired_rows(parameters):
+    """Rows whose function was merged into another row: fail if they disagree with the row that replaced them."""
+    merged = {"mmrt_Vmax_Km_slope": "Vmax_Km", "mmrt_Vmax_Km_int": "Vmax_Km_int",
+              "Uptake_mmrt_Vmax_Km_slope": "Uptake_Vmax_Km", "Uptake_mmrt_Vmax_Km_int": "Uptake_Vmax_Km_int",
+              "mmrt_Km_error": "Km_error"}
+    for old, new in merged.items():
+        if old in parameters.index and float(parameters.loc[old, 1]) != float(parameters.loc[new, 1]):
+            raise ValueError(f"parameters.csv: '{old}' has been merged into '{new}' (now used by both kinetics "
+                             f"models) and the two rows disagree ({parameters.loc[old, 1]} vs {parameters.loc[new, 1]}); "
+                             f"set '{new}' to the value you want and delete '{old}'.")
+
+
 def _optional(parameters, name, default):
     """Value of an optional parameters.csv row; prints a notice when the row is absent and the default is used."""
     if name in parameters.index:
@@ -86,6 +98,7 @@ def initialize_data(runtime_parameters, climate_file="climate.csv", community_di
         "float32"
     )  # parameters
     _validate_energy_ratios(parameters)
+    _check_retired_rows(parameters)
     substrates_init = pd.read_csv(
         "initial_substrates.csv", header=0, index_col=0
     ).astype("float32")  # initial substrates
@@ -153,14 +166,7 @@ def initialize_data(runtime_parameters, climate_file="climate.csv", community_di
     enzymes_Vmax_ST0 = Enzymes.enzyme_ST0(ST0_input).T
     # ...enzymes of substrate degradation Cp for calculating Vmax
     enzymes_Vmax_Cp = Enzymes.enzyme_Cp().T
-    # ...enzymes of substrate degradation HT0 for calculating Km
-    # enzymes_Km_HT0 = Enzymes.enzyme_HT0(HT0_input)
-    enzymes_Km_HT0 = Enzymes.enzyme_HT0()
-    # ...enzymes of substrate degradation ST0 for calculating Km
-    # enzymes_Km_ST0 = Enzymes.enzyme_ST0(enzymes_Km_HT0)
-    enzymes_Km_ST0 = Enzymes.enzyme_ST0(ST0_input)
-    # ...enzymes of substrate degradation Cp for calculating Km
-    enzymes_Km_Cp = Enzymes.enzyme_Cp()
+    # (MMRT Km uses the Vmax thermodynamic tables above through the Vmax-Km relationship; no separate Km tables)
     # ...monomers uptake enzyme Ea
     enzymes_uptake_Ea = Enzymes.enzyme_uptake_Ea()
     # ...enzymes of substrate degradation Vmax
@@ -171,10 +177,10 @@ def initialize_data(runtime_parameters, climate_file="climate.csv", community_di
     )
     # ...monomers uptake enzyme Vmax
     enzymes_uptake_Vmax = Enzymes.enzyme_uptake_Vmax(monomers_uptake_reqenzyme)
-    # ...enzymes of substrate degradation Km
-    enzymes_Km = Enzymes.enzyme_Km(enzymes_Vmax)
+    # ...enzymes of substrate degradation Km (Arrhenius Km0) and the Vmax-Km error factor (both kinetics models)
+    enzymes_Km, enzymes_Km_factor = Enzymes.enzyme_Km(enzymes_Vmax)
     # ...monomers uptake enzyme Km
-    enzymes_uptake_Km = Enzymes.enzyme_uptake_Km(enzymes_uptake_Vmax)
+    enzymes_uptake_Km, enzymes_uptake_Km_factor = Enzymes.enzyme_uptake_Km(enzymes_uptake_Vmax)
     # ...monomers of substrate degradation Cp
     enzymes_uptake_Cp = Enzymes.enzyme_uptake_Cp()
     # ...monomers of substrate degradation ST0
@@ -431,10 +437,13 @@ def initialize_data(runtime_parameters, climate_file="climate.csv", community_di
         "MonEnergy_Attrib": monomer_energy_characteristics,
         "Uptake_ReqEnz": expand(monomers_uptake_reqenzyme, gridsize),
         "Enzymes": expand(enzymes_initial_pool, gridsize),
-        "Enz_km_sub_spec": expand(enzymes_sub_spec, gridsize),
         "Enz_vmax_sub_spec": expand(enzymes_sub_spec_T, gridsize),
         "Uptake_Vmax_sub_spec": expand(enzymes_uptake_sub_spec, gridsize),
         "Km0": expand(enzymes_Km, gridsize),  # enzyme half-saturation constant
+        # Vmax-Km error factors (None when Km_error = 0, i.e. factor 1 everywhere)
+        "Km_factor": expand(enzymes_Km_factor, gridsize) if parameters.loc["Km_error", 1] > 0 else None,
+        "Uptake_Km_factor": (expand(enzymes_uptake_Km_factor, gridsize) if parameters.loc["Km_error", 1] > 0
+                             else None),
         "Uptake_Km0": expand(
             enzymes_uptake_Km, gridsize
         ),  # transporter half-saturation constant
@@ -448,9 +457,6 @@ def initialize_data(runtime_parameters, climate_file="climate.csv", community_di
         "Vmax_HT0": expand(enzymes_Vmax_HT0, gridsize),  # enzyme enthalpy
         "Vmax_ST0": expand(enzymes_Vmax_ST0, gridsize),  # enzyme entropy
         "Vmax_Cp": expand(enzymes_Vmax_Cp, gridsize),  # enzyme heat capacity
-        "Km_HT0": expand(enzymes_Km_HT0, gridsize),  # enzyme enthalpy
-        "Km_ST0": expand(enzymes_Km_ST0, gridsize),  # enzyme entropy
-        "Km_Cp": expand(enzymes_Km_Cp, gridsize),  # enzyme heat capacity
         "Uptake_HT0": expand(enzymes_uptake_HT0, gridsize),  #
         "Uptake_ST0": expand(enzymes_uptake_ST0, gridsize),  #
         "Uptake_Cp": expand(enzymes_uptake_Cp, gridsize),  #
@@ -600,19 +606,14 @@ def initialize_data(runtime_parameters, climate_file="climate.csv", community_di
         ],  # factor delineating curve concavity of microbial response to drought
         "Temp": daily_temp,  # temperature
         "Psi": daily_psi,  # water potential
-        "mmrt_Vmax_Km_slope": parameters.loc[
-            "mmrt_Vmax_Km_slope", 1
-        ],  # slope of Vmax_Km relationship for MMRT model
-        "mmrt_Vmax_Km_int": parameters.loc[
-            "mmrt_Vmax_Km_int", 1
-        ],  # intercept of Vmax_Km relationship for MMRT model
-        "uptake_mmrt_Vmax_Km_slope": parameters.loc[
-            "Uptake_mmrt_Vmax_Km_slope", 1
-        ],  # slope of Uptake Vmax_Km relationship for MMRT model
-        "uptake_mmrt_Vmax_Km_int": parameters.loc[
-            "Uptake_mmrt_Vmax_Km_int", 1
-        ],  # intercept of Uptake Vmax_Km relationship for MMRT model
-        #'mmrt_Vmax_Km_error':       parameters.loc['mmrt_Vmax_Km_error', 1],                # error for Vmax_Km relationships for MMRT model
+        # Vmax-Km relationship, shared by the Arrhenius and MMRT kinetics: Km = Vmax x slope x error factor + intercept,
+        # at least Km_min (enzymes) / Uptake_Km_min (transporters)
+        "Vmax_Km": parameters.loc["Vmax_Km", 1],
+        "Vmax_Km_int": parameters.loc["Vmax_Km_int", 1],
+        "Uptake_Vmax_Km": parameters.loc["Uptake_Vmax_Km", 1],
+        "Uptake_Vmax_Km_int": parameters.loc["Uptake_Vmax_Km_int", 1],
+        "Km_min": parameters.loc["Km_min", 1],
+        "Uptake_Km_min": parameters.loc["Uptake_Km_min", 1],
         "mmrt_tref": parameters.loc[
             "MMRT_Tref", 1
         ],  # reference temperature (°K) for kinetic reactions

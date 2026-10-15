@@ -1,6 +1,6 @@
 """
-Full model: sweep the enzyme Vmax-Km slope across a temperature gradient for MMRT (mmrt_Vmax_Km_slope) and Arrhenius (Vmax_Km)
-kinetics. The slope scales Km only (Vmax is unchanged): MMRT Km = MMRT(Km params) x substrate-specific factor x slope + intercept;
+Full model: sweep the enzyme Vmax-Km slope across a temperature gradient for MMRT and Arrhenius (Vmax_Km, shared by both)
+kinetics. The slope scales Km only (Vmax is unchanged): MMRT Km = MMRT Vmax (without moisture) x slope + intercept;
 Arrhenius Km0 = Vmax0 x slope + intercept (then scaled by its own Arrhenius term). Flat climate (Psi -0.5, FM 50), one pulse of
 365 days, HSP production as in the input folder, seed-replicated communities.
 
@@ -30,8 +30,8 @@ from sweep_minimal import set_params, set_runtime  # noqa: E402
 
 plt.rcParams.update({"font.size": 10, "axes.titlesize": 11, "axes.labelsize": 10, "legend.fontsize": 9, "figure.dpi": 150})
 TEMPS = [4, 8, 12, 16, 20, 24, 28, 32, 36, 40]
-KIN = {"MMRT": (1, "mmrt_Vmax_Km_slope"), "Arrhenius": (0, "Vmax_Km")}
-UPTAKE_PARAM = {"MMRT": "Uptake_mmrt_Vmax_Km_slope", "Arrhenius": "Uptake_Vmax_Km"}  # uptake Km = uptake Vmax x slope
+KIN = {"MMRT": (1, "Vmax_Km"), "Arrhenius": (0, "Vmax_Km")}  # one Vmax-Km slope for both kinetics models
+UPTAKE_PARAM = {"MMRT": "Uptake_Vmax_Km", "Arrhenius": "Uptake_Vmax_Km"}  # uptake Km = uptake Vmax x slope
 
 
 def run(job):

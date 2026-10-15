@@ -3,7 +3,7 @@ Build a full-model input folder from input_e1500_enz2 with new Vmax-Km slopes (e
 
 Usage:
     python build_full_input_km.py [--src ../input_e1500_enz2] [--dst ../input_e1500_enz2_km25] [--enzyme 2.5] [--uptake 2.5] [--force]
-Sets mmrt_Vmax_Km_slope and Vmax_Km to --enzyme, and Uptake_mmrt_Vmax_Km_slope and Uptake_Vmax_Km to --uptake (previous values 7 and 5).
+Sets Vmax_Km to --enzyme and Uptake_Vmax_Km to --uptake (previous values 7 and 5); both kinetics models use these rows.
 Everything else is copied unchanged.
 """
 import argparse
@@ -30,9 +30,7 @@ def main():
             sys.exit(f"{dst} exists; use --force to rebuild it")
         shutil.rmtree(dst)
     shutil.copytree(src, dst)
-    set_params(os.path.join(dst, "parameters.csv"), {
-        "mmrt_Vmax_Km_slope": a.enzyme, "Vmax_Km": a.enzyme,
-        "Uptake_mmrt_Vmax_Km_slope": a.uptake, "Uptake_Vmax_Km": a.uptake})
+    set_params(os.path.join(dst, "parameters.csv"), {"Vmax_Km": a.enzyme, "Uptake_Vmax_Km": a.uptake})
     print("built", dst)
 
 

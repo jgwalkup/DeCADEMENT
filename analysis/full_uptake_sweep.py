@@ -1,5 +1,5 @@
 """
-Full model: uptake Vmax-Km slope (Uptake_mmrt_Vmax_Km_slope for MMRT, Uptake_Vmax_Km for Arrhenius) crossed with the enzyme Vmax-Km
+Full model: uptake Vmax-Km slope (Uptake_Vmax_Km, shared by MMRT and Arrhenius) crossed with the enzyme Vmax-Km
 slope, across a temperature gradient. Uptake Km = uptake Vmax x slope, so for monomer pools well below Km (the case here) the
 uptake of a monomer per unit transporter is about pool / slope. Flat climate (Psi -0.5, FM 50), one 365-day pulse, HSP production
 as in the input folder, seed-replicated communities.
