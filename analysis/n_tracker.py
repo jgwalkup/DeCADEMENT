@@ -17,7 +17,7 @@ Fluxes (per grid cell per day):
   overflow_C_bac/fun  C released from living cells to respiration in the same step (MicLoss C: C in excess of the limiting element);
   uptake_C_bac/fun, death_C_bac/fun for context
   resid_N          change in total N over the day + leach_N (should be 0 up to float32 rounding)
-HSP and osmolyte N costs are not deducted from any pool in the model (they only enter the N limitation of inducible production).
+HSP and osmolyte N is held inside microbial N (bound in the intracellular pools), so it is part of mic_N_bac/fun.
 
 Usage:
     python n_tracker.py OUT_DIR ../analysis_output/climate_12_years.csv [--input ../input_e1500_enz2_km25_osmorange2]
@@ -164,9 +164,8 @@ def run(job):
                     row[f"cells_belowP_{g}"] = int((a1[:, m] & (fP[:, m] < minP[m][None, :])).sum())
                     tot_up += row[f"uptake_N_{g}"]
                 row["enz_prod_N"] = tot_up - (p3["mic_bac"] + p3["mic_fun"] - p2["mic_bac"] - p2["mic_fun"])
-                r = 0.1 * np.exp(0.5 * (eco.psi[i] - eco.wp_fc))
-                row["leach_N"] = p4["mon_nh4"] * r / (1 - r)
-                row["leach_P"] = p4["P_mon_po4"] * r / (1 - r)
+                row["leach_N"] = float(np.sum(eco.Leached_N, dtype=np.float64)) / G
+                row["leach_P"] = float(np.sum(eco.Leached_P, dtype=np.float64)) / G
                 row["resid_N"] = (tot(p5) - tot(p0)) + row["leach_N"] - in_N
                 row["resid_P"] = (totP(p5) - totP(p0)) + row["leach_P"] - in_P
                 row["mon_N_check_uptake"] = (p2["mon_org"] + p2["mon_nh4"]) - (p1["mon_org"] + p1["mon_nh4"]) + tot_up - row["decay_N"] - in_N

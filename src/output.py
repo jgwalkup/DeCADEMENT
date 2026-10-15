@@ -294,6 +294,8 @@ class Output():
         self.CAE_system = pd.Series([0],index=[0], dtype='float32')  # emergent CAE (Carbon Assimilation Efficiency)
         self.CUE_system = pd.Series([0],index=[0], dtype='float32')  # emergent CUE (Carbon Use Efficiency)
         self.Kill       = pd.Series([0],index=[0], dtype='uint32')   # stochastic death toll
+        # NH4-N and PO4-P leached per day, summed over the grid (the only losses of N and P from the system)
+        self.LeachingSeries = pd.DataFrame({0: [0.0, 0.0]}, index=['N', 'P'], dtype='float64')
 
         # Per-pulse cumulative respiration (for mass balance checks)
         # CumRespByPulse: Series indexed by pulse number (1-based), value = total C respired in that pulse.
@@ -304,6 +306,9 @@ class Output():
         self.cycle      = int(runtime.loc['end_time', 1])   # days per pulse
         self.CumRespByPulse      = pd.Series(data=0.0, index=range(1, self.n_pulses + 1), dtype='float64')
         self._pulse_resp_accum   = 0.0   # running accumulator; reset at start of each pulse
+        # Per-pulse cumulative leaching (N and P, grid totals), accumulated the same way as CumRespByPulse
+        self.CumLeachByPulse     = pd.DataFrame(0.0, index=range(1, self.n_pulses + 1), columns=['N', 'P'], dtype='float64')
+        self._pulse_leach_accum  = np.zeros(2)
 
         # Per-pulse initial microbial C (for mass balance checks).
         # Substrates, Monomers, and Enzymes are reset to their t=0 values each pulse, so
@@ -332,7 +337,7 @@ class Output():
             "HSP_E_Taxon", "E_Prod_Taxon", "Microbe_E_Gain", "Microbe_E_Cost",
             "CAE_TaxonSeries", "CAE_system", "CUE_TaxonSeries", "CUE_system", "Drought_tol_Taxon",
             "Respiration_Taxon", "RespSeries", "EnzymesSeries", "EnzymesProduction",
-            "EnzymesGain", "EnzymesLoss", "Kill", "Taxon_count_repop",
+            "EnzymesGain", "EnzymesLoss", "Kill", "Taxon_count_repop", "LeachingSeries",
         ]:
             self._buf[_s] = []
 
@@ -594,11 +599,19 @@ class Output():
         # The last day of pulse p (1-based) has global index: p * self.cycle - 1.
         # We detect end-of-pulse when (day + 1) is a multiple of self.cycle.
         self._pulse_resp_accum += float(ecosystem.Taxon_Resp.sum())
+        # Leaching (grid totals), daily and per-pulse cumulative
+        leach = np.array([float(np.sum(ecosystem.Leached_N, dtype=np.float64)),
+                          float(np.sum(ecosystem.Leached_P, dtype=np.float64))])
+        self._buf["LeachingSeries"].append(pd.Series(leach, index=['N', 'P'], name=day + 1))
+        self._pulse_leach_accum += leach
+
         _day_in_pulse = (day + 1) % self.cycle   # 0 means last day of a pulse
         if _day_in_pulse == 0:
             _pulse_num = (day + 1) // self.cycle  # which pulse just ended (1-based)
             self.CumRespByPulse[_pulse_num] = self._pulse_resp_accum
             self._pulse_resp_accum = 0.0          # reset for next pulse
+            self.CumLeachByPulse.loc[_pulse_num] = self._pulse_leach_accum
+            self._pulse_leach_accum = np.zeros(2)
 
         # Enzymes over the grid
         # Derive the enzyme-specific enzyme production summed over the grid by enzyme

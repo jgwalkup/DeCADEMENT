@@ -117,3 +117,5 @@ Arrhenius_Tref,0.0
 Ferm_Cond,0.1
 Km_Ea,20000.0
 Uptake_identity_map,1
+Leaching,0.1
+Leaching_psi_slope,0.5

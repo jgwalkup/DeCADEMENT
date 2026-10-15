@@ -232,6 +232,10 @@ class Grid():
         self.Osmo_tol_K = data_init['Osmo_tol_K']  # osmolyte share of biomass giving drought tolerance 0.5
         self.Drought_tol = np.zeros(len(data_init['Microbes']), dtype=np.float32)  # per cell, set in mortality()
         self.wp_fc = data_init['wp_fc']  # -1.0
+        self.Leaching = data_init['Leaching']  # daily NH4/PO4 leaching fraction at Psi = wp_fc
+        self.Leaching_psi_slope = data_init['Leaching_psi_slope']  # moisture sensitivity of leaching
+        self.Leached_N = np.zeros(self.gridsize, dtype=np.float32)  # NH4-N leached per grid cell, set in mortality()
+        self.Leached_P = np.zeros(self.gridsize, dtype=np.float32)  # PO4-P leached per grid cell, set in mortality()
         self.uptake_psi_slope = data_init['Uptake_psi_slope']  # moisture sensitivity of uptake
         self.enzyme_psi_slope = data_init['Enzyme_psi_slope']  # moisture sensitivity of enzyme Vmax
         self.wp_th = data_init['wp_th']  # -6.0
@@ -922,9 +926,9 @@ class Grid():
         Also update Substrates with input from dead microbes, monomers(with leaching loss), and respiration
         """
 
-        # Constants
-        Leaching = np.float32(0.1)  # Abiotic monomer loss rate
-        Psi_slope_leach = np.float32(0.5)  # Mositure sensivity of abiotic monomer loss rate
+        # Leaching (abiotic NH4 and PO4 loss) parameters
+        Leaching = np.float32(self.Leaching)
+        Psi_slope_leach = np.float32(self.Leaching_psi_slope)
         # Indices
         Mic_index = self.Microbes.index
         is_DeadMic = self.Substrates.index == "DeadMic"
@@ -1114,6 +1118,8 @@ class Grid():
         # Update Monomers
         self.Monomers.loc[is_NH4, "N"] -= Leaching_N
         self.Monomers.loc[is_PO4, "P"] -= Leaching_P
+        self.Leached_N = np.asarray(Leaching_N, dtype=np.float32)  # per grid cell, this day
+        self.Leached_P = np.asarray(Leaching_P, dtype=np.float32)
 
         # Rebalancing may have removed C or N from living cells: keep the bound pools inside the cell
         self._clip_pools(Mic[:, 0], Mic[:, 1])

@@ -29,8 +29,11 @@ file as items are resolved (the git log has the details of each change).
   like HSP and osmolytes (tracked pools) would need their production computed before `uptake()`.
 - **`Ferm_Cond` plays three roles**: fraction of energy-C fermented, exponent of the energy-demand curve, exponent of
   the monomer energy-value transform.
-- **Leaching**: factor `0.1 * exp(0.5 (Psi - wp_fc))` is not capped at Psi >= wp_fc and its constants are hard-coded
-  in `Grid.mortality` (and copied into `analysis/n_tracker.py`).
+- **Leaching shape and scope.** The rate `Leaching * exp(Leaching_psi_slope * (Psi - wp_fc))` (parameters since
+  2026-10-15, defaults 0.1 and 0.5) still applies in dry soil (1.4%/day at -5 MPa), where there is no drainage; only
+  NH4 and PO4 leach (no dissolved organic C/N). In a 60-day minimal run about 74% of the NH4 input leached, so
+  leaching largely sets how much of `Input_NH4` microbes receive. Daily and per-pulse leached N and P are now in the
+  output (`LeachingSeries`, `CumLeachByPulse`).
 - **Inducible osmolyte production is nearly inert under drought** (tied to uptake and leftover energy, both of which
   collapse); drought tolerance currently behaves as a constitutive trait.
 - **Calibration**: `HSP_max_frac`, `Osmo_max_frac` (defaults 0.2) and `Osmo_tol_K` (default 0.05) are placeholders;

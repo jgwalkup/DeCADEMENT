@@ -572,6 +572,9 @@ def initialize_data(runtime_parameters, climate_file="climate.csv", community_di
         "Osmo_max_frac": _optional(parameters, "Osmo_max_frac", 0.2),
         # optional: osmolyte share of biomass at which drought tolerance is 0.5; tolerance = share / (share + K)
         "Osmo_tol_K": _optional(parameters, "Osmo_tol_K", 0.05),
+        # optional: daily NH4 and PO4 leaching fraction = Leaching * exp(Leaching_psi_slope * (Psi - wp_fc))
+        "Leaching": _optional(parameters, "Leaching", 0.1),
+        "Leaching_psi_slope": _optional(parameters, "Leaching_psi_slope", 0.5),
         "alpha": parameters.loc[
             "alpha", 1
         ],  # factor delineating curve concavity of microbial response to drought
