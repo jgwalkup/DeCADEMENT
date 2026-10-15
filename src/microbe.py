@@ -80,7 +80,7 @@ class Microbe:
         ]  # Bacterial P fraction: 0.015 mg mg-1
         self.Erat_b = parameters.loc[
             "Erat_b", 1
-        ]  # Bacterial energy:biomass C ratio:   5000 ATP mg-1
+        ]  # Bacterial initial energy:biomass C ratio
         self.Cfrac_f = parameters.loc["Cfrac_f", 1]  # Fungal C fraction: 0.9	mg mg-1
         self.Nfrac_f = parameters.loc[
             "Nfrac_f", 1
@@ -90,7 +90,7 @@ class Microbe:
         ]  # Fungal P fraction: 0.01	mg mg-1
         self.Erat_f = parameters.loc[
             "Erat_f", 1
-        ]  # Fungal energy:biomass C ratio:   5000 ATP mg-1
+        ]  # Fungal initial energy:biomass C ratio
         self.max_size_b = parameters.loc[
             "max_size_b", 1
         ]  # C quota threshold for bacterial cell division: 2 mg cm-3
@@ -106,7 +106,7 @@ class Microbe:
         self.Prange = parameters.loc[
             "Prange", 1
         ]  # Tolerance on P fraction: 0.005 mg mg-1
-        self.Erange = parameters.loc["Erange", 1]  # tolerance on energy:biomass C ratio
+        self.E_min_ratio = parameters.loc["E_min_ratio", 1]  # minimum energy:biomass C ratio (all taxa)
 
         # transporter
         self.Uptake_C_cost_min = parameters.loc[
@@ -316,7 +316,7 @@ class Microbe:
             Crange:  Tolerance on C fraction: 0.090 mg mg-1
             Nrange:  Tolerance on N fraction: 0.040 mg mg-1
             Prange:  Tolerance on P fraction: 0.005 mg mg-1
-            Erange:  Tolerance on E:MBC ratio
+            E_min_ratio: minimum E:MBC ratio (E column of MinRatios; same for all taxa)
         Return:
             MinRatios: dataframe
         """
@@ -338,7 +338,7 @@ class Microbe:
         )
         # Calcualte ratio range
         RangeRatios_array = np.tile(
-            [self.Crange, self.Nrange, self.Prange, self.Erange], (self.n_taxa, 1)
+            [self.Crange, self.Nrange, self.Prange, 0.0], (self.n_taxa, 1)
         )
         RangeRatios_df = pd.DataFrame(
             data=RangeRatios_array,
@@ -346,8 +346,9 @@ class Microbe:
             columns=["C", "N", "P", "E"],
             dtype="float32",
         )
-        # Calculate minimum cell quotas regarding C, N, & P
+        # Calculate minimum cell quotas regarding C, N, & P; the E column is the minimum E:C ratio
         MinRatios = OptimalRatios_df - RangeRatios_df
+        MinRatios["E"] = np.float32(self.E_min_ratio)
 
         return MinRatios
 

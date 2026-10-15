@@ -221,12 +221,12 @@ class Grid():
         self.C_min = data_init['C_min']  # C threshold value of living cell
         self.N_min = data_init['N_min']  # N threshold value of living cell
         self.P_min = data_init['P_min']  # P threshold value of living cell
-        self.E_range = data_init['Erange']  # tolerance on energy:biomass C ratio
-        self.E_ratb = data_init['Eratb']  # ideal E:MBC ratio for bacteria
-        self.E_ratf = data_init['Eratf']  # ideal E:MBC ratio for fungi
-        # Maximum energy:C ratio of each cell (bacteria Erat_b, fungi Erat_f, plus Erange); fixed for the run
-        self.E_max = np.where(np.asarray(data_init['fb']) == 1, self.E_ratf, self.E_ratb).astype(np.float32) \
-            + np.float32(self.E_range)
+        # Energy:biomass C bounds (all taxa). E_max: energy above E_max * C is dissipated (mortality step), and the
+        # fraction of uptake C routed to energy falls to 0 as E:C approaches it. E_min: energy below E_min * C is a
+        # reserve that biosynthesis (enzyme, HSP, osmolyte production) cannot draw on, and at or below it all
+        # energy-eligible uptake C is routed to energy.
+        self.E_min = np.float32(data_init['E_min_ratio'])
+        self.E_max = np.float32(data_init['E_max_ratio'])
         self.basal_death_prob = data_init['basal_death_prob']  # Basal death probability of microbes
         self.death_rate = data_init['death_rate']  # Change rate of mortality with water potential
         self.Osmo_tol_K = data_init['Osmo_tol_K']  # osmolyte share of biomass giving drought tolerance 0.5
@@ -586,7 +586,9 @@ class Grid():
         Mic_C_v = self.Microbes['C'].to_numpy(dtype=np.float32)
         Mic_E_v = self.Microbes['E'].to_numpy(dtype=np.float32)
         with np.errstate(divide='ignore', invalid='ignore'):
-            Tax_E_demand = 1 - ((1 - ((self.E_max - Mic_E_v / Mic_C_v) / self.E_max)) ** (self.ferm_cond + 1))
+            # distance of E:C below E_max, as a fraction of the E_min..E_max range (1 at or below E_min, 0 at E_max)
+            E_room = np.clip((self.E_max - Mic_E_v / Mic_C_v) / (self.E_max - self.E_min), 0, 1)
+            Tax_E_demand = 1 - ((1 - E_room) ** (self.ferm_cond + 1))
         self.Tax_E_demand = Tax_E_demand  # fraction of uptake C routed to energy (per cell; NaN in empty cells)
 
         Org_Mon_E_value = self.Monomer_energy['E_value'] ** (
@@ -739,8 +741,10 @@ class Grid():
         Uptake_Prod_Cost_sum = self.Uptake_Prod_Cost.to_numpy(dtype=np.float32, copy=True).sum(axis=1)
         Tax_transport_prod_E_cost = (Taxon_Total_Uptake_v * Uptake_Prod_Cost_sum) * np.float32(self.UptakeProd_E_Cost)
 
+        # energy available for biosynthesis: the pool plus this step's energy, minus transport and maintenance, minus
+        # the reserve E_min * C that production may not draw on
         MicBio_avail_E = (Microbes_E + Taxon_Uptake_E_v - Tax_active_transport_E_cost
-                          - Tax_transport_prod_E_cost - Tax_cell_maint_E_cost)
+                          - Tax_transport_prod_E_cost - Tax_cell_maint_E_cost - self.E_min * Microbes_C)
         MicBio_avail_E = np.maximum(MicBio_avail_E, np.float32(0))
 
         Enz_N_cost_v, Enz_P_cost_v, Enz_E_cost_v = self._enz_cost_consti
@@ -949,6 +953,10 @@ class Grid():
         Mic = self.Microbes.to_numpy(dtype=np.float32, copy=True)              # (N,4): C,N,P,E
         MinRat_cnp = self.MinRatios[['C', 'N', 'P']].to_numpy(dtype=np.float32, copy=True)   # (N,3)
         MinRat_full4 = self.MinRatios[['C', 'N', 'P', 'E']].to_numpy(dtype=np.float32, copy=True)  # (N,4)
+        # The rebalancing below compares E / (C+N+P+E) with this column, so an E:C minimum does not belong there; it
+        # uses 0 (the value MinRatios['E'] had with Erat = Erange), which keeps E as the excess column that absorbs the
+        # redistribution. E_min_ratio acts in uptake and metabolism instead. See OPEN_ISSUES.md.
+        MinRat_full4[:, 3] = np.float32(0)
 
         Death = np.zeros_like(Mic)
         kill = np.zeros(n_taxa * gridsize, dtype=bool)
@@ -1020,10 +1028,11 @@ class Grid():
             # NOTE: this operates on all 4 columns (C,N,P,E), matching the original's
             # `Mic_subset.divide(Mic_subset.sum(axis=1), axis=0)` -- Mic_subset there is
             # the full 4-column DataFrame, so the denominator is C+N+P+E (not C+N+P as
-            # in the first ratio check above), and MinRatios itself has an 'E' column
-            # (the taxon's E:biomass-C ratio, ~5000 -- see microbe.py's
-            # minimum_cell_quota()). That E term dominates Ratio_dif_0.sum(axis=1)/
-            # Excess.sum(axis=1) below (the "excess redistribution" scale factor), so
+            # in the first ratio check above). With the E minimum at 0, E is always the
+            # excess column and C, N and P are always below their minima on this scale,
+            # so a rebalanced cell keeps its limiting element and the other two are set to
+            # the minimum ratios relative to it (see OPEN_ISSUES.md). That E term dominates
+            # Ratio_dif_0.sum(axis=1)/Excess.sum(axis=1) below (the "excess redistribution" scale factor), so
             # dropping E here (an earlier version of this rewrite did exactly that)
             # changes the rebalancing outcome substantially, not just cosmetically --
             # confirmed via a side-by-side day-by-day biomass comparison against the
@@ -1042,10 +1051,9 @@ class Grid():
             # (first occurrence of max in each row, skipping NaNs -- matches
             # pandas idxmax(axis=1) with skipna=True). Considers all 4 columns,
             # matching the original's `(-Ratio_dif / MinRat).idxmax(axis=1)` where
-            # Ratio_dif/MinRat are the full 4-column (C,N,P,E) frames -- empirically
-            # (confirmed against the original) 'E' is never actually the argmax in
-            # practice, since MinRat['E'] (~5000) dwarfs any plausible C/N/P deficit
-            # ratio, so index 3 is guarded against below purely as a safety net.
+            # Ratio_dif/MinRat are the full 4-column (C,N,P,E) frames -- 'E' is never the
+            # argmax (its minimum is 0 and its difference positive, so its metric is -inf);
+            # index 3 is guarded against below purely as a safety net.
             with np.errstate(invalid='ignore', divide='ignore'):
                 metric4 = -Ratio_dif4 / MinRat4
             metric4_safe = np.where(np.isnan(metric4), -np.inf, metric4)
@@ -1106,11 +1114,11 @@ class Grid():
             self.Substrates.loc[is_DeadMic] += Death_gridcell
         # End of if else clause
 
-        # Check microbes energy ratio and set to max (10000) if it is higher
+        # Cap the energy:C ratio at E_max_ratio (energy above the cap is dissipated)
         with np.errstate(invalid='ignore', divide='ignore'):
             Tax_E_ratio = Mic[:, 3] / Mic[:, 0]
         e_cap_index = Tax_E_ratio > self.E_max
-        Mic[e_cap_index, 3] = Mic[e_cap_index, 0] * self.E_max[e_cap_index]
+        Mic[e_cap_index, 3] = Mic[e_cap_index, 0] * self.E_max
 
         # Leaching of monomers
         Leaching_N = self.Monomers.loc[is_NH4, "N"] * Leaching * np.exp(Psi_slope_leach * (self.psi[day] - self.wp_fc))

@@ -86,7 +86,8 @@ Uptake_Km_temp_sens,1
 Km_Tref,15
 Erat_b,700
 Erat_f,700
-Erange,700
+E_min_ratio,0.0
+E_max_ratio,1400.0
 Ferm_ox_p,0.5
 Active_Uptake_E_cost,10
 Uptake_Prod_E_cost,600

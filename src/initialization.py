@@ -38,6 +38,24 @@ def _validate_monomer_energy(mon_energy):
         raise ValueError("monomer_energy.csv: " + "; ".join(problems))
 
 
+def _validate_energy_ratios(parameters):
+    """Check the energy:biomass C bounds (E_min_ratio, E_max_ratio) against the initial ratios (Erat_b, Erat_f)."""
+    names = parameters.index
+    if "Erange" in names and not {"E_min_ratio", "E_max_ratio"} <= set(names):
+        raise ValueError("parameters.csv: 'Erange' has been replaced by 'E_min_ratio' and 'E_max_ratio'. The old "
+                         "behaviour is E_min_ratio = Erat_b - Erange (floored at 0) and E_max_ratio = Erat_b + Erange.")
+    lo, hi = float(parameters.loc["E_min_ratio", 1]), float(parameters.loc["E_max_ratio", 1])
+    problems = []
+    if not 0 <= lo < hi:
+        problems.append(f"need 0 <= E_min_ratio < E_max_ratio (got {lo}, {hi})")
+    for r in ("Erat_b", "Erat_f"):
+        v = float(parameters.loc[r, 1])
+        if not lo <= v <= hi:
+            problems.append(f"{r} = {v} is outside [E_min_ratio, E_max_ratio] = [{lo}, {hi}]")
+    if problems:
+        raise ValueError("parameters.csv: " + "; ".join(problems))
+
+
 def _optional(parameters, name, default):
     """Value of an optional parameters.csv row; prints a notice when the row is absent and the default is used."""
     if name in parameters.index:
@@ -67,6 +85,7 @@ def initialize_data(runtime_parameters, climate_file="climate.csv", community_di
     parameters = pd.read_csv("parameters.csv", header=None, index_col=0).astype(
         "float32"
     )  # parameters
+    _validate_energy_ratios(parameters)
     substrates_init = pd.read_csv(
         "initial_substrates.csv", header=0, index_col=0
     ).astype("float32")  # initial substrates
@@ -541,9 +560,10 @@ def initialize_data(runtime_parameters, climate_file="climate.csv", community_di
         "C_min": parameters.loc["C_min", 1],  # C threshold of cell lysis
         "N_min": parameters.loc["N_min", 1],  # N threshold of cell lysis
         "P_min": parameters.loc["P_min", 1],  # P threshold of cell lysis
-        "Erange": parameters.loc["Erange", 1],  # Tolerance range for microbial E:MBC
-        "Eratb": parameters.loc["Erat_b", 1],  # Ideal Energy:MBC ratio for bacteria
-        "Eratf": parameters.loc["Erat_f", 1],  # Ideal Energy:MBC ratio for fungi
+        "E_min_ratio": parameters.loc["E_min_ratio", 1],  # minimum energy:biomass C ratio
+        "E_max_ratio": parameters.loc["E_max_ratio", 1],  # maximum energy:biomass C ratio
+        "Eratb": parameters.loc["Erat_b", 1],  # initial energy:biomass C ratio of bacteria
+        "Eratf": parameters.loc["Erat_f", 1],  # initial energy:biomass C ratio of fungi
         "Fermoxp": parameters.loc[
             "Ferm_ox_p", 1
         ],  # prop of C converted to CO2 in monomer fermentation

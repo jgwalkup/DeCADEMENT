@@ -13,7 +13,6 @@ file as items are resolved (the git log has the details of each change).
   `Vmax_Km_int`/`mmrt_Vmax_Km_int`, `Uptake_Vmax_Km`/`Uptake_mmrt_Vmax_Km_slope`,
   `Uptake_Vmax_Km_int`/`Uptake_mmrt_Vmax_Km_int`, `Km_error`/`mmrt_Km_error`. Reuse the Vmax thermodynamic tables
   for Km instead of a second random draw (`Km_HT0`, `Km_ST0`, `Km_Cp`).
-- **Split `Erange`** into `E_min_ratio` (current value 0) and `E_max_ratio` (current value 1400).
 - **NH4 and PO4 inputs in both the minimal and the full model.** `Input_NH4`/`Input_PO4` already act in `Grid.uptake`
   for any input folder. Bin Wang's version also routed organic monomer inputs (with C:N:P from `elem_ratios.csv`)
   and added substrate inputs (`SubInput`) each day; decide whether to restore those too. The `Sub`/`Mon` columns of
@@ -34,6 +33,11 @@ file as items are resolved (the git log has the details of each change).
   NH4 and PO4 leach (no dissolved organic C/N). In a 60-day minimal run about 74% of the NH4 input leached, so
   leaching largely sets how much of `Input_NH4` microbes receive. Daily and per-pulse leached N and P are now in the
   output (`LeachingSeries`, `CumLeachByPulse`).
+- **Stoichiometric rebalancing in `Grid.mortality` includes E.** Ratios are taken over C+N+P+E with an E minimum
+  of 0, so C, N and P always look deficient: a rebalanced cell keeps its limiting element and the other two are cut
+  to the minimum ratios (Cfrac - Crange etc.) relative to it, rather than the partial reduction of DEMENT. This sets
+  how much C is respired as overflow. `E_min_ratio` is therefore kept out of the rebalancing (it acts as the
+  biosynthesis energy reserve and the lower anchor of the energy-demand curve instead).
 - **Inducible osmolyte production is nearly inert under drought** (tied to uptake and leftover energy, both of which
   collapse); drought tolerance currently behaves as a constitutive trait.
 - **Calibration**: `HSP_max_frac`, `Osmo_max_frac` (defaults 0.2) and `Osmo_tol_K` (default 0.05) are placeholders;
