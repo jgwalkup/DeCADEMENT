@@ -1,0 +1,15 @@
+# Simulation and analysis outputs (large; regenerate from code + inputs)
+analysis_output/*
+!analysis_output/SENSITIVITY_SUMMARY.md
+output_minimal/
+
+# Python / OS / R clutter
+__pycache__/
+*.pyc
+.DS_Store
+.RData
+.Rhistory
+
+# Local backup copies and patch files (history is kept in git)
+*.bak*
+src/*.diff

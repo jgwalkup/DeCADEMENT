@@ -1,0 +1,5 @@
+,E_resp,E_ferm,E_value
+FermProd,690,2,0.5
+Mon_DeadMic,700,100,0.4
+Mon_DeadEnz,350,5,0.4
+Mon_IdealSub,730,230,1

@@ -1,0 +1,14 @@
+,E_resp,E_ferm,E_value
+FermProd,690,2,0.5
+Mon_DeadMic,700,100,0.4
+Mon_DeadEnz,350,5,0.4
+Mon_Cellulose,730,230,1
+Mon_Hemicellulose,660,170,1
+Mon_Starch,730,230,1
+Mon_Chitin,490,200,0.4
+Mon_Lignin,700,10,0.8
+Mon_Protein1,700,5,0.2
+Mon_Protein2,700,5,0.2
+Mon_Protein3,700,5,0.2
+Mon_OrgP1,900,20,0.15
+Mon_OrgP2,600,140,0.1

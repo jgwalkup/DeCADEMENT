@@ -1,0 +1,645 @@
+# This module, enzyme.py, deals with exclusively only enzyme-related parameters, holding:
+# ............Enzyme():           class
+# ............Boltzman_Arrhenius: function
+# Bin Wang in Janunary, 2020
+# revised by Jeth Walkup, June 2024
+
+import pandas as pd
+import numpy as np
+from utility import LHS
+
+
+class Enzyme:
+    """
+    This class deals with all properties associated with exoenzymes.
+
+    Including methods:
+    1. enzyme_pool_initialization():
+    2. enzyme_attributes():
+    3. enzyme_Ea():
+    4. enzyme_uptake_Ea():
+    5. enzyme_Vmax():
+    6. enzyme_uptake_Vmax():
+    7. enzyme_Km():
+    8. enzyme_uptake_Km():
+    """
+
+    def __init__(self, runtime, parameters, substrate_index, monomer_index):
+        """
+        The constructor of Enzyme class.
+
+        Parameters:
+            runtime:    runtime specifications by users
+            parameters: model parameters
+        """
+
+        self.n_enzymes = int(runtime.loc["n_enzymes", 1])
+        self.n_substrates = int(runtime.loc["n_substrates", 1])
+        self.n_monomers = self.n_substrates + 3
+        self.n_uptake = int(runtime.loc["n_uptake", 1])
+        self.substrate_index = (
+            substrate_index  # index of substrates in their actual names
+        )
+        self.monomer_index = monomer_index  # index of monomers
+
+        self.Enz_min = parameters.loc[
+            "Enz_min", 1
+        ]  # Initial min. enzyme present in terms of carbon
+        self.Enz_max = parameters.loc[
+            "Enz_max", 1
+        ]  # Initial max. enzyme present in terms of carbon
+        self.Enz_C_cost = parameters.loc[
+            "Enz_C_cost", 1
+        ]  # Per enzyme C cost as a fraction of uptake:1
+        self.Enz_N_cost = parameters.loc[
+            "Enz_N_cost", 1
+        ]  # Per enzyme N cost as a fraction of C cost:0.3
+        self.Enz_P_cost = parameters.loc[
+            "Enz_P_cost", 1
+        ]  # Per enzyme P cost as a fraction of C cost:0
+        self.Enz_E_cost = parameters.loc[
+            "Enz_Prod_E_cost", 1
+        ]  # Energy cost of enzyme production
+        self.Uptake_Ea_min = parameters.loc[
+            "Uptake_Ea_min", 1
+        ]  # Minimum activation energy for uptake
+        self.Uptake_Ea_max = parameters.loc[
+            "Uptake_Ea_max", 1
+        ]  # Maximum activation energy for uptake
+        self.Vmax0_min = parameters.loc["Vmax0_min", 1]  # Minimum Vmax for enzyme
+        self.Vmax0_max = parameters.loc["Vmax0_max", 1]  # Maximum Vmax for enzyme
+        self.Uptake_Vmax0_min = parameters.loc[
+            "Uptake_Vmax0_min", 1
+        ]  # Minimum uptake Vmax
+        self.Uptake_Vmax0_max = parameters.loc[
+            "Uptake_Vmax0_max", 1
+        ]  # Maximum uptake Vmax
+        self.Specif_factor = int(
+            parameters.loc["Specif_factor", 1]
+        )  # Efficiency-specificity
+        self.Vmax_Km = parameters.loc["Vmax_Km", 1]  # slope for Km-Vmax relationship:1
+        self.Vmax_Km_int = parameters.loc[
+            "Vmax_Km_int", 1
+        ]  # intercept for Km-Vmax relationship:0
+        self.Km_min = parameters.loc["Km_min", 1]  # Minimum Km: default = 0.01
+        self.Uptake_Vmax_Km = parameters.loc[
+            "Uptake_Vmax_Km", 1
+        ]  # slope for uptake Km-Vmax relationship: 0.02
+        self.Uptake_Vmax_Km_int = parameters.loc[
+            "Uptake_Vmax_Km_int", 1
+        ]  # intercept for Uptake Km-Vmax relationship:0
+        self.Uptake_Km_min = parameters.loc[
+            "Uptake_Km_min", 1
+        ]  # Minimum uptake Km: 0.001
+        self.Km_error = parameters.loc["Km_error", 1]  # Error term: default = 0
+        self.Cp_min = parameters.loc["Enz_Cp_min", 1]  # Minimum Vmax for enzyme
+        self.Cp_max = parameters.loc["Enz_Cp_max", 1]  # Maximum Vmax for enzyme
+        self.Uptake_Cp_min = parameters.loc[
+            "Uptake_Cp_min", 1
+        ]  # Minimum Vmax for enzyme
+        self.Uptake_Cp_max = parameters.loc[
+            "Uptake_Cp_max", 1
+        ]  # Maximum Vmax for enzyme
+        self.Uptake_HT0_min = parameters.loc[
+            "Uptake_HT0_min", 1
+        ]  # Minimum Vmax for enzyme
+        self.Uptake_HT0_max = parameters.loc[
+            "Uptake_HT0_max", 1
+        ]  # Maximum Vmax for enzyme
+        self.Uptake_ST0_min = parameters.loc[
+            "Uptake_ST0_min", 1
+        ]  # Minimum Vmax for enzyme
+        self.Uptake_ST0_max = parameters.loc[
+            "Uptake_ST0_max", 1
+        ]  # Maximum Vmax for enzyme
+        self.HT0_min = parameters.loc["Enz_HT0_min", 1]  # Minimum Vmax for enzyme
+        self.HT0_max = parameters.loc["Enz_HT0_max", 1]  # Maximum Vmax for enzyme
+
+    def enzyme_pool_initialization(self):
+        """
+        Initialize the pool sizes of different enzymes.
+
+        Parameters:
+            Enz_min: min. of initial enzyme in C
+            Enz_max: max. of initial enzyme in C
+        Return:
+            Enzymes_df: series; index:Enz
+        """
+
+        Enzymes_array = np.random.uniform(self.Enz_min, self.Enz_max, self.n_enzymes)
+        index = ["Enz" + str(i) for i in range(1, self.n_enzymes + 1)]
+        Enzymes_df = pd.Series(
+            data=Enzymes_array, index=index, name="C", dtype="float32"
+        )
+
+        return Enzymes_df
+
+    def enzyme_attributes(self):
+        """
+        Derive enzyme stoichiometry and maintenence cost.
+
+        Parameters:
+            Enz_C_cost:     scalar;
+            Enz_N_cost:     scalar;
+            Enz_P_cost:     scalar;
+            Enz_E_cost:     scalar;
+        Return:
+            EnzAttrib_df: dataframe; row: Enz; col:["C_cost","N_cost","P_cost","Maint_cost"]
+        """
+
+        EnzAttrib_array = np.tile(
+            [self.Enz_C_cost, self.Enz_N_cost, self.Enz_P_cost, self.Enz_E_cost],
+            (self.n_enzymes, 1),
+        )
+        index = ["Enz" + str(i) for i in range(1, self.n_enzymes + 1)]
+        columns = ["C_cost", "N_cost", "P_cost", "E_cost"]
+        EnzAttrib_df = pd.DataFrame(
+            data=EnzAttrib_array, index=index, columns=columns, dtype="float32"
+        )
+
+        return EnzAttrib_df
+
+    def enzyme_HT0(self):
+        """
+        Enthalpy at T0 for enzymes.
+
+        Parameters:
+          HT0_min:     -2714
+          HT0_max:     -2714
+          Returns:
+          HT0:       dataframe(enzyme*substrate); will feed the expand()
+        """
+
+        HT0_array = LHS(
+            self.n_substrates * self.n_enzymes, self.HT0_min, self.HT0_max, "uniform"
+        )
+        HT0_array = HT0_array.reshape(self.n_substrates, self.n_enzymes)
+        columns = ["Enz" + str(i) for i in range(1, self.n_enzymes + 1)]
+        HT0 = pd.DataFrame(
+            data=HT0_array, index=self.substrate_index, columns=columns, dtype="float32"
+        )
+        HT0 = HT0.astype("float32")
+
+        return HT0
+
+    def enzyme_ST0(self, ST0_input):
+        """
+        Enthalpy.
+
+        Parameter:
+            ST0_input: dataframe; substrate-specific entropy range (min = max for now)
+        Return:
+            ST0_df.T:  dataframe; Rows:enzymes; cols: substrates
+        """
+
+        ST0_series = ST0_input.apply(
+            lambda df: np.random.uniform(df["S_min"], df["S_max"], self.n_enzymes),
+            axis=1,
+        )  # series of 1D array
+        columns = ["Enz" + str(i) for i in range(1, self.n_enzymes + 1)]
+        ST0 = pd.DataFrame(
+            data=ST0_series.tolist(),
+            index=self.substrate_index,
+            columns=columns,
+            dtype="float32",
+        )  # NOTE: .tolist()
+
+        return ST0
+
+    def enzyme_uptake_HT0(self):
+        """
+        Uptake activation enthalpy parameter across monomers.
+
+        Parameters:
+            Uptake_HT0_min: scalar; 66706
+            Uptake_HT0_max: scalar; 66706
+        Return:
+            Uptake_HT0: dataframe; Rows are monomers; cols are uptake enzymes
+        """
+
+        Uptake_HT0_array = np.random.uniform(
+            self.Uptake_HT0_min, self.Uptake_HT0_max, self.n_uptake * self.n_monomers
+        )
+        Uptake_HT0_array = Uptake_HT0_array.reshape(self.n_monomers, self.n_uptake)
+
+        columns = ["Upt" + str(i) for i in range(1, self.n_uptake + 1)]
+        Uptake_HT0 = pd.DataFrame(
+            data=Uptake_HT0_array,
+            index=self.monomer_index,
+            columns=columns,
+            dtype="float32",
+        )
+
+        return Uptake_HT0
+
+    def enzyme_uptake_ST0(self):
+        """
+        Uptake activation entropy parameter across monomers.
+
+        Parameters:
+            Uptake_ST0_min: scalar; 66706
+            Uptake_ST0_max: scalar; 66706
+        Return:
+            Uptake_ST0: dataframe; Rows are monomers; cols are uptake enzymes
+        """
+
+        Uptake_ST0_array = np.random.uniform(
+            self.Uptake_ST0_min, self.Uptake_ST0_max, self.n_uptake * self.n_monomers
+        )
+        Uptake_ST0_array = Uptake_ST0_array.reshape(self.n_monomers, self.n_uptake)
+
+        columns = ["Upt" + str(i) for i in range(1, self.n_uptake + 1)]
+        Uptake_ST0 = pd.DataFrame(
+            data=Uptake_ST0_array,
+            index=self.monomer_index,
+            columns=columns,
+            dtype="float32",
+        )
+
+        return Uptake_ST0
+
+    def enzyme_Cp(self):
+        """
+        Heat Capacity for enzymes.
+
+        Parameters:
+          Cp_min:     -2714
+          Cp_max:     -2714
+          Returns:
+          Cp:       dataframe(enzyme*substrate); will feed the expand()
+        """
+
+        Cp_array = LHS(
+            self.n_substrates * self.n_enzymes, self.Cp_min, self.Cp_max, "uniform"
+        )
+        Cp_array = Cp_array.reshape(self.n_substrates, self.n_enzymes)
+        columns = ["Enz" + str(i) for i in range(1, self.n_enzymes + 1)]
+        Cp = pd.DataFrame(
+            data=Cp_array, index=self.substrate_index, columns=columns, dtype="float32"
+        )
+        Cp = Cp.astype("float32")
+
+        return Cp
+
+    def uptake_sub_spec(self, Uptake_ReqEnz):
+        """
+        Pre-exponential constants for uptake.
+
+        Parameters:
+            Uptake_ReqEnz:    uptake required enzymes; monomers * enzymes; from the monomer module
+            Uptake_Vmax0_min: 1	(mg substrate mg-1 substrate day-1)	Minimum uptake Vmax
+            Uptake_Vmax0_max: 10 (mg substrate mg-1 substrate day-1)	Maximum uptake Vmax
+            Specif_factor:    default 1; Efficiency-specificity
+        Return:
+            Uptake_Vmax0: dataframe; Rows are monomers; cols are uptake enzymes
+        """
+
+        # Uptake_sub_spec_array = LHS(self.n_uptake * self.n_monomers, 1, 1,'uniform')
+        # Uptake_sub_spec_array = Uptake_sub_spec_array.reshape(self.n_monomers, self.n_uptake)
+
+        columns = ["Upt" + str(i) for i in range(1, self.n_uptake + 1)]
+        # Uptake_sub_spec = pd.DataFrame(data=Uptake_sub_spec_array, index=index, columns=columns, dtype='float32')
+        Uptake_sub_spec = pd.DataFrame(
+            columns=columns, index=self.monomer_index, dtype="float32", data=1
+        )
+
+        # implement the tradeoff with specificity
+        total_monomers = Uptake_ReqEnz.sum(axis=0)
+        if self.Specif_factor == 0:
+            total_monomers[total_monomers > 1] = 1
+        else:
+            total_monomers[total_monomers > 1] = (
+                total_monomers[total_monomers > 1] * self.Specif_factor
+            )
+        Uptake_sub_spec = Uptake_sub_spec.divide(total_monomers, axis=1)
+        Uptake_sub_spec.loc[:, total_monomers == 0] = 0
+
+        Uptake_sub_spec = Uptake_sub_spec.astype("float32")
+
+        return Uptake_sub_spec
+
+    def enzyme_uptake_Vmax(self, Uptake_ReqEnz):
+        """
+        Pre-exponential constants for uptake.
+
+        Parameters:
+            Uptake_ReqEnz:    uptake required enzymes; monomers * enzymes; from the monomer module
+            Uptake_Vmax0_min: 1	(mg substrate mg-1 substrate day-1)	Minimum uptake Vmax
+            Uptake_Vmax0_max: 10 (mg substrate mg-1 substrate day-1)	Maximum uptake Vmax
+            Specif_factor:    default 1; Efficiency-specificity
+        Return:
+            Uptake_Vmax0: dataframe; Rows are monomers; cols are uptake enzymes
+        """
+
+        # Uptake_Vmax0_array = np.random.uniform(self.Uptake_Vmax0_min,self.Uptake_Vmax0_max,self.n_uptake*self.n_monomers)
+        Uptake_Vmax0_array = LHS(
+            self.n_uptake * self.n_monomers,
+            self.Uptake_Vmax0_min,
+            self.Uptake_Vmax0_max,
+            "uniform",
+        )
+        Uptake_Vmax0_array = Uptake_Vmax0_array.reshape(self.n_monomers, self.n_uptake)
+
+        columns = ["Upt" + str(i) for i in range(1, self.n_uptake + 1)]
+        Uptake_Vmax0 = pd.DataFrame(
+            data=Uptake_Vmax0_array,
+            index=self.monomer_index,
+            columns=columns,
+            dtype="float32",
+        )
+
+        # implement the tradeoff with specificity
+        total_monomers = Uptake_ReqEnz.sum(axis=0)
+        if self.Specif_factor == 0:
+            total_monomers[total_monomers > 1] = 1
+        else:
+            total_monomers[total_monomers > 1] = (
+                total_monomers[total_monomers > 1] * self.Specif_factor
+            )
+        Uptake_Vmax0 = Uptake_Vmax0.divide(total_monomers, axis=1)
+        Uptake_Vmax0.loc[:, total_monomers == 0] = 0
+
+        Uptake_Vmax0 = Uptake_Vmax0.astype("float32")
+
+        return Uptake_Vmax0
+
+    def enzyme_uptake_Cp(self):
+        """
+        Heat Capacity for uptake.
+
+        Parameters:
+            Uptake_Cp_min: 1	(mg substrate mg-1 substrate day-1)	Minimum uptake Vmax
+            Uptake_Cp_max: 10 (mg substrate mg-1 substrate day-1)	Maximum uptake Vmax
+        Return:
+            Uptake_Cp: dataframe; Rows are monomers; cols are uptake enzymes
+        """
+
+        # Uptake_Cp_array = np.random.uniform(self.Uptake_Cp_min,self.Uptake_Cp_max,self.n_uptake*self.n_monomers)
+        Uptake_Cp_array = LHS(
+            self.n_uptake * self.n_monomers,
+            self.Uptake_Cp_min,
+            self.Uptake_Cp_max,
+            "uniform",
+        )
+        Uptake_Cp_array = Uptake_Cp_array.reshape(self.n_monomers, self.n_uptake)
+
+        columns = ["Upt" + str(i) for i in range(1, self.n_uptake + 1)]
+        Uptake_Cp = pd.DataFrame(
+            data=Uptake_Cp_array,
+            index=self.monomer_index,
+            columns=columns,
+            dtype="float32",
+        )
+
+        Uptake_Cp = Uptake_Cp.astype("float32")
+
+        return Uptake_Cp
+
+    def enzyme_Km(self, Vmax0):
+        """
+        Derive Km through implementing a Vmax-Km tradeoff.
+
+        The tradeoff is based on a linear correlation between Km and Vmax; minimum Km constrained to Km_min
+
+        Parameters:
+            Vmax0:       dataframe; from the above enzyme_Vmax() method
+            Vmax_Km:     slope for Km-Vmax relationship (1)
+            Vmax_Km_int: intercept (0)
+            Km_error:    error term (0);error term normally distributed with magnitude Km_error.)
+            Km_min:      to which the minimum Km is constrained; 0.01
+        Return:
+            Km: dataframe; substrate * enzyme
+        """
+
+        mean = Vmax0.mean().mean() * self.Km_error
+        Km = abs(
+            Vmax0.apply(lambda df: np.random.normal(df * self.Vmax_Km, mean), axis=0)
+            + self.Vmax_Km_int
+        )
+        Km[Km < self.Km_min] = self.Km_min
+        Km = Km.astype("float32")
+
+        return Km
+
+    def enzyme_uptake_Km(self, Uptake_Vmax0):
+        """
+        Derive Uptake Km by implementing Vmax-Km tradeoff.
+
+        The tradeoff is based on a linear correlation between Km and Vmax; minimum Uptake_Km constrained to Uptake_Km_min
+
+        Parameters:
+            Uptake_HT0:       dataframe; from the above enzyme_uptake_Vmax() method
+            Uptake_H_S_slope:     slope of HT0-ST0 correlation (0.002469)
+            Uptake_H_S_int: intercept (-152.684)
+            Uptake_H_S_error:           error term normally distributed with magnitude (0)
+        Return:
+            Uptake_Km: dataframe; row:monomer; col:enzyme
+        """
+
+        mean = Uptake_Vmax0.mean().mean() * self.Km_error
+        Uptake_Km = abs(
+            Uptake_Vmax0.apply(
+                lambda df: np.random.normal(df * self.Uptake_Vmax_Km, mean), axis=0
+            )
+            + self.Uptake_Vmax_Km_int
+        )
+        Uptake_Km[Uptake_Km < self.Uptake_Km_min] = self.Uptake_Km_min
+        Uptake_Km = Uptake_Km.astype("float32")
+
+        return Uptake_Km
+
+    def enzyme_Vmax(self, ReqEnz):
+        """
+        Pre-exponential constants for enzymes.
+
+        Parameters:
+          ReqEnz:        substrate required enzymes, from the substrate module
+          Vmax0_min:     5  (mg substrate mg-1 enzyme day-1); Minimum Vmax for enzyme
+          Vmax0_max:     50 (mg substrate mg-1 enzyme day-1); Maximum Vmax for enzyme
+          Specif_factor: default 1; Efficiency-specificity
+        Returns:
+          Vmax0:         dataframe(substrates * enzymes); feed the the method, enzyme_Km(), below
+          Vmax0.T:       dataframe(enzyme*substrate); will feed the expand()
+        """
+
+        Vmax0_array = LHS(
+            self.n_substrates * self.n_enzymes,
+            self.Vmax0_min,
+            self.Vmax0_max,
+            "uniform",
+        )
+        Vmax0_array = Vmax0_array.reshape(self.n_substrates, self.n_enzymes)
+        columns = ["Enz" + str(i) for i in range(1, self.n_enzymes + 1)]
+        Vmax0 = pd.DataFrame(
+            data=Vmax0_array,
+            index=self.substrate_index,
+            columns=columns,
+            dtype="float32",
+        )
+
+        # Account for efficiency-specificity tradeoff by dividing Vmax_0 by the number of substrates (or monomers)
+        # targeted and multiplied by a specificity factor
+        RE1 = ReqEnz.loc["set1"].iloc[range(self.n_substrates), :]
+        RE2 = ReqEnz.loc["set2"].iloc[range(self.n_substrates), :]
+        RE2 = RE2.fillna(0)
+
+        # Total num. of substrates that each enzyme can target: series; indexed by enzyme
+        total_substrates = RE1.sum(axis=0) + RE2.sum(axis=0)
+        if self.Specif_factor == 0:
+            total_substrates[total_substrates > 1] = 1
+        else:
+            total_substrates[total_substrates > 1] = (
+                total_substrates[total_substrates > 1] * self.Specif_factor
+            )
+
+        Vmax0 = Vmax0.divide(total_substrates, axis=1)
+        Vmax0.loc[:, total_substrates == 0] = 0  # get rid of NAs
+        Vmax0 = Vmax0.astype("float32")
+
+        return Vmax0, Vmax0.T
+
+    def enzyme_Vmax_sub_spec(self, ReqEnz):
+        """
+        Pre-exponential constants for enzymes.
+
+        Parameters:
+          ReqEnz:        substrate required enzymes, from the substrate module
+          Specif_factor: default 1; Efficiency-specificity
+        Returns:
+          Vmax_sub_spec:         dataframe(substrates * enzymes); feed the the method, enzyme_Km(), below
+          Vmax_sub_spec.T:       dataframe(enzyme*substrate); will feed the expand()
+        """
+
+        # Vmax_sub_spec_array = LHS(self.n_substrates * self.n_enzymes, 1, 1, 'uniform')
+        # Vmax_sub_spec_array = Vmax_sub_spec_array.reshape(self.n_substrates, self.n_enzymes)
+        columns = ["Enz" + str(i) for i in range(1, self.n_enzymes + 1)]
+        # Vmax_sub_spec = pd.DataFrame(data=Vmax_sub_spec_array, index=self.substrate_index, columns=columns, dtype='float32')
+        Vmax_sub_spec = pd.DataFrame(
+            columns=columns, index=self.substrate_index, dtype="float32", data=1
+        )
+
+        # Account for efficiency-specificity tradeoff by dividing Vmax_0 by the number of substrates (or monomers)
+        # targeted and multiplied by a specificity factor
+        RE1 = ReqEnz.loc["set1"].iloc[range(self.n_substrates), :]
+        RE2 = ReqEnz.loc["set2"].iloc[range(self.n_substrates), :]
+        RE2 = RE2.fillna(0)
+
+        # Total num. of substrates that each enzyme can target: series; indexed by enzyme
+        total_substrates = RE1.sum(axis=0) + RE2.sum(axis=0)
+        if self.Specif_factor == 0:
+            total_substrates[total_substrates > 1] = 1
+        else:
+            total_substrates[total_substrates > 1] = (
+                total_substrates[total_substrates > 1] * self.Specif_factor
+            )
+
+        Vmax_sub_spec = Vmax_sub_spec.divide(total_substrates, axis=1)
+        Vmax_sub_spec.loc[:, total_substrates == 0] = 0  # get rid of NAs
+        Vmax_sub_spec = Vmax_sub_spec.astype("float32")
+
+        return Vmax_sub_spec, Vmax_sub_spec.T
+
+    def enzyme_Ea(self, Ea_input):
+        """
+        Enzyme specificity matrix of activation energies.
+
+        Parameter:
+            Ea_input: dataframe; substrate-specific activation energy range (min = max for now)
+        Return:
+            Ea_df.T:  dataframe; Rows:enzymes; cols: substrates
+        """
+
+        Ea_series = Ea_input.apply(
+            lambda df: np.random.uniform(df["Ea_min"], df["Ea_max"], self.n_enzymes),
+            axis=1,
+        )  # series of 1D array
+        columns = ["Enz" + str(i) for i in range(1, self.n_enzymes + 1)]
+        Ea_df = pd.DataFrame(
+            data=Ea_series.tolist(),
+            index=self.substrate_index,
+            columns=columns,
+            dtype="float32",
+        )  # NOTE: .tolist()
+
+        return Ea_df.T
+
+    def enzyme_uptake_Ea(self):
+        """
+        Uptake activation energies constant across monomers.
+
+        Parameters:
+            Uptake_Ea_min: scalar; 35
+            Uptake_Ea_max: scalar; 35
+        Return:
+            Uptake_Ea: dataframe; Rows are monomers; cols are uptake enzymes
+        """
+
+        Uptake_Ea_array = np.random.uniform(
+            self.Uptake_Ea_min, self.Uptake_Ea_max, self.n_uptake * self.n_monomers
+        )
+        Uptake_Ea_array = Uptake_Ea_array.reshape(self.n_monomers, self.n_uptake)
+
+        # index = ['Mon' + str(i) for i in range(1, self.n_monomers + 1)]
+        columns = ["Upt" + str(i) for i in range(1, self.n_uptake + 1)]
+        Uptake_Ea = pd.DataFrame(
+            data=Uptake_Ea_array,
+            index=self.monomer_index,
+            columns=columns,
+            dtype="float32",
+        )
+
+        return Uptake_Ea
+
+
+def Arrhenius(Ea, exp_constant, temperature, Tref):
+    """
+    Temperature dependence of rate constant, calculated using the Arrhenius equation.
+
+    Parameters:
+       Ea:              dataframe/scalar; activation energy;
+       temperature:     scalar;           daily temperature;
+       exp_constant:    Exponential constant (e.g. R)
+    Return:
+       k:          dataframe/scalar; reaction rate (Vmax) at temperature T
+    Reference:
+        Wikipedia: https://en.wikipedia.org/wiki/Arrhenius_equation
+    """
+
+    if Tref == 0:
+        inv_tref = np.float32(0)
+    else:
+        inv_tref = 1 / Tref
+
+    # k = np.exp(-Ea / (exp_constant * (temperature + 273))).astype('float32')
+    k = np.exp((-Ea / exp_constant) * (1 / (temperature + 273) - inv_tref)).astype(
+        "float32"
+    )
+
+    return k
+
+
+def MMRT(C, H, S, temperature, T0, kB, h, R):
+    """
+    Temperature dependence of rate constant, calculated using the Macromolecular Rate Theory equation.
+
+    Parameters:
+       T0:              reference temperature in °K (Tref);
+       temperature:     scalar;           daily temperature;
+       kB:              Boltzmann's constant (kB)
+       h:               Planck's constant (h)
+       R:               Gas constant (R)
+       H:               dataframe/scalar; HT0 Activation enthalpy (change in enthalpy at T0);
+       ST0:             dataframe/scalar; ST0 Activation entropy (change in enthalpy at T0);
+       C:               dataframe/scalar; Cp heat capacity (temperature dependence of enthalpy at T0);
+    Return:
+       kT_MMRT:          dataframe/scalar; reaction rate (Vmax) at temperature T
+    Reference:
+        Wikipedia: https://en.wikipedia.org/wiki/Arrhenius_equation
+    """
+    T_absolute = temperature + 273  # convert temperature from °C to °K
+    kT_mmrt = ((kB * T_absolute) / h) * np.exp(
+        ((-((C * (T_absolute - T0)) + H)) / (R * T_absolute))
+        + (((C * np.log(T_absolute / T0)) + S) / R)
+    )
+
+    return kT_mmrt
