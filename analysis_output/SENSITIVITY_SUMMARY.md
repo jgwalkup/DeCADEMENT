@@ -641,3 +641,28 @@ Terminology: **endogenous respiration (R_endo)** = respiring free biomass C (at 
 - The lower uptake Km (section 9) and enzyme Km (section 10) slopes removed two density-dependent feedbacks (monomer competition at the transporters, substrate saturation of enzymes), which is part of why the system is now this sensitive. The same compounding will apply to temperature, through the MMRT Vmax: warming responses are likely to be threshold-like as well.
 - After the substrate is exhausted the community starves (closed litter system): biomass, CUE and enzyme saturation fall to zero, and the runs with the fastest degradation have starvation deaths late in the year.
 - Inducible production is somewhat self-limiting (tied to uptake): at Enz_Prod 0.1 decay outpaces uptake and organic monomers briefly accumulate to about 80 per grid cell.
+
+## 12. Enzyme Km slope with the higher enzyme production; shape of the degradation curve (2026-10-16)
+
+**Setup (`enzyme_km_sweep_prod/`):** as section 10 but with `Constit_Prod` 0.00025 and `Enz_Prod` 0.005 (minimal km25 inputs, commit e72b8d9); ambient climate, 3 seeds; `Vmax_Km` 0.25, 0.5, 1 (baseline), 2.5, 5, 10, 20. Shape is summarised as the % of the substrate degraded in each quarter of the year (days 1-91, 92-182, 183-273, 274-365). Diagnostic (`analysis/initial_biomass_shape_test.py`, not a model option): starting biomass x5 and x20 at `Vmax_Km` 2.5, 5 and 10, 1 seed.
+
+| Vmax_Km | Degraded day 365 | Day 25 / 50 / 75 % | Degraded per quarter (%) | Max biomass C |
+|---|---|---|---|---|
+| 0.25 | 99.9 % | 206 / 277 / 314 | 6 / 13 / 29 / 51 | 80 |
+| 0.5 | 99.8 % | 208 / 280 / 317 | 6 / 13 / 28 / 53 | 81 |
+| **1 (baseline)** | **98.2 %** | 213 / 288 / 325 | 6 / 12 / 26 / 54 | 78 |
+| 2.5 | 83.7 % | 228 / 307 / 351 | 5 / 11 / 21 / 47 | 66 |
+| 5 | 61.0 % | 253 / 339 / - | 5 / 9 / 15 / 32 | 46 |
+| 10 | 34.4 % | 313 / - / - | 4 / 6 / 9 / 15 | 21 |
+| 20 | 11.6 % (collapse in the dry season) | - | 3 / 4 / 4 / 1 | 6 |
+
+| Starting biomass | Vmax_Km | Degraded day 365 | Degraded per quarter (%) |
+|---|---|---|---|
+| x1 | 2.5 / 5 / 10 | 83.5 / 61.0 / 35.0 % | 5/11/21/47; 5/9/15/32; 4/6/9/15 |
+| x5 | 2.5 / 5 / 10 | 100 / 98.1 / 74.4 % | 10/23/42/24; 9/20/32/37; 8/15/21/31 |
+| x20 | 2.5 / 5 / 10 | 100 / 99.9 / 98.7 % | 26/62/12/0; 24/53/22/0; 21/41/30/6 |
+
+- **The Km slope sets how much is degraded, not the shape.** `Vmax_Km` 2.5 gives about 84 % in the first year, but at every slope degradation accelerates through the year (about half of it in the last quarter): biomass grows exponentially from the 1 C per grid cell inoculum until the substrate runs out (no plateau; biomass at day 365 is the maximum).
+- A higher Km slope damps decay as the substrate is used up (saturation 0.98 -> 0.8-0.9), but because decay stays proportional to the enzyme pool, and the enzyme pool to biomass, it does not create a plateau in biomass. Very high slopes (20) push the community into the dry-season energy trap.
+- **A larger starting biomass shortens the slow start but does not produce a steady decline**: the curve is still sigmoidal, with the fast phase earlier (x5) or the substrate exhausted in the first half-year (x20).
+- A steady decline needs density dependence that the model now lacks: something that lowers the per-capita return as biomass or the enzyme pool grows (for example decay saturating in enzyme, i.e. reverse Michaelis-Menten or ECA kinetics; uptake competition that depends on biomass; or density-dependent mortality).
