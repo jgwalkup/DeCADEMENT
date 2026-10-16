@@ -31,6 +31,7 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("dir")
     ap.add_argument("--ts-mult", type=float, nargs="+", default=[1, 2, 3, 4])
+    ap.add_argument("--note", default="", help="text appended to the figure title, e.g. the fixed setting of the run")
     a = ap.parse_args()
     d = pd.read_csv(os.path.join(a.dir, "summary.csv"))
     param = d["param"].iloc[0]
@@ -62,7 +63,7 @@ def main():
             if r == len(METRICS) - 1:
                 ax.set_xlabel(f"{param} (× baseline {base:g})")
     axes[0][0].legend(loc="best", frameon=False)
-    fig.suptitle(f"{param} sensitivity, energy-deficit erosion off vs on (mean of seeds; band = seed range)", y=1.0)
+    fig.suptitle(f"{param} sensitivity, energy-deficit erosion off vs on (mean of seeds; band = seed range)" + (f"\n{a.note}" if a.note else ""), y=1.0)
     fig.tight_layout()
     fig.savefig(os.path.join(a.dir, "maint_erosion.png"), bbox_inches="tight")
     plt.close(fig)

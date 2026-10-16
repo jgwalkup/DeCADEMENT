@@ -8,6 +8,7 @@ seeds; same design as the stage-A re-run (analysis_output/stageA_rerun: 20x20, 3
 Usage:
     python maint_erosion_sweep.py OUT_DIR [--input ../input_minimal_e1500_crich_km25_in] [--param Maint_E_Rate_Const]
         [--base 2.5] [--mult 0.2 0.4 ...] [--temps 4 15 28 36] [--seeds 0 1 2] [--side 20] [--days 365] [--procs 2]
+        [--set NAME=VALUE ...]   (fixed parameters.csv overrides for every run, e.g. Maint_E_HSP_Ea_Slope=0)
 Writes OUT_DIR/summary.csv (one row per run: end-of-run summary from sweep_minimal.run_one) and
 OUT_DIR/timeseries.csv.gz (daily series of every run). Runs already in summary.csv are skipped (restartable).
 """
@@ -27,8 +28,9 @@ MULT = [0.2, 0.4, 0.6, 0.8, 1, 1.25, 1.5, 1.75, 2, 2.5, 3, 3.5, 4, 4.5, 5]
 
 
 def _job(args):
-    src, param, base, mult, temp, erosion, seed, side, days = args
-    summary, series = run_one(src, {param: base * mult, "E_deficit_erosion": float(erosion)}, side, days, seed, temp=temp)
+    src, param, base, mult, temp, erosion, seed, side, days, fixed = args
+    summary, series = run_one(src, {**fixed, param: base * mult, "E_deficit_erosion": float(erosion)}, side, days, seed,
+                              temp=temp)
     key = dict(param=param, mult=mult, value=base * mult, Temp=temp, erosion=erosion, seed=seed)
     return {**key, **summary}, pd.DataFrame(series).assign(**key)
 
@@ -46,6 +48,7 @@ def main():
     ap.add_argument("--side", type=int, default=20)
     ap.add_argument("--days", type=int, default=365)
     ap.add_argument("--procs", type=int, default=2)
+    ap.add_argument("--set", nargs="*", default=[], metavar="NAME=VALUE", help="fixed overrides for every run")
     a = ap.parse_args()
     os.makedirs(a.out_dir, exist_ok=True)
     sp, tp = os.path.join(a.out_dir, "summary.csv"), os.path.join(a.out_dir, "timeseries.csv.gz")
@@ -54,7 +57,10 @@ def main():
         d = pd.read_csv(sp)
         done = set(zip(d["mult"].round(6), d["Temp"], d["erosion"], d["seed"]))
     src = os.path.abspath(a.input)
-    jobs = [(src, a.param, a.base, m, t, e, s, a.side, a.days)
+    fixed = {k: float(v) for k, v in (x.split("=") for x in a.set)}
+    if fixed:
+        print(f"fixed overrides: {fixed}", flush=True)
+    jobs = [(src, a.param, a.base, m, t, e, s, a.side, a.days, fixed)
             for t, e, s, m in itertools.product(a.temps, a.erosion, a.seeds, a.mult) if (round(m, 6), t, e, s) not in done]
     print(f"{len(jobs)} runs ({len(done)} already done) -> {a.out_dir}", flush=True)
     with Pool(a.procs) as pool:

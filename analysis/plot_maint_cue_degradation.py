@@ -30,6 +30,7 @@ BASE_COLOR = "#eb6834"  # the 1x baseline, highlighted
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("dir")
+    ap.add_argument("--note", default="", help="text appended to the figure title, e.g. the fixed setting of the run")
     a = ap.parse_args()
     s = pd.read_csv(os.path.join(a.dir, "summary.csv"), nrows=1)
     param, base = s["param"].iloc[0], float(s["value"].iloc[0] / s["mult"].iloc[0])
@@ -69,12 +70,12 @@ def main():
             if r == len(rows) - 1:
                 ax.set_xlabel("Day")
     axes[0][0].legend(loc="upper left", frameon=False)
-    fig.tight_layout(rect=(0, 0, 0.93, 0.97))
+    fig.tight_layout(rect=(0, 0, 0.93, 0.93 if a.note else 0.97))
     cax = fig.add_axes([0.945, 0.15, 0.012, 0.7])
     cb = fig.colorbar(ScalarMappable(norm=norm, cmap=cmap), cax=cax, ticks=range(len(mults)))
     cb.ax.set_yticklabels([f"{x:g}" for x in mults], fontsize=7)
     cb.set_label(f"{param} (× baseline {base:g})")
-    fig.suptitle(f"Substrate degradation and CUE over time by {param} (mean of seeds)")
+    fig.suptitle(f"Substrate degradation and CUE over time by {param} (mean of seeds)" + (f"\n{a.note}" if a.note else ""))
     fig.savefig(os.path.join(a.dir, "maint_cue_degradation.png"), bbox_inches="tight")
     plt.close(fig)
 
