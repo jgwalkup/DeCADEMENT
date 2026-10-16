@@ -41,7 +41,7 @@ Uptake_Ea_min,35000.5
 Uptake_Ea_max,35000.5
 Km_min,0.01
 Uptake_Km_min,0.001
-Vmax_Km,2.5
+Vmax_Km,1
 Vmax_Km_int,0.0
 Uptake_Vmax_Km,0.25
 Uptake_Vmax_Km_int,0.0
