@@ -1,10 +1,10 @@
 """
 Daily substrate degradation and CUE at one multiple of baseline (default 1x), from two maint_erosion_sweep.py runs
-(e.g. HSP effect on maintenance Ea on vs off), erosion off and on: four lines per panel, one column per temperature.
+(e.g. HSP effect on maintenance Ea on vs off), endogenous respiration (R_endo) off and on: four lines per panel, one column per temperature.
 
 Usage:
     python plot_baseline_cue_degradation.py DIR_A DIR_B OUT.png [--labels "HSP effect on" "HSP effect off"] [--mult 1]
-Colours = run (A blue, B orange); solid = erosion off, dashed = erosion on. CUE is left blank on days with no living cells.
+Colours = run (A blue, B orange); wide pale = R_endo off, thin dashed = R_endo on. CUE is left blank on days with no living cells.
 """
 import argparse
 
@@ -19,6 +19,7 @@ plt.rcParams.update({"font.size": 9, "axes.titlesize": 10, "axes.labelsize": 9, 
                      "axes.spines.top": False, "axes.spines.right": False, "axes.grid": True, "grid.color": "#e6e5e0",
                      "grid.linewidth": 0.6, "axes.edgecolor": "#8a8981", "xtick.color": "#5f5e57", "ytick.color": "#5f5e57"})
 COLORS = ["#2a78d6", "#eb6834"]
+ENDO = r"R$_{\mathrm{endo}}$"  # endogenous respiration
 
 
 def main():
@@ -47,12 +48,12 @@ def main():
         for r, (v, lab) in enumerate((("degraded", "Substrate degraded (%)"), ("CUE", "CUE"))):
             ax = axes[r][c]
             for i, run in enumerate(a.labels):
-                # erosion off: wide pale line underneath; erosion on: thin dashed line on top (they coincide until
+                # R_endo off: wide pale line underneath; R_endo on: thin dashed line on top (they coincide until
                 # cells run out of energy, so both stay visible where they overlap)
                 for e, ls, lw, alpha in ((0, "-", 4.0, 0.35), (1, (0, (3, 2)), 1.3, 1.0)):
                     y = m.loc[(run, e, t)][v]
                     ax.plot(y.index, y.values, color=COLORS[i], ls=ls, lw=lw, alpha=alpha, solid_capstyle="butt",
-                            label=f"{run}, erosion {'off' if e == 0 else 'on'}")
+                            label=f"{run}, {ENDO} {'off' if e == 0 else 'on'}")
             ax.set_ylim(0, 100 if v == "degraded" else 0.55)
             if r == 0:
                 ax.set_title(f"{t:g} °C")
@@ -63,7 +64,7 @@ def main():
     h, l = axes[0][0].get_legend_handles_labels()
     fig.legend(h, l, loc="lower center", ncol=2, frameon=False, bbox_to_anchor=(0.5, -0.06))
     fig.suptitle(f"Daily substrate degradation and CUE at {param} = {base * a.mult:g} ({a.mult:g}× baseline; mean of seeds)\n"
-                 "Erosion off (wide pale) and on (thin dashed) coincide until cells run out of energy")
+                 f"Endogenous respiration ({ENDO}) off (wide pale) and on (thin dashed) coincide until cells run out of energy")
     fig.tight_layout()
     fig.savefig(a.out, bbox_inches="tight")
     plt.close(fig)

@@ -4,9 +4,10 @@ Compare two maint_erosion_sweep.py runs that differ in one setting, e.g. the HSP
 
 Usage:
     python plot_hsp_slope_comparison.py DIR_A DIR_B OUT_DIR [--labels "HSP effect on" "HSP effect off"] [--ts-mult 1 2]
-Writes OUT_DIR/hsp_slope_endpoints.png (end-of-run outcomes vs multiple of baseline; solid = erosion off, dashed = on),
-OUT_DIR/hsp_slope_timeseries.png (daily substrate degradation and CUE at the --ts-mult multiples, erosion off) and
-OUT_DIR/hsp_slope_comparison.csv (seed means per temperature, multiple, erosion setting and run).
+Writes OUT_DIR/hsp_slope_endpoints.png (end-of-run outcomes vs multiple of baseline; solid = endogenous respiration (R_endo) off,
+dashed = on),
+OUT_DIR/hsp_slope_timeseries.png (daily substrate degradation and CUE at the --ts-mult multiples, R_endo off) and
+OUT_DIR/hsp_slope_comparison.csv (seed means per temperature, multiple, R_endo setting and run).
 """
 import argparse
 import os
@@ -21,6 +22,7 @@ plt.rcParams.update({"font.size": 9, "axes.titlesize": 10, "axes.labelsize": 9, 
                      "axes.spines.top": False, "axes.spines.right": False, "axes.grid": True, "grid.color": "#e6e5e0",
                      "grid.linewidth": 0.6, "axes.edgecolor": "#8a8981", "xtick.color": "#5f5e57", "ytick.color": "#5f5e57"})
 COLORS = ["#2a78d6", "#eb6834"]
+ENDO = r"R$_{\mathrm{endo}}$"  # endogenous respiration
 MARKERS = ["o", "s"]
 METRICS = [("deg_pct", "Substrate degraded (%)"), ("biomC", "Biomass C, day 365"), ("CUE", "CUE (last 30 days)"),
            ("alive", "Cells alive, day 365"), ("EC_end", "Energy:C, day 365"), ("HSP_prop", "HSP share of biomass\n(last 30 days)"),
@@ -56,7 +58,7 @@ def main():
                         continue
                     y = mean.loc[(run, t, e)][m]
                     ax.plot(y.index, y.values, color=COLORS[i], ls=ls, marker=MARKERS[i] if e == 0 else None, ms=3,
-                            lw=1.5 if e == 0 else 1.1, label=f"{run}, erosion {'off' if e == 0 else 'on'}")
+                            lw=1.5 if e == 0 else 1.1, label=f"{run}, {ENDO} {'off' if e == 0 else 'on'}")
             ax.axvline(1, color="#8a8981", lw=0.8, ls=":")
             if m == "CUE":
                 ax.set_ylim(0, 0.55)
@@ -73,7 +75,7 @@ def main():
     fig.savefig(os.path.join(a.out_dir, "hsp_slope_endpoints.png"), bbox_inches="tight")
     plt.close(fig)
 
-    # ── Time series at selected multiples (erosion off) ────────────────────────────────────────────────────────
+    # ── Time series at selected multiples (R_endo off) ────────────────────────────────────────────────────────
     tss = []
     for dd, lab in zip((a.dir_a, a.dir_b), a.labels):
         ts = pd.read_csv(os.path.join(dd, "timeseries.csv.gz"),
@@ -104,7 +106,7 @@ def main():
                 ax.set_xlabel("Day")
     h, l = axes[0][0].get_legend_handles_labels()
     fig.legend(h, l, loc="lower center", ncol=2, frameon=False, bbox_to_anchor=(0.5, -0.03))
-    fig.suptitle(f"Daily substrate degradation and CUE, erosion off (mean of seeds)", y=1.0)
+    fig.suptitle(f"Daily substrate degradation and CUE, endogenous respiration ({ENDO}) off (mean of seeds)", y=1.0)
     fig.tight_layout()
     fig.savefig(os.path.join(a.out_dir, "hsp_slope_timeseries.png"), bbox_inches="tight")
     plt.close(fig)

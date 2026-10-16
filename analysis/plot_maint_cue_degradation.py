@@ -4,8 +4,8 @@ multiple of baseline (mean of seeds).
 
 Usage:
     python plot_maint_cue_degradation.py ../analysis_output/maint_erosion_sweep
-Writes <dir>/maint_cue_degradation.png. Rows: substrate degraded (%; identical with erosion off and on), CUE with
-erosion off, CUE with erosion on. CUE is the grid value of each day (after rebalancing losses, floored at 0); days with
+Writes <dir>/maint_cue_degradation.png. Rows: substrate degraded (%; identical with endogenous respiration (R_endo)
+off and on), CUE with R_endo off, CUE with R_endo on. CUE is the grid value of each day (after rebalancing losses, floored at 0); days with
 no living cells are left blank.
 """
 import argparse
@@ -45,8 +45,9 @@ def main():
     norm = BoundaryNorm(np.arange(len(mults) + 1) - 0.5, cmap.N)   # one equal band per multiple
     idx = {mu: i for i, mu in enumerate(mults)}
 
-    rows = [("degraded", 0, "Substrate degraded (%)\n(erosion off = on)"), ("CUE", 0, "CUE, erosion off"),
-            ("CUE", 1, "CUE, erosion on")]
+    ENDO = r"R$_{\mathrm{endo}}$"  # endogenous respiration
+    rows = [("degraded", 0, f"Substrate degraded (%)\n({ENDO} off = on)"), ("CUE", 0, f"CUE, {ENDO} off"),
+            ("CUE", 1, f"CUE, {ENDO} on")]
     fig, axes = plt.subplots(len(rows), len(temps), figsize=(3.1 * len(temps), 2.5 * len(rows)), sharex=True,
                              sharey="row", squeeze=False)
     for c, t in enumerate(temps):

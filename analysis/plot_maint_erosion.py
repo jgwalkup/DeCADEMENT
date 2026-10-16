@@ -3,9 +3,9 @@ Figures and summary table for maint_erosion_sweep.py output.
 
 Usage:
     python plot_maint_erosion.py ../analysis_output/maint_erosion_sweep
-Writes <dir>/maint_erosion.png (end-of-run outcomes vs the multiple of baseline, one column per temperature, erosion off
-vs on), <dir>/maint_erosion_timeseries.png (daily biomass and energy:C for selected multiples) and
-<dir>/maint_erosion_summary.csv (per temperature and erosion setting: collapse multiple, values at baseline, unpaid energy).
+Writes <dir>/maint_erosion.png (end-of-run outcomes vs the multiple of baseline, one column per temperature, endogenous
+respiration (R_endo) off vs on), <dir>/maint_erosion_timeseries.png (daily biomass and energy:C for selected multiples) and
+<dir>/maint_erosion_summary.csv (per temperature and R_endo setting: collapse multiple, values at baseline, unpaid energy).
 """
 import argparse
 import os
@@ -19,11 +19,12 @@ import pandas as pd
 plt.rcParams.update({"font.size": 9, "axes.titlesize": 10, "axes.labelsize": 9, "legend.fontsize": 9, "figure.dpi": 150,
                      "axes.spines.top": False, "axes.spines.right": False, "axes.grid": True, "grid.color": "#e6e5e0",
                      "grid.linewidth": 0.6, "axes.edgecolor": "#8a8981", "xtick.color": "#5f5e57", "ytick.color": "#5f5e57"})
-STYLE = {0: dict(color="#2a78d6", ls="-", marker="o", label="erosion off"),
-         1: dict(color="#eb6834", ls="--", marker="s", label="erosion on")}
+ENDO = r"R$_{\mathrm{endo}}$"  # endogenous respiration (the E_deficit_erosion switch)
+STYLE = {0: dict(color="#2a78d6", ls="-", marker="o", label=f"{ENDO} off"),
+         1: dict(color="#eb6834", ls="--", marker="s", label=f"{ENDO} on")}
 METRICS = [("deg_pct", "Substrate degraded (%)"), ("biomC", "Biomass C, day 365"), ("CUE", "CUE (last 30 days)"),
            ("alive", "Cells alive, day 365"), ("EC_end", "Energy:C, day 365"),
-           ("E_unpaid_cum", "Unpaid energy\n(per cell, year)"), ("erosion_C_cum", "C eroded\n(per cell, year)")]
+           ("E_unpaid_cum", "Unpaid energy\n(per cell, year)"), ("erosion_C_cum", "C respired endogenously\n(per cell, year)")]
 LOST = 100  # collapse: >= 100 of 400 cells lost (stage-A convention)
 
 
@@ -63,7 +64,7 @@ def main():
             if r == len(METRICS) - 1:
                 ax.set_xlabel(f"{param} (× baseline {base:g})")
     axes[0][0].legend(loc="best", frameon=False)
-    fig.suptitle(f"{param} sensitivity, energy-deficit erosion off vs on (mean of seeds; band = seed range)" + (f"\n{a.note}" if a.note else ""), y=1.0)
+    fig.suptitle(f"{param} sensitivity, endogenous respiration ({ENDO}) off vs on (mean of seeds; band = seed range)" + (f"\n{a.note}" if a.note else ""), y=1.0)
     fig.tight_layout()
     fig.savefig(os.path.join(a.dir, "maint_erosion.png"), bbox_inches="tight")
     plt.close(fig)
