@@ -1,5 +1,5 @@
 """
-Minimal model under daily climate forcing, endogenous respiration (R_endo, the E_deficit_erosion switch) off and on.
+Minimal model under daily climate forcing, endogenous respiration (R_endo) off and on.
 
 Each run is one pulse driven by the first --days days of a climate file (Temp and Psi), with the input folder otherwise
 unchanged. Default: the three scenario files in ../input/climate_data (ambient, moderate warming +5 C, extreme warming
@@ -9,7 +9,7 @@ Usage:
     python climate_endo_run.py OUT_DIR [--input ../input_minimal_e1500_crich_km25_in]
         [--climates ../input/climate_data/climate_ambient_temp.csv ...] [--seeds 0 1 2] [--days 365] [--side 20]
         [--endo 0 1] [--set NAME=VALUE ...] [--procs 2]
-Writes OUT_DIR/summary.csv and OUT_DIR/timeseries.csv.gz (columns climate, endo, seed + sweep_minimal.run_one output);
+Writes OUT_DIR/summary.csv and OUT_DIR/timeseries.csv.gz (columns climate, R_endo, seed + sweep_minimal.run_one output);
 restartable.
 """
 import argparse
@@ -35,8 +35,8 @@ def _name(path):
 
 def _job(args):
     src, clim, endo, seed, side, days, fixed = args
-    summary, series = run_one(src, {**fixed, "E_deficit_erosion": float(endo)}, side, days, seed, climate=clim)
-    key = dict(climate=_name(clim), endo=endo, seed=seed)
+    summary, series = run_one(src, {**fixed, "R_endo": float(endo)}, side, days, seed, climate=clim)
+    key = dict(climate=_name(clim), R_endo=endo, seed=seed)
     return {**key, **summary}, pd.DataFrame(series).assign(**key)
 
 
@@ -57,7 +57,7 @@ def main():
     done = set()
     if os.path.exists(sp):
         d = pd.read_csv(sp)
-        done = set(zip(d["climate"], d["endo"], d["seed"]))
+        done = set(zip(d["climate"], d["R_endo"], d["seed"]))
     fixed = {k: float(v) for k, v in (x.split("=") for x in a.set)}
     src = os.path.abspath(a.input)
     jobs = [(src, os.path.abspath(c), e, s, a.side, a.days, fixed) for c, e, s in itertools.product(a.climates, a.endo, a.seeds)
@@ -67,7 +67,7 @@ def main():
         for k, (row, ts) in enumerate(pool.imap_unordered(_job, jobs), 1):
             pd.DataFrame([row]).to_csv(sp, mode="a", header=not os.path.exists(sp), index=False)
             ts.to_csv(tp, mode="a", header=not os.path.exists(tp), index=False, compression="gzip")
-            print(f"  {k}/{len(jobs)} {row['climate']} endo={row['endo']} seed={row['seed']}", flush=True)
+            print(f"  {k}/{len(jobs)} {row['climate']} R_endo={row['R_endo']} seed={row['seed']}", flush=True)
 
 
 if __name__ == "__main__":

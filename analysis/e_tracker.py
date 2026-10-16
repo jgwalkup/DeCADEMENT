@@ -10,8 +10,8 @@ Per grid cell and day, per group g (bac = bacteria, fun = fungi):
   uptake_C_g, toE_C_g (C routed to energy = uptake_C - uptake_BC), uptake_BC_g (C routed to biomass), enzyme_C_g (C of enzyme production, taken from
                   the biomass C), overflow_C_g (C released by cells short of N or P in mortality), death_C_g
   E_clip_g        energy shortfall (costs above the energy available) that brings a negative E pool back to zero;  cells_Eclip_g = number of cells with a shortfall
-  E_unpaid_g      part of the shortfall not paid for (all of it unless E_deficit_erosion = 1, which pays it by respiring biomass C)
-  erosion_C_g     biomass C respired to pay shortfalls (E_deficit_erosion = 1)
+  E_unpaid_g      part of the shortfall not paid for (all of it unless R_endo = 1, which pays it by respiring biomass C)
+  R_endo_C_g     biomass C respired endogenously to pay shortfalls (R_endo = 1)
   E_cap_g         energy lost by capping E:C at E_max;   E_dead_g = energy in cells killed that day
   resid_E         (E at end - E at start of the day) - (uptake - costs + clip - cap - dead), summed over groups (should be ~0)
   CUE (model), cells_g (occupied cells)
@@ -96,7 +96,7 @@ def run(job):
                 enzC = f32(eco.Taxon_Enzyme_Cost_C)
                 pre = Mu[..., 3] + f32(eco.Microbe_E_Gain)                              # E pool before the floor at zero
                 clip = f32(eco.Taxon_E_deficit)                                         # shortfall (= -pre where pre < 0)
-                unpaid, eroded = f32(eco.Taxon_E_unpaid), f32(eco.Taxon_Erosion_C)
+                unpaid, endo_C = f32(eco.Taxon_E_unpaid), f32(eco.Taxon_R_endo_C)
                 eco.mortality(i)
                 M1 = eco.Microbes.to_numpy(dtype=np.float64).reshape(G, T, 4)
                 eco.reproduction(i)
@@ -126,7 +126,7 @@ def run(job):
                     row[f"death_C_{g}"] = (Mm[:, m, 0] * dead[:, m]).sum() / G
                     row[f"E_clip_{g}"] = clip[:, m].sum() / G
                     row[f"E_unpaid_{g}"] = unpaid[:, m].sum() / G
-                    row[f"erosion_C_{g}"] = eroded[:, m].sum() / G
+                    row[f"R_endo_C_{g}"] = endo_C[:, m].sum() / G
                     row[f"cells_Eclip_{g}"] = int(((pre[:, m] < 0) & (Mu[:, m, 0] > 0)).sum())
                     row[f"E_cap_{g}"] = ((Mm[:, m, 3] - M1[:, m, 3]) * live).sum() / G
                     row[f"E_dead_{g}"] = (Mm[:, m, 3] * dead[:, m]).sum() / G

@@ -1,12 +1,12 @@
 """
-Maintenance-energy sensitivity with the energy-deficit erosion switch off and on (minimal scenario).
+Maintenance-energy sensitivity with endogenous respiration (R_endo) off and on (minimal scenario).
 
-Sweeps Maint_E_Rate_Const as multiples of its baseline at flat temperatures, for E_deficit_erosion 0 and 1, several
+Sweeps Maint_E_Rate_Const as multiples of its baseline at flat temperatures, for R_endo 0 and 1, several
 seeds; same design as the stage-A re-run (analysis_output/stageA_rerun: 20x20, 365 days, 4/15/28/36 C, 15 multiples,
 3 seeds) but HSP production as in the input folder (no no-HSP control arm).
 
 Usage:
-    python maint_erosion_sweep.py OUT_DIR [--input ../input_minimal_e1500_crich_km25_in] [--param Maint_E_Rate_Const]
+    python maint_endo_sweep.py OUT_DIR [--input ../input_minimal_e1500_crich_km25_in] [--param Maint_E_Rate_Const]
         [--base 2.5] [--mult 0.2 0.4 ...] [--temps 4 15 28 36] [--seeds 0 1 2] [--side 20] [--days 365] [--procs 2]
         [--set NAME=VALUE ...]   (fixed parameters.csv overrides for every run, e.g. Maint_E_HSP_Ea_Slope=0)
 Writes OUT_DIR/summary.csv (one row per run: end-of-run summary from sweep_minimal.run_one) and
@@ -28,10 +28,10 @@ MULT = [0.2, 0.4, 0.6, 0.8, 1, 1.25, 1.5, 1.75, 2, 2.5, 3, 3.5, 4, 4.5, 5]
 
 
 def _job(args):
-    src, param, base, mult, temp, erosion, seed, side, days, fixed = args
-    summary, series = run_one(src, {**fixed, param: base * mult, "E_deficit_erosion": float(erosion)}, side, days, seed,
+    src, param, base, mult, temp, endo, seed, side, days, fixed = args
+    summary, series = run_one(src, {**fixed, param: base * mult, "R_endo": float(endo)}, side, days, seed,
                               temp=temp)
-    key = dict(param=param, mult=mult, value=base * mult, Temp=temp, erosion=erosion, seed=seed)
+    key = dict(param=param, mult=mult, value=base * mult, Temp=temp, R_endo=endo, seed=seed)
     return {**key, **summary}, pd.DataFrame(series).assign(**key)
 
 
@@ -44,7 +44,7 @@ def main():
     ap.add_argument("--mult", type=float, nargs="+", default=MULT)
     ap.add_argument("--temps", type=float, nargs="+", default=[4, 15, 28, 36])
     ap.add_argument("--seeds", type=int, nargs="+", default=[0, 1, 2])
-    ap.add_argument("--erosion", type=int, nargs="+", default=[0, 1])
+    ap.add_argument("--endo", type=int, nargs="+", default=[0, 1])
     ap.add_argument("--side", type=int, default=20)
     ap.add_argument("--days", type=int, default=365)
     ap.add_argument("--procs", type=int, default=2)
@@ -55,19 +55,19 @@ def main():
     done = set()
     if os.path.exists(sp):
         d = pd.read_csv(sp)
-        done = set(zip(d["mult"].round(6), d["Temp"], d["erosion"], d["seed"]))
+        done = set(zip(d["mult"].round(6), d["Temp"], d["R_endo"], d["seed"]))
     src = os.path.abspath(a.input)
     fixed = {k: float(v) for k, v in (x.split("=") for x in a.set)}
     if fixed:
         print(f"fixed overrides: {fixed}", flush=True)
     jobs = [(src, a.param, a.base, m, t, e, s, a.side, a.days, fixed)
-            for t, e, s, m in itertools.product(a.temps, a.erosion, a.seeds, a.mult) if (round(m, 6), t, e, s) not in done]
+            for t, e, s, m in itertools.product(a.temps, a.endo, a.seeds, a.mult) if (round(m, 6), t, e, s) not in done]
     print(f"{len(jobs)} runs ({len(done)} already done) -> {a.out_dir}", flush=True)
     with Pool(a.procs) as pool:
         for k, (row, ts) in enumerate(pool.imap_unordered(_job, jobs), 1):
             pd.DataFrame([row]).to_csv(sp, mode="a", header=not os.path.exists(sp), index=False)
             ts.to_csv(tp, mode="a", header=not os.path.exists(tp), index=False, compression="gzip")
-            print(f"  {k}/{len(jobs)} T={row['Temp']:g} erosion={row['erosion']} mult={row['mult']:g} seed={row['seed']}", flush=True)
+            print(f"  {k}/{len(jobs)} T={row['Temp']:g} R_endo={row['R_endo']} mult={row['mult']:g} seed={row['seed']}", flush=True)
 
 
 if __name__ == "__main__":

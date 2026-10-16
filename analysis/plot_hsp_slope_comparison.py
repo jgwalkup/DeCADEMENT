@@ -1,5 +1,5 @@
 """
-Compare two maint_erosion_sweep.py runs that differ in one setting, e.g. the HSP effect on the maintenance Ea on
+Compare two maint_endo_sweep.py runs that differ in one setting, e.g. the HSP effect on the maintenance Ea on
 (Maint_E_HSP_Ea_Slope -90000) vs off (slope 0).
 
 Usage:
@@ -43,7 +43,7 @@ def main():
     param = d["param"].iloc[0]
     base = float((d["value"] / d["mult"]).iloc[0])
     temps = sorted(d["Temp"].unique())
-    mean = d.groupby(["run", "Temp", "erosion", "mult"]).mean(numeric_only=True)
+    mean = d.groupby(["run", "Temp", "R_endo", "mult"]).mean(numeric_only=True)
     mean.to_csv(os.path.join(a.out_dir, "hsp_slope_comparison.csv"))
 
     # ── End-of-run outcomes vs multiple ───────────────────────────────────────────────────────────────────────
@@ -79,8 +79,8 @@ def main():
     tss = []
     for dd, lab in zip((a.dir_a, a.dir_b), a.labels):
         ts = pd.read_csv(os.path.join(dd, "timeseries.csv.gz"),
-                         usecols=["mult", "Temp", "erosion", "seed", "day", "CUE", "substrate_remaining_pct", "alive_cells"])
-        ts = ts[(ts["erosion"] == 0) & ts["mult"].round(6).isin([round(x, 6) for x in a.ts_mult])]
+                         usecols=["mult", "Temp", "R_endo", "seed", "day", "CUE", "substrate_remaining_pct", "alive_cells"])
+        ts = ts[(ts["R_endo"] == 0) & ts["mult"].round(6).isin([round(x, 6) for x in a.ts_mult])]
         tss.append(ts.assign(run=lab))
     ts = pd.concat(tss, ignore_index=True)
     ts["degraded"] = 100 - ts["substrate_remaining_pct"]

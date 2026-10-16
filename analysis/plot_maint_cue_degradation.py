@@ -1,9 +1,9 @@
 """
-Daily substrate degradation and CUE for every run of maint_erosion_sweep.py, one column per temperature, one line per
+Daily substrate degradation and CUE for every run of maint_endo_sweep.py, one column per temperature, one line per
 multiple of baseline (mean of seeds).
 
 Usage:
-    python plot_maint_cue_degradation.py ../analysis_output/maint_erosion_sweep
+    python plot_maint_cue_degradation.py ../analysis_output/maint_endo_sweep
 Writes <dir>/maint_cue_degradation.png. Rows: substrate degraded (%; identical with endogenous respiration (R_endo)
 off and on), CUE with R_endo off, CUE with R_endo on. CUE is the grid value of each day (after rebalancing losses, floored at 0); days with
 no living cells are left blank.
@@ -35,10 +35,10 @@ def main():
     s = pd.read_csv(os.path.join(a.dir, "summary.csv"), nrows=1)
     param, base = s["param"].iloc[0], float(s["value"].iloc[0] / s["mult"].iloc[0])
     ts = pd.read_csv(os.path.join(a.dir, "timeseries.csv.gz"),
-                     usecols=["mult", "Temp", "erosion", "seed", "day", "CUE", "substrate_remaining_pct", "alive_cells"])
+                     usecols=["mult", "Temp", "R_endo", "seed", "day", "CUE", "substrate_remaining_pct", "alive_cells"])
     ts["degraded"] = 100 - ts["substrate_remaining_pct"]
     ts.loc[ts["alive_cells"] == 0, "CUE"] = np.nan
-    m = ts.groupby(["Temp", "erosion", "mult", "day"])[["degraded", "CUE"]].mean()
+    m = ts.groupby(["Temp", "R_endo", "mult", "day"])[["degraded", "CUE"]].mean()
     temps = sorted(ts["Temp"].unique())
     mults = sorted(ts["mult"].unique())
     cmap = LinearSegmentedColormap.from_list("ramp", RAMP, N=len(mults))

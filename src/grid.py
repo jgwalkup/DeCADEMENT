@@ -168,14 +168,15 @@ class Grid():
         # fermentation condition score (0-1): reflects environmental favorability of fermentation vs respiration
         self.ferm_cond = data_init['FermCond']  # currently set to 0.1; can update to vary with environmental conditions
         self.active_uptake_E_cost = data_init['ActiveUptakeE_cost']  # energy cost of transporting monomers
-        # Energy deficit: when on, a cell whose energy costs exceed its energy pays the shortfall by respiring free
-        # biomass C (C not bound in HSP/osmolytes) at the respiration energy yield of the necromass monomer (E_resp of
-        # Mon_DeadMic; no fermentation, all eroded C leaves as CO2); when off, the shortfall is floored away (E set to 0).
-        self.E_deficit_erosion = bool(data_init['E_deficit_erosion'])
-        if self.E_deficit_erosion:
+        # Endogenous respiration (R_endo): when on, a cell whose energy costs exceed its energy pays the shortfall by
+        # respiring free biomass C (C not bound in HSP/osmolytes) at the respiration energy yield of the necromass monomer
+        # (E_resp of Mon_DeadMic; no fermentation, all of that C leaves as CO2); when off, the shortfall is floored away
+        # (E set to 0).
+        self.R_endo = bool(data_init['R_endo'])
+        if self.R_endo:
             if 'Mon_DeadMic' not in self.Monomer_energy.index:
-                raise ValueError("E_deficit_erosion = 1 needs a 'Mon_DeadMic' row in monomer_energy.csv")
-            self._erosion_E_yield = np.float32(self.Monomer_energy.loc['Mon_DeadMic', 'E_resp'])  # energy per C eroded
+                raise ValueError("R_endo = 1 needs a 'Mon_DeadMic' row in monomer_energy.csv")
+            self._R_endo_E_yield = np.float32(self.Monomer_energy.loc['Mon_DeadMic', 'E_resp'])  # energy per C respired
 
         # Metabolism
         self.Consti_Enzyme_C = data_init["EnzProdConstit"]  # C cost of encoding constitutive enzyme
@@ -861,21 +862,21 @@ class Grid():
         # ── Energy deficit: energy costs (transport, maintenance) above the energy available ──────────────────────
         # Production is limited to the energy available, so a shortfall comes from transport and maintenance only.
         E_deficit = np.maximum(-E_raw, np.float32(0))
-        C_eroded = np.zeros_like(E_deficit)
-        if self.E_deficit_erosion and E_deficit.any():
+        C_endo = np.zeros_like(E_deficit)
+        if self.R_endo and E_deficit.any():
             free_C_now = np.maximum(Microbes_C - self._hsp_pool.sum(axis=1) - self._osmo_pool.sum(axis=1), 0)
-            C_eroded = np.minimum(E_deficit / self._erosion_E_yield, free_C_now).astype(np.float32)
-            Microbes_C = Microbes_C - C_eroded           # E stays at 0: the shortfall is paid, not stored
+            C_endo = np.minimum(E_deficit / self._R_endo_E_yield, free_C_now).astype(np.float32)
+            Microbes_C = Microbes_C - C_endo           # E stays at 0: the shortfall is paid, not stored
             self.Microbes['C'] = Microbes_C
-            self.Taxon_resp_df += C_eroded.reshape(G, T)  # all eroded C is respired (with this day's uptake CO2)
-        # energy that was not paid for (with erosion off, all of the shortfall; on, what free C could not cover)
-        E_unpaid = np.maximum(E_deficit - C_eroded * (self._erosion_E_yield if self.E_deficit_erosion else 0), 0)
+            self.Taxon_resp_df += C_endo.reshape(G, T)  # all endogenously respired C (with this day's uptake CO2)
+        # energy that was not paid for (with R_endo off, all of the shortfall; on, what free C could not cover)
+        E_unpaid = np.maximum(E_deficit - C_endo * (self._R_endo_E_yield if self.R_endo else 0), 0)
 
         # ── CUE, part 1: C retained so far (HSP and osmolyte C stays in biomass). Finished in mortality(), after the
         # C respired by stoichiometric rebalancing (see _update_cue) ─────────────────────────────────────────────────
         Mic_BC_Use = Microbe_C_Gain - Taxon_Enzyme_Consti_Cost_C
-        if self.E_deficit_erosion:
-            Mic_BC_Use = Mic_BC_Use - C_eroded           # biomass respired to pay energy deficits
+        if self.R_endo:
+            Mic_BC_Use = Mic_BC_Use - C_endo           # biomass respired to pay energy deficits
         self._cue_C_retained = np.asarray(Mic_BC_Use, dtype=np.float32)
         self._cue_C_uptake = np.asarray(Taxon_Uptake_C_v, dtype=np.float32)
         self._update_cue()                                # provisional until mortality() subtracts rebalancing losses
@@ -904,7 +905,7 @@ class Grid():
         self.Induci_limitation = r_induci         # joint C/N/E limitation of inducible production (1 = none)
         self.maint_E_cost_Ea = maint_E_cost_Ea
         self.Taxon_E_deficit = E_deficit          # energy shortfall before any payment from biomass
-        self.Taxon_Erosion_C = C_eroded           # biomass C respired to pay the shortfall (0 when the switch is off)
+        self.Taxon_R_endo_C = C_endo           # biomass C respired to pay the shortfall (0 when the switch is off)
         self.Taxon_E_unpaid = E_unpaid            # shortfall left unpaid (floored away: energy not accounted for)
         self.tax_maint_E_cost = tax_maint_E_cost
 
@@ -930,7 +931,7 @@ class Grid():
         )
 
     def _update_cue(self, rebalance_C_loss=None):
-        """CUE = (C taken up - C respired for energy - enzyme C - C eroded for energy deficits - C respired by
+        """CUE = (C taken up - C respired for energy - enzyme C - C respired endogenously (R_endo) - C respired by
         stoichiometric rebalancing) / C taken up, per cell (CUE_taxon) and for the grid (CUE_system); values below 0
         are set to 0. Cells without C uptake get 0. Dead-cell C (necromass) is not a loss here."""
         retained = self._cue_C_retained if rebalance_C_loss is None else self._cue_C_retained - rebalance_C_loss
@@ -1046,7 +1047,7 @@ class Grid():
 
             # ...Update Substrates pool by adding dead microbial biomass
             self.Substrates.loc[is_DeadMic] += Death_gridcell
-            # Respiration of the day (uptake CO2 and any deficit-erosion CO2; no rebalancing losses). Previously left
+            # Respiration of the day (uptake CO2 and any R_endo CO2; no rebalancing losses). Previously left
             # untouched here, so the last value was repeated every day once all cells were dead.
             self.Taxon_Resp = pd.Series(self.Taxon_resp_df.to_numpy(copy=True).ravel(order='C').astype(np.float32),
                                         index=Mic_index)

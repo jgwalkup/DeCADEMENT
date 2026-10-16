@@ -1,5 +1,5 @@
 """
-Daily substrate degradation and CUE at one multiple of baseline (default 1x), from two maint_erosion_sweep.py runs
+Daily substrate degradation and CUE at one multiple of baseline (default 1x), from two maint_endo_sweep.py runs
 (e.g. HSP effect on maintenance Ea on vs off), endogenous respiration (R_endo) off and on: four lines per panel, one column per temperature.
 
 Usage:
@@ -35,12 +35,12 @@ def main():
     parts = []
     for d, lab in zip((a.dir_a, a.dir_b), a.labels):
         ts = pd.read_csv(os.path.join(d, "timeseries.csv.gz"),
-                         usecols=["mult", "Temp", "erosion", "seed", "day", "CUE", "substrate_remaining_pct", "alive_cells"])
+                         usecols=["mult", "Temp", "R_endo", "seed", "day", "CUE", "substrate_remaining_pct", "alive_cells"])
         parts.append(ts[ts["mult"].round(6) == round(a.mult, 6)].assign(run=lab))
     ts = pd.concat(parts, ignore_index=True)
     ts["degraded"] = 100 - ts["substrate_remaining_pct"]
     ts.loc[ts["alive_cells"] == 0, "CUE"] = np.nan
-    m = ts.groupby(["run", "erosion", "Temp", "day"])[["degraded", "CUE"]].mean()
+    m = ts.groupby(["run", "R_endo", "Temp", "day"])[["degraded", "CUE"]].mean()
     temps = sorted(ts["Temp"].unique())
 
     fig, axes = plt.subplots(2, len(temps), figsize=(3.1 * len(temps), 5.4), sharex=True, sharey="row", squeeze=False)

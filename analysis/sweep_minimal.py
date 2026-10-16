@@ -81,7 +81,7 @@ def run_one(src_input, changes, side, days, seed, temp=None, climate=None):
         sub = [s for s in data["Substrate_index"] if s not in ("DeadMic", "DeadEnz")][0]
         sub0 = float(np.asarray(eco.Substrates.loc[sub, "C"]).sum())
         resp_cum, ec_min, zero_prod = 0.0, np.inf, 0
-        unpaid_cum, eroded_cum, deficit_days, collapse_day = 0.0, 0.0, 0, np.nan
+        unpaid_cum, endo_C_cum, deficit_days, collapse_day = 0.0, 0.0, 0, np.nan
         n0 = int((np.asarray(eco.Microbes["C"]) > 0).sum())
         tail = {k: [] for k in ("E_prod", "E_cost", "maint", "CUE", "HSP_prop", "maint_Ea", "maint_rate_percap")}
         series = []
@@ -99,9 +99,9 @@ def run_one(src_input, changes, side, days, seed, temp=None, climate=None):
             n = int(alive.sum())
             resp_cum += float(np.asarray(eco.Taxon_Resp).sum()) / G
             unpaid = float(np.sum(getattr(eco, "Taxon_E_unpaid", 0.0))) / G      # energy shortfall not paid for
-            eroded = float(np.sum(getattr(eco, "Taxon_Erosion_C", 0.0))) / G     # biomass C respired for shortfalls
+            endo_C = float(np.sum(getattr(eco, "Taxon_R_endo_C", 0.0))) / G     # biomass C respired for shortfalls
             unpaid_cum += unpaid
-            eroded_cum += eroded
+            endo_C_cum += endo_C
             deficit_days += float(np.sum(getattr(eco, "Taxon_E_deficit", 0.0))) > 0
             zero_prod += float(np.asarray(eco.Enzyme_Production).sum()) <= 0
             nn = max(n, 1)
@@ -135,7 +135,7 @@ def run_one(src_input, changes, side, days, seed, temp=None, climate=None):
                 Drought_tol=float(np.asarray(eco.Drought_tol)[alive].mean()) if n else np.nan,
                 killed=int(eco.Kill),
                 E_unpaid=unpaid,
-                erosion_C=eroded,
+                R_endo_C=endo_C,
             ))
             if np.isnan(collapse_day) and n0 - n >= 100:
                 collapse_day = i + 1
@@ -172,7 +172,7 @@ def run_one(src_input, changes, side, days, seed, temp=None, climate=None):
             maint_Ea=m["maint_Ea"],
             maint_rate_percap=m["maint_rate_percap"],
             E_unpaid_cum=unpaid_cum,        # per grid cell over the run
-            erosion_C_cum=eroded_cum,       # per grid cell over the run
+            R_endo_C_cum=endo_C_cum,       # per grid cell over the run
             deficit_days=deficit_days,      # days on which any cell had an energy shortfall
             collapse_day=collapse_day,      # first day with >= 100 fewer living cells than at the start
         )

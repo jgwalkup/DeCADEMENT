@@ -26,7 +26,7 @@ file as items are resolved (the git log has the details of each change).
   of the NH4 input leaches over a year. Daily and per-pulse leached N and P are in the output.
 - **Inducible osmolyte production is nearly inert under drought** (tied to uptake and leftover energy, both of which
   collapse); drought tolerance currently behaves as a constitutive trait.
-- **Endogenous respiration (R_endo) default.** The switch `E_deficit_erosion` is 0 in every input folder (shortfalls floored away; the output
+- **Endogenous respiration (R_endo) default.** The switch `R_endo` is 0 in every input folder (shortfalls floored away; the output
   `E_unpaid_Taxon` shows how much). The maintenance sensitivity runs use both settings.
 - **Calibration**: `HSP_max_frac`, `Osmo_max_frac` (defaults 0.2) and `Osmo_tol_K` (default 0.05) are placeholders;
   the linear composition feedback acts as a constant tax well below the cap.

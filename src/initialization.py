@@ -67,6 +67,9 @@ def _validate_energy_ratios(parameters):
 
 def _check_retired_rows(parameters):
     """Rows whose function was merged into another row: fail if they disagree with the row that replaced them."""
+    if "E_deficit_erosion" in parameters.index:
+        raise ValueError("parameters.csv: 'E_deficit_erosion' has been renamed 'R_endo' (endogenous respiration); "
+                         "rename the row.")
     merged = {"mmrt_Vmax_Km_slope": "Vmax_Km", "mmrt_Vmax_Km_int": "Vmax_Km_int",
               "Uptake_mmrt_Vmax_Km_slope": "Uptake_Vmax_Km", "Uptake_mmrt_Vmax_Km_int": "Uptake_Vmax_Km_int",
               "mmrt_Km_error": "Km_error"}
@@ -611,7 +614,7 @@ def initialize_data(runtime_parameters, climate_file="climate.csv", community_di
         "Osmo_tol_K": _optional(parameters, "Osmo_tol_K", 0.05),
         # optional switch (0/1): pay energy shortfalls by respiring free biomass C at the respiration yield (E_resp) of the
         # necromass monomer (Mon_DeadMic in monomer_energy.csv); 0 = shortfalls are floored away (energy pool set to 0)
-        "E_deficit_erosion": _optional(parameters, "E_deficit_erosion", 0),
+        "R_endo": _optional(parameters, "R_endo", 0),
         # optional: daily NH4 and PO4 leaching fraction = Leaching * exp(Leaching_psi_slope * (Psi - wp_fc))
         "Leaching": _optional(parameters, "Leaching", 0.1),
         "Leaching_psi_slope": _optional(parameters, "Leaching_psi_slope", 0.5),

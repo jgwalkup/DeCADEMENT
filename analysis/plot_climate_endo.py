@@ -36,7 +36,7 @@ def main():
     ts = pd.read_csv(os.path.join(a.dir, "timeseries.csv.gz"))
     ts["degraded"] = 100 - ts["substrate_remaining_pct"]
     ts.loc[ts["alive_cells"] == 0, ["CUE", "energy_to_C", "Drought_tol"]] = np.nan
-    m = ts.groupby(["climate", "endo", "day"]).mean(numeric_only=True)
+    m = ts.groupby(["climate", "R_endo", "day"]).mean(numeric_only=True)
     clims = [c for c in ORDER if c in ts["climate"].unique()] + sorted(set(ts["climate"]) - set(ORDER))
 
     fig, axes = plt.subplots(4, 2, figsize=(10, 10.5), sharex=True)
@@ -68,11 +68,11 @@ def main():
     plt.close(fig)
 
     s = pd.read_csv(os.path.join(a.dir, "summary.csv"))
-    cols = ["deg_pct", "biomC", "CUE", "alive", "EC_end", "E_unpaid_cum", "erosion_C_cum", "deficit_days", "HSP_prop"]
-    out = s.groupby(["climate", "endo"])[cols].agg(["mean", "std"])
+    cols = ["deg_pct", "biomC", "CUE", "alive", "EC_end", "E_unpaid_cum", "R_endo_C_cum", "deficit_days", "HSP_prop"]
+    out = s.groupby(["climate", "R_endo"])[cols].agg(["mean", "std"])
     out.columns = [f"{x}_{y}" for x, y in out.columns]
     out.to_csv(os.path.join(a.dir, "climate_endo_summary.csv"))
-    print(s.groupby(["climate", "endo"])[cols].mean().round(3).to_string())
+    print(s.groupby(["climate", "R_endo"])[cols].mean().round(3).to_string())
 
 
 if __name__ == "__main__":

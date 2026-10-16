@@ -1,11 +1,11 @@
 """
-Figures and summary table for maint_erosion_sweep.py output.
+Figures and summary table for maint_endo_sweep.py output.
 
 Usage:
-    python plot_maint_erosion.py ../analysis_output/maint_erosion_sweep
-Writes <dir>/maint_erosion.png (end-of-run outcomes vs the multiple of baseline, one column per temperature, endogenous
-respiration (R_endo) off vs on), <dir>/maint_erosion_timeseries.png (daily biomass and energy:C for selected multiples) and
-<dir>/maint_erosion_summary.csv (per temperature and R_endo setting: collapse multiple, values at baseline, unpaid energy).
+    python plot_maint_endo.py ../analysis_output/maint_endo_sweep
+Writes <dir>/maint_endo.png (end-of-run outcomes vs the multiple of baseline, one column per temperature, endogenous
+respiration (R_endo) off vs on), <dir>/maint_endo_timeseries.png (daily biomass and energy:C for selected multiples) and
+<dir>/maint_endo_summary.csv (per temperature and R_endo setting: collapse multiple, values at baseline, unpaid energy).
 """
 import argparse
 import os
@@ -19,12 +19,12 @@ import pandas as pd
 plt.rcParams.update({"font.size": 9, "axes.titlesize": 10, "axes.labelsize": 9, "legend.fontsize": 9, "figure.dpi": 150,
                      "axes.spines.top": False, "axes.spines.right": False, "axes.grid": True, "grid.color": "#e6e5e0",
                      "grid.linewidth": 0.6, "axes.edgecolor": "#8a8981", "xtick.color": "#5f5e57", "ytick.color": "#5f5e57"})
-ENDO = r"R$_{\mathrm{endo}}$"  # endogenous respiration (the E_deficit_erosion switch)
+ENDO = r"R$_{\mathrm{endo}}$"  # endogenous respiration
 STYLE = {0: dict(color="#2a78d6", ls="-", marker="o", label=f"{ENDO} off"),
          1: dict(color="#eb6834", ls="--", marker="s", label=f"{ENDO} on")}
 METRICS = [("deg_pct", "Substrate degraded (%)"), ("biomC", "Biomass C, day 365"), ("CUE", "CUE (last 30 days)"),
            ("alive", "Cells alive, day 365"), ("EC_end", "Energy:C, day 365"),
-           ("E_unpaid_cum", "Unpaid energy\n(per cell, year)"), ("erosion_C_cum", "C respired endogenously\n(per cell, year)")]
+           ("E_unpaid_cum", "Unpaid energy\n(per cell, year)"), ("R_endo_C_cum", "C respired endogenously\n(per cell, year)")]
 LOST = 100  # collapse: >= 100 of 400 cells lost (stage-A convention)
 
 
@@ -38,7 +38,7 @@ def main():
     param = d["param"].iloc[0]
     base = float((d["value"] / d["mult"]).iloc[0])
     temps = sorted(d["Temp"].unique())
-    g = d.groupby(["Temp", "erosion", "mult"])
+    g = d.groupby(["Temp", "R_endo", "mult"])
     mean, lo, hi = g.mean(numeric_only=True), g.min(numeric_only=True), g.max(numeric_only=True)
 
     # ── End-of-run outcomes ───────────────────────────────────────────────────────────────────────────────────
@@ -47,7 +47,7 @@ def main():
     for c, t in enumerate(temps):
         for r, (m, lab) in enumerate(METRICS):
             ax = axes[r][c]
-            for e in sorted(d["erosion"].unique()):
+            for e in sorted(d["R_endo"].unique()):
                 if (t, e) not in mean.index.droplevel(2):
                     continue
                 x = mean.loc[(t, e)].index.values
@@ -66,7 +66,7 @@ def main():
     axes[0][0].legend(loc="best", frameon=False)
     fig.suptitle(f"{param} sensitivity, endogenous respiration ({ENDO}) off vs on (mean of seeds; band = seed range)" + (f"\n{a.note}" if a.note else ""), y=1.0)
     fig.tight_layout()
-    fig.savefig(os.path.join(a.dir, "maint_erosion.png"), bbox_inches="tight")
+    fig.savefig(os.path.join(a.dir, "maint_endo.png"), bbox_inches="tight")
     plt.close(fig)
 
     # ── Summary table ─────────────────────────────────────────────────────────────────────────────────────────
@@ -75,20 +75,20 @@ def main():
         sub = sub.droplevel([0, 1])
         lost = sub.index[(400 - sub["alive"]) >= LOST]
         b = sub.loc[1.0] if 1.0 in sub.index else sub.iloc[(np.abs(sub.index - 1)).argmin()]
-        rows.append(dict(Temp=t, erosion=e, collapse_mult=float(lost.min()) if len(lost) else np.nan,
+        rows.append(dict(Temp=t, R_endo=e, collapse_mult=float(lost.min()) if len(lost) else np.nan,
                          deg_pct_at_1x=b["deg_pct"], biomC_at_1x=b["biomC"], CUE_at_1x=b["CUE"], EC_end_at_1x=b["EC_end"],
                          first_mult_with_deficit=float(sub.index[sub["deficit_days"] > 0].min()) if (sub["deficit_days"] > 0).any() else np.nan,
-                         unpaid_E_at_max_mult=sub["E_unpaid_cum"].iloc[-1], eroded_C_at_max_mult=sub["erosion_C_cum"].iloc[-1]))
+                         unpaid_E_at_max_mult=sub["E_unpaid_cum"].iloc[-1], R_endo_C_at_max_mult=sub["R_endo_C_cum"].iloc[-1]))
     s = pd.DataFrame(rows)
-    s.to_csv(os.path.join(a.dir, "maint_erosion_summary.csv"), index=False)
+    s.to_csv(os.path.join(a.dir, "maint_endo_summary.csv"), index=False)
     print(s.to_string(index=False, float_format=lambda v: f"{v:.4g}"))
 
     # ── Time series for selected multiples ────────────────────────────────────────────────────────────────────
     tp = os.path.join(a.dir, "timeseries.csv.gz")
     if os.path.exists(tp):
-        ts = pd.read_csv(tp, usecols=["mult", "Temp", "erosion", "seed", "day", "biomass_C", "energy_to_C", "alive_cells"])
+        ts = pd.read_csv(tp, usecols=["mult", "Temp", "R_endo", "seed", "day", "biomass_C", "energy_to_C", "alive_cells"])
         ts = ts[ts["mult"].round(6).isin([round(m, 6) for m in a.ts_mult])]
-        tm = ts.groupby(["Temp", "erosion", "mult", "day"]).mean(numeric_only=True)
+        tm = ts.groupby(["Temp", "R_endo", "mult", "day"]).mean(numeric_only=True)
         vars_ = [("biomass_C", "Biomass C"), ("energy_to_C", "Energy:C"), ("alive_cells", "Cells alive")]
         fig, axes = plt.subplots(len(vars_), len(temps), figsize=(3.0 * len(temps), 2.1 * len(vars_)), sharex=True,
                                  sharey="row", squeeze=False)
@@ -112,7 +112,7 @@ def main():
         fig.legend(loc="lower center", ncol=len(a.ts_mult), frameon=False, bbox_to_anchor=(0.5, -0.06))
         fig.suptitle(f"Daily trajectories at {', '.join(f'{m:g}' for m in sorted(a.ts_mult))} × baseline {param} (mean of seeds; lighter = higher multiple)", y=1.0)
         fig.tight_layout()
-        fig.savefig(os.path.join(a.dir, "maint_erosion_timeseries.png"), bbox_inches="tight")
+        fig.savefig(os.path.join(a.dir, "maint_endo_timeseries.png"), bbox_inches="tight")
         plt.close(fig)
 
 
