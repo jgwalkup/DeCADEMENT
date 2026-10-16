@@ -53,6 +53,12 @@ def main():
                 ax.plot(x, mean.loc[(t, e)][m], color=STYLE[e]["color"], ls=STYLE[e]["ls"], marker=STYLE[e]["marker"],
                         ms=3.5, lw=1.6, label=STYLE[e]["label"])
             ax.axvline(1, color="#8a8981", lw=0.8, ls=":")
+            if m == "CUE":
+                lo_y = -0.5
+                if (mean.xs(t, level=0)[m] < lo_y).any():
+                    ax.text(0.98, 0.04, "values below -0.5 off scale", transform=ax.transAxes, ha="right", va="bottom",
+                            fontsize=7, color="#5f5e57")
+                ax.set_ylim(lo_y, 0.75)
             if r == 0:
                 ax.set_title(f"{t:g} °C")
             if c == 0:
@@ -106,7 +112,7 @@ def main():
                 if r == len(vars_) - 1:
                     ax.set_xlabel("Day")
         fig.legend(loc="lower center", ncol=len(a.ts_mult), frameon=False, bbox_to_anchor=(0.5, -0.06))
-        fig.suptitle(f"Daily trajectories at {', '.join(f'{m:g}' for m in sorted(a.ts_mult))} × baseline {param} (mean of seeds; darker = higher)", y=1.0)
+        fig.suptitle(f"Daily trajectories at {', '.join(f'{m:g}' for m in sorted(a.ts_mult))} × baseline {param} (mean of seeds; lighter = higher multiple)", y=1.0)
         fig.tight_layout()
         fig.savefig(os.path.join(a.dir, "maint_erosion_timeseries.png"), bbox_inches="tight")
         plt.close(fig)
