@@ -59,13 +59,26 @@ def set_climate_temp(path, temp):
     df.to_csv(path)
 
 
-def run_one(src_input, changes, side, days, seed, temp=None, climate=None):
+class _RepopStub:
+    """Minimal stand-in for Output in Grid.repopulation(): daily cell counts per taxon, no pulse bookkeeping."""
+
+    def __init__(self, taxa, n_cols):
+        self.Taxon_count_repop = pd.DataFrame(np.zeros((len(taxa), n_cols)), index=taxa)
+
+    def record_pulse_init(self, ecosystem, next_pulse):
+        pass
+
+
+def run_one(src_input, changes, side, days, seed, temp=None, climate=None, pulses=1):
+    """One run of `pulses` pulses of `days` days each (repopulation between pulses as in dementpy.py: substrates,
+    monomers and enzymes reset, community re-placed from the taxa's cell counts over the pulse). Returns the end-of-run
+    summary (last pulse for the tail metrics) and the daily series (columns pulse, doy, day = day of the whole run)."""
     tmp = tempfile.mkdtemp()
     work = os.path.join(tmp, "in")
     shutil.copytree(src_input, work)
     set_params(os.path.join(work, "parameters.csv"), changes)
     set_runtime(os.path.join(work, "runtime.txt"),
-                dict(x=side, y=side, gridsize=side * side, pulse=1))
+                dict(x=side, y=side, gridsize=side * side, pulse=pulses, end_time=days))
     if climate is not None:  # substitute a climate file (daily Temp / Psi); applied before any flat-temperature override
         shutil.copy(climate, os.path.join(work, "climate.csv"))
     if temp is not None:
@@ -87,9 +100,12 @@ def run_one(src_input, changes, side, days, seed, temp=None, climate=None):
         series = []
         mon = "Mon_" + sub
         ps = lambda x: float(np.asarray(x).sum())
-        for i in range(days):
-            eco.degradation(0, i)
-            eco.uptake(0, i)
+        T = int(rt.loc["n_taxa", 1])
+        stub = _RepopStub(pd.unique(eco.Microbes.index), days * pulses + 2)
+        for i in range(days * pulses):
+            pl = i // days
+            eco.degradation(pl, i)
+            eco.uptake(pl, i)
             eco.metabolism(i)
             eco.mortality(i)
             eco.reproduction(i)
@@ -106,6 +122,8 @@ def run_one(src_input, changes, side, days, seed, temp=None, climate=None):
             zero_prod += float(np.asarray(eco.Enzyme_Production).sum()) <= 0
             nn = max(n, 1)
             series.append(dict(
+                pulse=pl + 1,
+                doy=i - pl * days + 1,
                 day=i + 1,
                 substrate_remaining_pct=100 * ps(eco.Substrates.loc[sub, "C"]) / sub0,
                 decay_rate=ps(eco.DecayRates) / G,
@@ -141,7 +159,7 @@ def run_one(src_input, changes, side, days, seed, temp=None, climate=None):
                 collapse_day = i + 1
             if n:
                 ec_min = min(ec_min, E[alive].sum() / C[alive].sum())
-                if i >= days - 30:
+                if i >= days * pulses - 30:
                     tail["E_prod"].append(float(np.asarray(eco.Taxon_Uptake_E).sum()) / n)
                     tail["E_cost"].append(float(np.asarray(eco.Microbe_E_Cost).sum()) / n)
                     tail["maint"].append(float(np.asarray(eco.Tax_cell_maint_E_cost).sum()) / n)
@@ -149,6 +167,9 @@ def run_one(src_input, changes, side, days, seed, temp=None, climate=None):
                     tail["HSP_prop"].append(float(np.asarray(eco.HSP_prop)[alive].mean()))
                     tail["maint_Ea"].append(float(np.asarray(eco.maint_E_cost_Ea)[alive].mean()))
                     tail["maint_rate_percap"].append(float(np.asarray(eco.tax_maint_E_cost)[alive].mean()))
+            stub.Taxon_count_repop.iloc[:, i + 1] = alive.reshape(G, T).sum(axis=0)
+            if (i + 1) % days == 0 and pl < pulses - 1:
+                eco.repopulation(stub, i, True)
         C = np.asarray(eco.Microbes["C"])
         E = np.asarray(eco.Microbes["E"])
         alive = C > 0

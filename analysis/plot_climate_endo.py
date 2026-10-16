@@ -4,7 +4,9 @@ Figure and table for climate_endo_run.py output: daily time courses under each c
 
 Usage:
     python plot_climate_endo.py ../analysis_output/climate_endo [--note TEXT]
-Writes <dir>/climate_endo.png and <dir>/climate_endo_summary.csv (day-365 seed means and SDs).
+Writes <dir>/climate_endo.png and <dir>/climate_endo_summary.csv (end-of-run seed means and SDs); for multi-pulse runs also
+<dir>/climate_endo_pulses.csv (per pulse: last-day substrate degraded, biomass C, cells alive, energy:C; CUE of the
+pulse's last 30 days; seed means).
 """
 import argparse
 import os
@@ -39,7 +41,9 @@ def main():
     m = ts.groupby(["climate", "R_endo", "day"]).mean(numeric_only=True)
     clims = [c for c in ORDER if c in ts["climate"].unique()] + sorted(set(ts["climate"]) - set(ORDER))
 
-    fig, axes = plt.subplots(4, 2, figsize=(10, 10.5), sharex=True)
+    n_pulses = int(ts["pulse"].max()) if "pulse" in ts.columns else 1
+    days = int(ts["doy"].max()) if "doy" in ts.columns else int(ts["day"].max())
+    fig, axes = plt.subplots(4, 2, figsize=(10 if n_pulses == 1 else 15, 10.5), sharex=True)
     for ax, (v, lab) in zip(axes.ravel(), PANELS):
         for c in clims:
             col = COLORS.get(c, "#5f5e57")
@@ -57,11 +61,14 @@ def main():
             ax.text(5, -1.0, " wp_fc", va="bottom", fontsize=7, color="#5f5e57")
         if v in ("CUE", "Drought_tol"):
             ax.set_ylim(bottom=0)
+        for p in range(1, n_pulses):
+            ax.axvline(p * days + 0.5, color="#8a8981", lw=0.8, ls=":")
     for ax in axes[-1]:
         ax.set_xlabel("Day")
     h, l = axes[0][0].get_legend_handles_labels()
     fig.legend(h, l, loc="lower center", ncol=3, frameon=False, bbox_to_anchor=(0.5, -0.045))
-    fig.suptitle("Minimal model under the climate scenarios (first year), endogenous respiration "
+    span = "first year" if n_pulses == 1 else f"{n_pulses} pulses of {days} days, dotted lines = new pulse"
+    fig.suptitle(f"Minimal model under the climate scenarios ({span}), endogenous respiration "
                  f"({ENDO}) off (wide pale) vs on (thin dashed); mean of seeds" + (f"\n{a.note}" if a.note else ""))
     fig.tight_layout()
     fig.savefig(os.path.join(a.dir, "climate_endo.png"), bbox_inches="tight")
@@ -73,6 +80,13 @@ def main():
     out.columns = [f"{x}_{y}" for x, y in out.columns]
     out.to_csv(os.path.join(a.dir, "climate_endo_summary.csv"))
     print(s.groupby(["climate", "R_endo"])[cols].mean().round(3).to_string())
+    if n_pulses > 1:
+        last = ts[ts["doy"] == days].groupby(["climate", "R_endo", "pulse"])[
+            ["degraded", "biomass_C", "alive_cells", "energy_to_C"]].mean()
+        cue = ts[ts["doy"] > days - 30].groupby(["climate", "R_endo", "pulse"])["CUE"].mean().rename("CUE_last30")
+        per = last.join(cue)
+        per.to_csv(os.path.join(a.dir, "climate_endo_pulses.csv"))
+        print(per.round(3).to_string())
 
 
 if __name__ == "__main__":

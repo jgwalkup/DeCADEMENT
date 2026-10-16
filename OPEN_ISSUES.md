@@ -16,6 +16,8 @@ file as items are resolved (the git log has the details of each change).
 - **Fungal distribution in the minimal model.** Fungal placement probability is scaled by `max_size_b/max_size_f`
   (about 4% of cells occupied at t0 with `taxa_per_box` 1), and fungal translocation averages every living fungal
   cell each day. Use the bacterial minimal variant for sensitivity analyses until this is revisited.
+  Repopulation between pulses does not apply the placement scaling, so pulses 2-6 start with every cell occupied (28x
+  the pulse-1 fungal biomass in the minimal model; SENSITIVITY_SUMMARY 5c). Placement and repopulation should agree.
 - **Transporters as tracked cellular compounds.** The two transport energy costs work as designed
   (transporter production per transporter produced; active transport per monomer taken up). Treating transporters
   like HSP and osmolytes (tracked pools) would need their production computed before `uptake()`.

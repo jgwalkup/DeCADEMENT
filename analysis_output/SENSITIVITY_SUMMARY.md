@@ -483,3 +483,20 @@ Terminology: **endogenous respiration (R_endo)** = respiring free biomass C (at 
 - **R_endo makes no difference**: no cell had an energy shortfall in any run (energy:C of living biomass stays at or above about 190, lowest in the driest weeks around day 270), so the two settings are identical.
 - **Drought controls the year.** Biomass peaks around day 150-170 and falls through the dry season; drought mortality cuts the living cells to 84 / 148 / 187 of 400 (ambient / moderate / extreme) around day 292, and they recover after rewetting (day ~295). Drought tolerance is about 0.38 throughout (osmolyte share 0.027 of biomass with Osmo_tol_K 0.05).
 - **Warming increases decomposition**: day-365 substrate degraded 8.0 / 13.9 / 17.9 %, biomass C 0.93 / 2.3 / 3.1, cells alive 234 / 395 / 399 (seed SD of degradation <= 0.2 points). Warmer runs grow more before the dry season and regrow faster after it. CUE (last 30 days) is 0.48 in all three; daily CUE falls from about 0.48 to 0.2-0.25 in the dry season.
+
+### 5b. Fungus under the climate scenarios (2026-10-16)
+
+**Setup (`climate_endo_fungus/`):** as section 5 with `input_minimal_e1500_crich_km25_fb1_in` (identical parameters, `fb` 1); model at commit ed80ea0 (R_endo renaming only).
+
+- The fungus starts in 14 of 400 cells (0.9 C per grid cell, the same total as the bacterium); placement scales fungal occupancy by max_size_b / max_size_f (see OPEN_ISSUES, fungal distribution).
+- **R_endo makes no difference** (no shortfalls; energy:C of living biomass at or above about 140).
+- Day 365: substrate degraded 7.9 / 13.6 / 17.1 % (bacterium 8.0 / 13.9 / 17.9), biomass C 1.13 / 2.6 / 3.2, occupied cells 12 / 29 / 34 (3-9 at the end of the dry season), CUE 0.49 / 0.49 / 0.48 (ambient / +5 C / +10 C). Per grid cell the fungus decomposes about as much as the bacterium.
+
+### 5c. Six pulses (six identical climate years) (2026-10-16)
+
+**Setup (`climate_endo_6p/` bacterium, `climate_endo_fungus_6p/` fungus):** as 5 / 5b with 6 pulses of 365 days (`climate_endo_run.py --pulses 6`; `sweep_minimal.run_one` now runs several pulses with `Grid.repopulation` between them, as `dementpy.py`); per-pulse table `climate_endo_pulses.csv`.
+
+- **With one taxon, nothing carries over between pulses.** Repopulation resets substrates, monomers, enzymes and the HSP/osmolyte pools and re-places the community from the taxa's cell counts; with a single taxon every cell is refilled with the initial cell. The climate years are identical, so the bacterial pulses are replicates: day-365 degradation 8.0-8.2 / 13.8-14.0 / 17.6-18.0 % across pulses, R_endo off = on; pulse 1 reproduces section 5.
+- **Fungus: pulses 2-6 start differently from pulse 1.** Repopulation refills all 400 cells at the initial fungal cell mass (25 C per grid cell, 28 times the pulse-1 start), because it does not apply the placement scaling. Degradation is then 79-80 / 97 / 99 % by day 365 (substrate below 5 % by day 194 at +10 C), and the warm runs run out of energy after the substrate is gone (from about day 229 at +10 C): shortfalls on 29-68 days per pulse at +5 C and 139-140 at +10 C, none at ambient.
+- **This is the only place so far where R_endo acts**: with R_endo on, day-365 biomass C is 9.3-11.1 vs 12.9-14.5 (+5 C) and 1.6-1.9 vs 3.4-4.1 (+10 C), occupied cells 18-23 vs 33-53 at +10 C; CUE of the last 30 days 0.00-0.16 vs about 0.50 at +5 C. Over the six pulses, R_endo off leaves 15,600 (+5 C) and 70,500 (+10 C) energy units per grid cell unpaid; R_endo on respires 18.5 and 52.9 C per grid cell instead. Starving cells also lose drought tolerance (no osmolyte production at E = 0 while the pool turns over).
+- The fungal pulse 2-6 results are an artifact of the placement / repopulation mismatch and should not be compared with pulse 1 or with the bacterium until that is resolved.
