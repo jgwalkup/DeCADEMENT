@@ -513,7 +513,31 @@ Terminology: **endogenous respiration (R_endo)** = respiring free biomass C (at 
 | ... and no drought mortality | 42.6 % | 33.6 | 145 |
 | Psi held at -0.5 MPa | 43.7 % | 35.2 | 143 |
 
-- **Moisture is the limit (8.0 -> 43.7 % without dry soil; fungus 7.9 -> 34.4 %), and most of it is drought mortality.** The dry season (Psi -4 to -6.5 MPa, days ~200-295) falls in the warm months, when growth and decomposition would be fastest; with drought tolerance about 0.38 the daily death probability is about 0.026 per cell, the population is cut to 84 of 400 cells and its biomass to about 0.4 per grid cell, so the enzyme pool cannot build up. Removing drought mortality (with the moisture factors already off) raises degradation from 16.7 to 42.6 %.
-- The moisture factor on enzyme Vmax accounts for about 6.5 points (8.0 -> 14.5 %); the factor on uptake for almost nothing on its own (8.3 %), because the monomer supply is set by decay, not by uptake capacity.
+- **Moisture is the limit (8.0 -> 43.7 % without dry soil; fungus 7.9 -> 34.4 %).** The dry season (Psi -4 to -6.5 MPa, days ~200-295) falls in the warm months, when growth and decomposition would be fastest. Two moisture effects act together: drought mortality (tolerance about 0.38, death probability about 0.026 per cell per day; the population falls to 84 of 400 cells) and the moisture factor on enzyme Vmax. Removing either alone gains about 7 points (14.5 % without the enzyme factor; 15.3 % without drought mortality, `beta_bac` = 0, section 7); removing both gives 42.6 %. (Corrected 2026-10-16: the first version attributed ~26 points to drought mortality, which holds only with the moisture factors already off.)
+- The moisture factor on uptake adds almost nothing on its own (8.3 %), because the monomer supply is set by decay, not by uptake capacity.
 - Up to about day 150 all variants are alike (about 5-6 % degraded): the first months are slow in every case (cool spring, small starting biomass). The remaining 1 point between "no drought mortality" and Psi -0.5 is the inducible osmolyte response and its costs.
 - The size of the drought effect is therefore set mainly by drought tolerance (`Osmo_tol_K`, osmolyte production and the mortality parameters `death_rate_bac`/`beta_bac`), which are uncalibrated (OPEN_ISSUES, calibration).
+
+## 7. Drought-mortality parameters under the scenario climates (2026-10-16)
+
+**Setup (`drought_sweep/`; `analysis/drought_sweep.py`, `analysis/plot_drought_sweep.py`):** bacterial minimal model, first year, 20x20, 2 seeds, R_endo on, ambient / +5 C / +10 C climates; one at a time: `beta_bac` (= `beta_fun`) 10 (baseline), 5, 2.5, 1, 0 and `Osmo_tol_K` 0.05 (baseline), 0.02, 0.01, 0.005, 0.0025. Drought mortality per cell per day is `death_rate * (1 - (1 - tol) * (Psi - wp_fc) * beta)` with `tol = s / (s + Osmo_tol_K)` (s = osmolyte share of biomass, about 0.028 here), so the excess mortality is set by the product `(1 - tol) * beta` (baseline 0.62 x 10 = 6.2). `wp_fc` and `death_rate` were not varied: `wp_fc` also sets the enzyme, uptake, osmolyte-induction and leaching responses, and `death_rate` the basal mortality.
+
+| Setting | (1 - tol) x beta | Ambient | +5 C | +10 C | Cells killed (ambient) |
+|---|---|---|---|---|---|
+| Baseline (beta 10, K 0.05) | 6.2 | 8.0 % | 13.9 % | 18.0 % | 1,026 |
+| beta 5 | 3.1 | 10.2 | 17.5 | 22.8 | 776 |
+| beta 2.5 | 1.6 | 12.0 | 21.3 | 27.4 | 468 |
+| beta 1 | 0.6 | 13.7 | 25.3 | 30.6 | 284 |
+| beta 0 (no drought mortality) | 0 | 15.3 | 27.6 | 24.6 | 161 |
+| K 0.02 (tol 0.60) | 4.0 | 9.6 | 16.0 | 21.1 | 914 |
+| K 0.01 (tol 0.75) | 2.5 | 10.8 | 19.3 | 25.0 | 656 |
+| K 0.005 (tol 0.86) | 1.4 | 12.2 | 22.3 | 27.6 | 452 |
+| K 0.0025 (tol 0.93) | 0.7 | 13.9 | 25.2 | 30.7 | 296 |
+
+(Day-365 % of the substrate degraded, mean of 2 seeds; seed spread 0.1-0.5 points except beta 0 at +10 C, 22.3 and 26.9.)
+
+- **Both parameters act through `(1 - tol) * beta`, and settings with the same product give about the same result** (beta 2.5 and K 0.005: 12.0/21.3/27.4 and 12.2/22.3/27.6 %). They differ in what tolerance responds to: with a low `Osmo_tol_K` tolerance saturates (0.86-0.93), so differences in osmolyte content between cells, and extra osmolyte production, buy little tolerance; with a lower `beta` tolerance keeps its baseline sensitivity to osmolyte content.
+- **Relieving drought mortality alone recovers only part of the gap**: at most about 15 % at ambient (vs 43.7 % with Psi held at -0.5), because the enzyme moisture factor still slows decay through the dry season (the curves separate only after about day 190 and all flatten during the dry season).
+- **The warming response is kept, and gets larger in absolute terms**: +10 C vs ambient is 2.2-2.3x at every setting from beta 10 to beta 1 (18.0 vs 8.0; 30.6 vs 13.7 %).
+- **Some drought mortality is needed at +10 C.** With beta 0 the population fills all 400 cells and outgrows its monomer supply after the dry season: biomass becomes N-rich (N:C 0.33), enzyme production and CUE fall to zero for 43 days, and degradation (24.6 %) ends below beta 1 (30.6 %). Mortality supplies turnover and necromass that keep the community productive.
+- No energy shortfalls in any run (R_endo has no effect).
