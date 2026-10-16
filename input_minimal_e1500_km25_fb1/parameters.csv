@@ -43,7 +43,7 @@ Km_min,0.01
 Uptake_Km_min,0.001
 Vmax_Km,2.5
 Vmax_Km_int,0.0
-Uptake_Vmax_Km,2.5
+Uptake_Vmax_Km,0.25
 Uptake_Vmax_Km_int,0.0
 Km_error,0.0
 Specif_factor,1.0
