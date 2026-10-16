@@ -609,8 +609,8 @@ def initialize_data(runtime_parameters, climate_file="climate.csv", community_di
         "Osmo_max_frac": _optional(parameters, "Osmo_max_frac", 0.2),
         # optional: osmolyte share of biomass at which drought tolerance is 0.5; tolerance = share / (share + K)
         "Osmo_tol_K": _optional(parameters, "Osmo_tol_K", 0.05),
-        # optional switch (0/1): pay energy shortfalls by respiring free biomass C at the yield of the necromass monomer
-        # (Mon_DeadMic in monomer_energy.csv); 0 = shortfalls are floored away (energy pool set to 0)
+        # optional switch (0/1): pay energy shortfalls by respiring free biomass C at the respiration yield (E_resp) of the
+        # necromass monomer (Mon_DeadMic in monomer_energy.csv); 0 = shortfalls are floored away (energy pool set to 0)
         "E_deficit_erosion": _optional(parameters, "E_deficit_erosion", 0),
         # optional: daily NH4 and PO4 leaching fraction = Leaching * exp(Leaching_psi_slope * (Psi - wp_fc))
         "Leaching": _optional(parameters, "Leaching", 0.1),

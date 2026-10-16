@@ -169,16 +169,13 @@ class Grid():
         self.ferm_cond = data_init['FermCond']  # currently set to 0.1; can update to vary with environmental conditions
         self.active_uptake_E_cost = data_init['ActiveUptakeE_cost']  # energy cost of transporting monomers
         # Energy deficit: when on, a cell whose energy costs exceed its energy pays the shortfall by respiring free
-        # biomass C (C not bound in HSP/osmolytes) at the energy yield of the necromass monomer, split between
-        # respiration and fermentation as in uptake; when off, the shortfall is floored away (E set to 0).
+        # biomass C (C not bound in HSP/osmolytes) at the respiration energy yield of the necromass monomer (E_resp of
+        # Mon_DeadMic; no fermentation, all eroded C leaves as CO2); when off, the shortfall is floored away (E set to 0).
         self.E_deficit_erosion = bool(data_init['E_deficit_erosion'])
         if self.E_deficit_erosion:
             if 'Mon_DeadMic' not in self.Monomer_energy.index:
                 raise ValueError("E_deficit_erosion = 1 needs a 'Mon_DeadMic' row in monomer_energy.csv")
-            _dm = self.Monomer_energy.loc['Mon_DeadMic']
-            _fc = np.float32(self.ferm_cond)
-            self._erosion_E_yield = np.float32((1 - _fc) * _dm['E_resp'] + _fc * _dm['E_ferm'])  # energy per C eroded
-            self._erosion_CO2_frac = np.float32((1 - _fc) + _fc * self.Pox_Ferm)               # C respired as CO2
+            self._erosion_E_yield = np.float32(self.Monomer_energy.loc['Mon_DeadMic', 'E_resp'])  # energy per C eroded
 
         # Metabolism
         self.Consti_Enzyme_C = data_init["EnzProdConstit"]  # C cost of encoding constitutive enzyme
@@ -872,9 +869,7 @@ class Grid():
             C_eroded = np.minimum(E_deficit / self._erosion_E_yield, free_C_now).astype(np.float32)
             Microbes_C = Microbes_C - C_eroded           # E stays at 0: the shortfall is paid, not stored
             self.Microbes['C'] = Microbes_C
-            erosion_CO2 = C_eroded * self._erosion_CO2_frac
-            self.Taxon_resp_df += erosion_CO2.reshape(G, T)                       # respired with this day's uptake CO2
-            self.Monomers.loc['FermProd', 'C'] += (C_eroded - erosion_CO2).reshape(G, T).sum(axis=1)  # fermentation C
+            self.Taxon_resp_df += C_eroded.reshape(G, T)  # all eroded C is respired (with this day's uptake CO2)
         # energy that was not paid for (with erosion off, all of the shortfall; on, what free C could not cover)
         E_unpaid = np.maximum(E_deficit - C_eroded * (self._erosion_E_yield if self.E_deficit_erosion else 0), 0)
 
