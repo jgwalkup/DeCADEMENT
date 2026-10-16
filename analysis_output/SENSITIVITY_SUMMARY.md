@@ -541,3 +541,25 @@ Terminology: **endogenous respiration (R_endo)** = respiring free biomass C (at 
 - **The warming response is kept, and gets larger in absolute terms**: +10 C vs ambient is 2.2-2.3x at every setting from beta 10 to beta 1 (18.0 vs 8.0; 30.6 vs 13.7 %).
 - **Some drought mortality is needed at +10 C.** With beta 0 the population fills all 400 cells and outgrows its monomer supply after the dry season: biomass becomes N-rich (N:C 0.33), enzyme production and CUE fall to zero for 43 days, and degradation (24.6 %) ends below beta 1 (30.6 %). Mortality supplies turnover and necromass that keep the community productive.
 - No energy shortfalls in any run (R_endo has no effect).
+
+## 8. Moisture slopes of enzyme activity and uptake (2026-10-16)
+
+**Setup (`psi_slope_sweep/`; `analysis/param_sweep.py`, `analysis/plot_param_sweep.py`):** bacterial minimal model, first year, 20x20, 2 seeds, R_endo on, beta 1 (new baseline), ambient / +5 C / +10 C; one at a time `Enzyme_psi_slope` and `Uptake_psi_slope` 0, 0.1, 0.25 (baseline), 0.5, 1. Below wp_fc each process is multiplied by exp(slope x (Psi - wp_fc)); at Psi -5 MPa that is 1 / 0.67 / 0.37 / 0.14 / 0.02. Mortality is reported as dead biomass C (all deaths) and drought kills; the new step diagnostics `Grid.Starved` and `Grid.Dead_C` (no effect on results; baseline runs identical to section 7, beta 1) also count threshold (starvation) deaths.
+
+| Setting | Degraded day 365 (amb / +5 / +10, %) | Mean biomass C (amb / +10) | Dead C, year (amb / +10) |
+|---|---|---|---|
+| Enzyme 0 | 33.5 / 65.4 / 80.1 | 8.2 / 17.7 | 5.5 / 12.2 |
+| Enzyme 0.1 | 21.2 / 40.9 / 50.6 | 5.7 / 11.9 | 4.2 / 9.1 |
+| Baseline (0.25 / 0.25) | 13.7 / 25.3 / 30.6 | 4.3 / 8.3 | 3.6 / 6.6 |
+| Enzyme 0.5 | 6.8 / 10.9 / 13.7 | 3.0 / 4.7 | 2.5 / 4.0 |
+| Enzyme 1 | 5.3 / 8.4 / 10.6 | 2.4 / 3.8 | 1.9 / 2.9 |
+| Uptake 0 | 14.2 / 25.5 / 26.1 | 4.5 / 7.9 | 3.6 / 6.9 |
+| Uptake 0.1 | 14.2 / 25.6 / 25.3 | 4.5 / 7.9 | 3.6 / 6.1 |
+| Uptake 0.5 | 12.2 / 22.0 / 23.7 | 4.0 / 6.8 | 2.9 / 5.7 |
+| Uptake 1 | 9.1 / 15.4 / 18.8 | 2.9 / 5.0 | 2.2 / 3.9 |
+
+- **`Enzyme_psi_slope` is the dominant moisture control on decomposition.** Degradation falls from 80 to 11 % (+10 C) across the range; the curves separate only after about day 150, as the soil dries. Without a moisture effect on enzymes (slope 0) the +10 C run degrades 80 % in the first year.
+- **`Uptake_psi_slope` matters little up to the baseline**; at 0.5-1 it lowers degradation by 2-12 points, with biomass falling through the dry season and recovering after rewetting.
+- **Energy trap at the end of the dry season.** With a steep enzyme slope (0.5, 1) the community's energy pool reaches zero during the dry season (E:C 450 at day 180 -> 0 by about day 220 at slope 1), enzyme production stops, the enzyme pool decays, and the community does not recover after rewetting: no enzymes, so no monomers, so no energy (biomass shrinks to 0.2-0.9 per grid cell through R_endo; at +10 C slope 1 also 276 starvation deaths). The same trap appears at +10 C with uptake slope 0-0.1 in one of two seeds (22 vs 30 % degraded): without the uptake restriction the large dry-season community depletes the monomer pool (0.4 vs 1.4), its energy pool hits zero at about day 290, and it never restarts (as with beta 0, section 7). Recovery after drought therefore depends on whether the energy reserve lasts through the dry season.
+- **CUE** drops through the dry season at every setting (to about 0.1 at baseline), the more the steeper the slopes; at enzyme slope >= 0.5 or uptake slope 1 it reaches 0. Annual uptake-weighted CUE is not a useful summary here: when dry-season uptake is negligible the annual value reflects the wet season only (it is lowest at the baseline).
+- **Mortality** with beta 1 is mostly basal: drought kills are 270-320 cells per year at every setting (no trend), and dead biomass C follows biomass.

@@ -152,6 +152,8 @@ def run_one(src_input, changes, side, days, seed, temp=None, climate=None, pulse
                 Osmo_prop=float(np.asarray(eco.Osmo_prop)[alive].mean()) if n else np.nan,
                 Drought_tol=float(np.asarray(eco.Drought_tol)[alive].mean()) if n else np.nan,
                 killed=int(eco.Kill),
+                starved=int(getattr(eco, "Starved", 0)),
+                dead_C=float(getattr(eco, "Dead_C", np.nan)) / G,
                 E_unpaid=unpaid,
                 R_endo_C=endo_C,
             ))

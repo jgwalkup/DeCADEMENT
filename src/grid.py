@@ -251,6 +251,8 @@ class Grid():
         self.wp_th = data_init['wp_th']  # -6.0
         self.alpha = data_init['alpha']  # integer;1
         self.Kill = np.float32('nan')  # total number of cells stochastically killed
+        self.Starved = np.float32('nan')  # cells killed by the C/N/P quota thresholds (starvation)
+        self.Dead_C = np.float32('nan')   # biomass C of all cells killed in the step (threshold + drought)
 
         # Reproduction
         self.fb = data_init['fb']  # index of fungal taxa (=1)
@@ -1154,6 +1156,8 @@ class Grid():
 
         # Update the death toll of cells
         self.Kill = np.uint32(kill.sum())
+        self.Starved = np.uint32(starve_index.sum())
+        self.Dead_C = np.float32(Death[:, 0].sum())
 
     def reproduction(self, day):
         """
