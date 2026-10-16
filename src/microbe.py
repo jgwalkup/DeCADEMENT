@@ -106,7 +106,8 @@ class Microbe:
         self.Prange = parameters.loc[
             "Prange", 1
         ]  # Tolerance on P fraction: 0.005 mg mg-1
-        self.E_min_ratio = parameters.loc["E_min_ratio", 1]  # minimum energy:biomass C ratio (all taxa)
+        self.E_min_ratio_b = parameters.loc["E_min_ratio_b", 1]  # minimum energy:biomass C ratio, bacteria
+        self.E_min_ratio_f = parameters.loc["E_min_ratio_f", 1]  # minimum energy:biomass C ratio, fungi
 
         # transporter
         self.Uptake_C_cost_min = parameters.loc[
@@ -316,7 +317,7 @@ class Microbe:
             Crange:  Tolerance on C fraction: 0.090 mg mg-1
             Nrange:  Tolerance on N fraction: 0.040 mg mg-1
             Prange:  Tolerance on P fraction: 0.005 mg mg-1
-            E_min_ratio: minimum E:MBC ratio (E column of MinRatios; same for all taxa)
+            E_min_ratio_b/_f: minimum E:MBC ratio of bacteria / fungi (E column of MinRatios)
         Return:
             MinRatios: dataframe
         """
@@ -348,7 +349,7 @@ class Microbe:
         )
         # Calculate minimum cell quotas regarding C, N, & P; the E column is the minimum E:C ratio
         MinRatios = OptimalRatios_df - RangeRatios_df
-        MinRatios["E"] = np.float32(self.E_min_ratio)
+        MinRatios["E"] = np.where(np.asarray(self.fb) == 1, self.E_min_ratio_f, self.E_min_ratio_b).astype("float32")
 
         return MinRatios
 

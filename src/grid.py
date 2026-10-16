@@ -232,12 +232,13 @@ class Grid():
         self.C_min = data_init['C_min']  # C threshold value of living cell
         self.N_min = data_init['N_min']  # N threshold value of living cell
         self.P_min = data_init['P_min']  # P threshold value of living cell
-        # Energy:biomass C bounds (all taxa). E_max: energy above E_max * C is dissipated (mortality step), and the
-        # fraction of uptake C routed to energy falls to 0 as E:C approaches it. E_min: energy below E_min * C is a
-        # reserve that biosynthesis (enzyme, HSP, osmolyte production) cannot draw on, and at or below it all
-        # energy-eligible uptake C is routed to energy.
-        self.E_min = np.float32(data_init['E_min_ratio'])
-        self.E_max = np.float32(data_init['E_max_ratio'])
+        # Energy:biomass C bounds of each cell (bacteria: E_*_ratio_b, fungi: E_*_ratio_f). E_max: energy above
+        # E_max * C is dissipated (mortality step), and the fraction of uptake C routed to energy falls to 0 as E:C
+        # approaches it. E_min: at or below it all energy-eligible uptake C is routed to energy; energy below
+        # E_min * C is also a reserve that biosynthesis (enzyme, HSP, osmolyte production) cannot draw on.
+        _fungal = np.asarray(data_init['fb']) == 1
+        self.E_min = np.where(_fungal, data_init['E_min_ratio_f'], data_init['E_min_ratio_b']).astype(np.float32)
+        self.E_max = np.where(_fungal, data_init['E_max_ratio_f'], data_init['E_max_ratio_b']).astype(np.float32)
         self.basal_death_prob = data_init['basal_death_prob']  # Basal death probability of microbes
         self.death_rate = data_init['death_rate']  # Change rate of mortality with water potential
         self.Osmo_tol_K = data_init['Osmo_tol_K']  # osmolyte share of biomass giving drought tolerance 0.5
@@ -1002,7 +1003,7 @@ class Grid():
         MinRat_full4 = self.MinRatios[['C', 'N', 'P', 'E']].to_numpy(dtype=np.float32, copy=True)  # (N,4)
         # The rebalancing below compares E / (C+N+P+E) with this column, so an E:C minimum does not belong there; it
         # uses 0 (the value MinRatios['E'] had with Erat = Erange), which keeps E as the excess column that absorbs the
-        # redistribution. E_min_ratio acts in uptake and metabolism instead. See OPEN_ISSUES.md.
+        # redistribution. E_min_ratio_b/_f act in uptake and metabolism instead. See OPEN_ISSUES.md.
         MinRat_full4[:, 3] = np.float32(0)
 
         Death = np.zeros_like(Mic)
@@ -1163,11 +1164,11 @@ class Grid():
             self.Substrates.loc[is_DeadMic] += Death_gridcell
         # End of if else clause
 
-        # Cap the energy:C ratio at E_max_ratio (energy above the cap is dissipated)
+        # Cap the energy:C ratio at E_max_ratio_b / _f (energy above the cap is dissipated)
         with np.errstate(invalid='ignore', divide='ignore'):
             Tax_E_ratio = Mic[:, 3] / Mic[:, 0]
         e_cap_index = Tax_E_ratio > self.E_max
-        Mic[e_cap_index, 3] = Mic[e_cap_index, 0] * self.E_max
+        Mic[e_cap_index, 3] = Mic[e_cap_index, 0] * self.E_max[e_cap_index]
 
         # Leaching of monomers
         Leaching_N = self.Monomers.loc[is_NH4, "N"] * Leaching * np.exp(Psi_slope_leach * (self.psi[day] - self.wp_fc))

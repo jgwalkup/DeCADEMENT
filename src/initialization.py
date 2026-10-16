@@ -38,20 +38,29 @@ def _validate_monomer_energy(mon_energy):
         raise ValueError("monomer_energy.csv: " + "; ".join(problems))
 
 
+_E_BOUNDS = ("E_min_ratio_b", "E_max_ratio_b", "E_min_ratio_f", "E_max_ratio_f")
+
+
 def _validate_energy_ratios(parameters):
-    """Check the energy:biomass C bounds (E_min_ratio, E_max_ratio) against the initial ratios (Erat_b, Erat_f)."""
-    names = parameters.index
-    if "Erange" in names and not {"E_min_ratio", "E_max_ratio"} <= set(names):
-        raise ValueError("parameters.csv: 'Erange' has been replaced by 'E_min_ratio' and 'E_max_ratio'. The old "
-                         "behaviour is E_min_ratio = Erat_b - Erange (floored at 0) and E_max_ratio = Erat_b + Erange.")
-    lo, hi = float(parameters.loc["E_min_ratio", 1]), float(parameters.loc["E_max_ratio", 1])
+    """Check the energy:biomass C bounds of bacteria and fungi against their initial ratios (Erat_b, Erat_f)."""
+    names = set(parameters.index)
+    if not set(_E_BOUNDS) <= names:
+        if "Erange" in names:
+            raise ValueError("parameters.csv: 'Erange' has been replaced by E_min_ratio_b, E_max_ratio_b, E_min_ratio_f "
+                             "and E_max_ratio_f. The old behaviour is E_min_ratio_x = Erat_x - Erange (floored at 0) "
+                             "and E_max_ratio_x = Erat_x + Erange.")
+        if {"E_min_ratio", "E_max_ratio"} & names:
+            raise ValueError("parameters.csv: 'E_min_ratio' / 'E_max_ratio' have been split into bacterial and fungal "
+                             "rows: E_min_ratio_b, E_max_ratio_b, E_min_ratio_f, E_max_ratio_f.")
+        raise ValueError("parameters.csv: missing " + ", ".join(sorted(set(_E_BOUNDS) - names)))
     problems = []
-    if not 0 <= lo < hi:
-        problems.append(f"need 0 <= E_min_ratio < E_max_ratio (got {lo}, {hi})")
-    for r in ("Erat_b", "Erat_f"):
-        v = float(parameters.loc[r, 1])
+    for g in ("b", "f"):
+        lo, hi = float(parameters.loc[f"E_min_ratio_{g}", 1]), float(parameters.loc[f"E_max_ratio_{g}", 1])
+        v = float(parameters.loc[f"Erat_{g}", 1])
+        if not 0 <= lo < hi:
+            problems.append(f"need 0 <= E_min_ratio_{g} < E_max_ratio_{g} (got {lo}, {hi})")
         if not lo <= v <= hi:
-            problems.append(f"{r} = {v} is outside [E_min_ratio, E_max_ratio] = [{lo}, {hi}]")
+            problems.append(f"Erat_{g} = {v} is outside [E_min_ratio_{g}, E_max_ratio_{g}] = [{lo}, {hi}]")
     if problems:
         raise ValueError("parameters.csv: " + "; ".join(problems))
 
@@ -566,8 +575,10 @@ def initialize_data(runtime_parameters, climate_file="climate.csv", community_di
         "C_min": parameters.loc["C_min", 1],  # C threshold of cell lysis
         "N_min": parameters.loc["N_min", 1],  # N threshold of cell lysis
         "P_min": parameters.loc["P_min", 1],  # P threshold of cell lysis
-        "E_min_ratio": parameters.loc["E_min_ratio", 1],  # minimum energy:biomass C ratio
-        "E_max_ratio": parameters.loc["E_max_ratio", 1],  # maximum energy:biomass C ratio
+        "E_min_ratio_b": parameters.loc["E_min_ratio_b", 1],  # minimum energy:biomass C ratio, bacteria
+        "E_max_ratio_b": parameters.loc["E_max_ratio_b", 1],  # maximum energy:biomass C ratio, bacteria
+        "E_min_ratio_f": parameters.loc["E_min_ratio_f", 1],  # minimum energy:biomass C ratio, fungi
+        "E_max_ratio_f": parameters.loc["E_max_ratio_f", 1],  # maximum energy:biomass C ratio, fungi
         "Eratb": parameters.loc["Erat_b", 1],  # initial energy:biomass C ratio of bacteria
         "Eratf": parameters.loc["Erat_f", 1],  # initial energy:biomass C ratio of fungi
         "Fermoxp": parameters.loc[

@@ -38,7 +38,7 @@ SETS = {
     "Window: Const 2, slope -60k, cost 300": ({**INDUCI, "Maint_E_HSP_Ea_Slope": -60000, "HSP_prod_E_cost": 300}, None),
     "E_max route: Const 1.5, E_max 1050, slope -90k, cost 200": (
         {**INDUCI, "Maint_E_Rate_Const": 1.5, "Maint_E_HSP_Ea_Slope": -90000, "HSP_prod_E_cost": 200,
-         "Erat_b": 350, "E_max_ratio": 1050}, None),
+         "Erat_b": 350, "E_max_ratio_b": 1050, "E_max_ratio_f": 1050}, None),
     "E_resp 1000, Const 2.5, slope -90k, cost 300": (
         {**INDUCI, "Maint_E_Rate_Const": 2.5, "Maint_E_HSP_Ea_Slope": -90000, "HSP_prod_E_cost": 300}, 1000),
     "E_resp 900, Const 2, slope -90k, cost 200": (
