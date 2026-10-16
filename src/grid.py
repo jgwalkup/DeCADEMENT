@@ -1293,32 +1293,28 @@ class Grid():
         if mic_reinit:
 
             self.Microbes = self.Microbes_init.copy(deep=True)  # NOTE copy()
-            # fb = self.fb[0:self.n_taxa]
-            # max_size_b = self.max_size_b
-            # max_size_f = self.max_size_f
 
-            # cumulative abundance; note the column index
-            # option 1: mass-based.
-            # cum_abundance = output.MicrobesSeries_repop.iloc[:,(day+2-self.cycle):(day+2)].sum(axis=1)
-            # option 2: abundance-based
+            # Placement probability of each taxon in each grid cell, from its abundance over the pulse (cell-days).
+            # Initial placement puts a bacterial taxon in a cell with probability taxa_per_box and a fungal taxon with
+            # taxa_per_box * max_size_b / max_size_f (the same expected biomass per taxon, as one fungal cell holds
+            # max_size_f / max_size_b times more biomass). Repopulation follows the same rule: fungal cell counts are
+            # converted to bacterial-equivalent biomass units before the shares are taken, and the fungal shares are
+            # converted back to cell probabilities. One taxon is therefore re-placed as at the start (a bacterium in every
+            # cell, a fungus in max_size_b / max_size_f of them). All-bacterial communities are unchanged. The expected
+            # number of bacterial-equivalent taxa per cell is 1, as in DEMENTpy (not n_taxa * taxa_per_box as at t0).
             cum_abundance = output.Taxon_count_repop.iloc[:, (day + 2 - self.cycle):(day + 2)].sum(axis=1)
-
-            # account for different cell mass sizes of bacteria and fungi
-            # if sum(fb==1) == 0: # no fungal taxa
-            #    frequencies = cum_abundance/cum_abundance.sum()
-            # else:
-            #    cum_abundance.loc[fb==1] = cum_abundance[fb==1]*max_size_b/max_size_f
-            #    frequencies = cum_abundance/cum_abundance.sum()
-
-            # Switched to taxon abundance-based, so no more adjustments
-            frequencies = cum_abundance / cum_abundance.sum()
-            frequencies = frequencies.fillna(0)
-            probs = pd.concat([frequencies, 1 - frequencies], axis=1, sort=False)
+            fungal = np.asarray(self.fb[0:self.n_taxa]) == 1
+            size_ratio = float(self.max_size_b) / float(self.max_size_f)
+            equivalents = cum_abundance.to_numpy(dtype=float, copy=True)
+            equivalents[fungal] /= size_ratio
+            total = equivalents.sum()
+            p_cell = equivalents / total if total > 0 else np.zeros_like(equivalents)
+            p_cell[fungal] *= size_ratio
+            p_cell = np.clip(p_cell, 0.0, 1.0)
             # Randomly assign microbes to each grid box based on prior densities
             choose_taxa = np.array([0] * self.gridsize * self.n_taxa).reshape(self.n_taxa, self.gridsize)
             for i in range(self.n_taxa):
-                # Alternative 1
-                choose_taxa[i, :] = np.random.choice([1, 0], self.gridsize, replace=True, p=probs.iloc[i, :])
+                choose_taxa[i, :] = np.random.choice([1, 0], self.gridsize, replace=True, p=[p_cell[i], 1 - p_cell[i]])
 
             # Note order='F'
             self.Microbes.loc[np.ravel(choose_taxa, order='F') == 0] = np.float32(0)
