@@ -16,8 +16,14 @@ file as items are resolved (the git log has the details of each change).
 - **Fungal distribution in the minimal model.** Fungal placement probability is scaled by `max_size_b/max_size_f`
   (about 4% of cells occupied at t0 with `taxa_per_box` 1), and fungal translocation averages every living fungal
   cell each day. Use the bacterial minimal variant for sensitivity analyses until this is revisited.
-  Repopulation between pulses does not apply the placement scaling, so pulses 2-6 start with every cell occupied (28x
-  the pulse-1 fungal biomass in the minimal model; SENSITIVITY_SUMMARY 5c). Placement and repopulation should agree.
+  Repopulation now applies the same fungal scaling as the initial placement (fixed 2026-10-16; before, pulses 2-6
+  started with every cell occupied).
+- **Repopulation density in multi-taxon communities.** After a pulse, repopulation places on average one
+  (bacterial-equivalent) taxon per grid cell (DEMENTpy's rule), while the initial placement places
+  n_taxa x taxa_per_box (5 in the full model). In a 20x20 mixed full-model test, pulse 2 started with 321 taxon-slots
+  and 1.0 C per grid cell against 1,684 slots and 4.9 C at the start of pulse 1. This affects every multi-pulse full-model
+  run (compare the start-biomass test in SENSITIVITY_SUMMARY). Decide whether repopulation should restore the
+  initial density.
 - **Transporters as tracked cellular compounds.** The two transport energy costs work as designed
   (transporter production per transporter produced; active transport per monomer taken up). Treating transporters
   like HSP and osmolytes (tracked pools) would need their production computed before `uptake()`.
@@ -30,6 +36,9 @@ file as items are resolved (the git log has the details of each change).
   collapse); drought tolerance currently behaves as a constitutive trait.
 - **Endogenous respiration (R_endo) default.** The switch `R_endo` is 0 in every input folder (shortfalls floored away; the output
   `E_unpaid_Taxon` shows how much). The maintenance sensitivity runs use both settings.
+- **Drought response sets decomposition under the real climate.** Drought mortality cuts first-year degradation from
+  about 43 % to 8 % in the minimal model (SENSITIVITY_SUMMARY 6); tolerance (`Osmo_tol_K`, osmolyte production) and
+  `death_rate`/`beta` therefore need calibrating before the climate runs are interpreted.
 - **Calibration**: `HSP_max_frac`, `Osmo_max_frac` (defaults 0.2) and `Osmo_tol_K` (default 0.05) are placeholders;
   the linear composition feedback acts as a constant tax well below the cap.
 

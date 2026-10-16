@@ -497,6 +497,23 @@ Terminology: **endogenous respiration (R_endo)** = respiring free biomass C (at 
 **Setup (`climate_endo_6p/` bacterium, `climate_endo_fungus_6p/` fungus):** as 5 / 5b with 6 pulses of 365 days (`climate_endo_run.py --pulses 6`; `sweep_minimal.run_one` now runs several pulses with `Grid.repopulation` between them, as `dementpy.py`); per-pulse table `climate_endo_pulses.csv`.
 
 - **With one taxon, nothing carries over between pulses.** Repopulation resets substrates, monomers, enzymes and the HSP/osmolyte pools and re-places the community from the taxa's cell counts; with a single taxon every cell is refilled with the initial cell. The climate years are identical, so the bacterial pulses are replicates: day-365 degradation 8.0-8.2 / 13.8-14.0 / 17.6-18.0 % across pulses, R_endo off = on; pulse 1 reproduces section 5.
-- **Fungus: pulses 2-6 start differently from pulse 1.** Repopulation refills all 400 cells at the initial fungal cell mass (25 C per grid cell, 28 times the pulse-1 start), because it does not apply the placement scaling. Degradation is then 79-80 / 97 / 99 % by day 365 (substrate below 5 % by day 194 at +10 C), and the warm runs run out of energy after the substrate is gone (from about day 229 at +10 C): shortfalls on 29-68 days per pulse at +5 C and 139-140 at +10 C, none at ambient.
-- **This is the only place so far where R_endo acts**: with R_endo on, day-365 biomass C is 9.3-11.1 vs 12.9-14.5 (+5 C) and 1.6-1.9 vs 3.4-4.1 (+10 C), occupied cells 18-23 vs 33-53 at +10 C; CUE of the last 30 days 0.00-0.16 vs about 0.50 at +5 C. Over the six pulses, R_endo off leaves 15,600 (+5 C) and 70,500 (+10 C) energy units per grid cell unpaid; R_endo on respires 18.5 and 52.9 C per grid cell instead. Starving cells also lose drought tolerance (no osmolyte production at E = 0 while the pool turns over).
-- The fungal pulse 2-6 results are an artifact of the placement / repopulation mismatch and should not be compared with pulse 1 or with the bacterium until that is resolved.
+- **Fungus, after the repopulation fix (commit a42b5f4; `climate_endo_fungus_6p/`)**: pulses 2-6 start in 12-20 occupied cells (0.8-1.3 C per grid cell; pulse 1: 14 cells, 0.9) and are replicates of pulse 1: day-365 degradation 7.9-8.7 / 13.6-15.7 / 16.1-19.4 % (ambient / +5 C / +10 C; more pulse-to-pulse spread than the bacterium because few cells are occupied), no energy shortfalls, R_endo off = on.
+- **Before the fix (`climate_endo_fungus_6p_before_repop_fix/`)** repopulation refilled all 400 cells at the initial fungal cell mass (25 C per grid cell, 28 times the pulse-1 start): degradation 79-80 / 97 / 99 %, the warm runs ran out of energy after the substrate was gone (shortfalls on 29-68 days per pulse at +5 C, 139-140 at +10 C), and R_endo lowered day-365 biomass C (9.3-11.1 vs 12.9-14.5 at +5 C; 1.6-1.9 vs 3.4-4.1 at +10 C). Those results are an artifact and are kept only for reference.
+
+## 6. Why decomposition is low under the real climate: moisture test (2026-10-16)
+
+**Setup (`moisture_test/`; figure and table `analysis/plot_moisture_test.py`):** bacterial minimal model as section 5 (ambient climate, first year, 20x20, 3 seeds, R_endo on); variants: real climate; Psi held at -0.5 MPa with the real temperature (`moisture_test/climate_ambient_wetpsi.csv`); real climate with `Enzyme_psi_slope` 0, with `Uptake_psi_slope` 0, with both 0, and with both 0 plus `Osmo_tol_K` 1e-9 (drought tolerance about 1, so no drought mortality); fungus with Psi -0.5.
+
+| Variant (bacterium) | Degraded, day 365 | Max biomass C | Cells killed |
+|---|---|---|---|
+| Real climate | 8.0 % | 4.1 | 1,026 |
+| No moisture effect on enzymes | 14.5 % | 6.6 | 1,317 |
+| No moisture effect on uptake | 8.3 % | 4.2 | 1,121 |
+| No moisture effect on enzymes or uptake | 16.7 % | 6.0 | 1,442 |
+| ... and no drought mortality | 42.6 % | 33.6 | 145 |
+| Psi held at -0.5 MPa | 43.7 % | 35.2 | 143 |
+
+- **Moisture is the limit (8.0 -> 43.7 % without dry soil; fungus 7.9 -> 34.4 %), and most of it is drought mortality.** The dry season (Psi -4 to -6.5 MPa, days ~200-295) falls in the warm months, when growth and decomposition would be fastest; with drought tolerance about 0.38 the daily death probability is about 0.026 per cell, the population is cut to 84 of 400 cells and its biomass to about 0.4 per grid cell, so the enzyme pool cannot build up. Removing drought mortality (with the moisture factors already off) raises degradation from 16.7 to 42.6 %.
+- The moisture factor on enzyme Vmax accounts for about 6.5 points (8.0 -> 14.5 %); the factor on uptake for almost nothing on its own (8.3 %), because the monomer supply is set by decay, not by uptake capacity.
+- Up to about day 150 all variants are alike (about 5-6 % degraded): the first months are slow in every case (cool spring, small starting biomass). The remaining 1 point between "no drought mortality" and Psi -0.5 is the inducible osmolyte response and its costs.
+- The size of the drought effect is therefore set mainly by drought tolerance (`Osmo_tol_K`, osmolyte production and the mortality parameters `death_rate_bac`/`beta_bac`), which are uncalibrated (OPEN_ISSUES, calibration).
