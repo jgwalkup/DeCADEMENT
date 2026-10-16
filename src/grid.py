@@ -995,12 +995,6 @@ class Grid():
         # the very end, so nothing downstream needs to change.
         Mic = self.Microbes.to_numpy(dtype=np.float32, copy=True)              # (N,4): C,N,P,E
         MinRat_cnp = self.MinRatios[['C', 'N', 'P']].to_numpy(dtype=np.float32, copy=True)   # (N,3)
-        MinRat_full4 = self.MinRatios[['C', 'N', 'P', 'E']].to_numpy(dtype=np.float32, copy=True)  # (N,4)
-        # The rebalancing below compares E / (C+N+P+E) with this column, so an E:C minimum does not belong there; it
-        # uses 0 (the value MinRatios['E'] had with Erat = Erange), which keeps E as the excess column that absorbs the
-        # redistribution. E_min_ratio_b/_f act in uptake and metabolism instead. See OPEN_ISSUES.md.
-        MinRat_full4[:, 3] = np.float32(0)
-
         Death = np.zeros_like(Mic)
         kill = np.zeros(n_taxa * gridsize, dtype=bool)
 
@@ -1063,85 +1057,50 @@ class Grid():
                         (ratios_cnp[:, 1] < MinRat_alive[:, 1]) | \
                         (ratios_cnp[:, 2] < MinRat_alive[:, 2])
 
-            # Derive the Microbes wanted
+            # Rebalance the cells whose C, N or P share of biomass (C + N + P) is below its minimum. Energy is not part of
+            # cellular stoichiometry and is left unchanged. As in DEMENTpy: deficient elements are set to their minimum
+            # share, the non-deficient elements give up that deficit in proportion to how far they are above their
+            # minimum, and the cell keeps all of its most limiting element (largest relative deficit); the other two
+            # are reduced to the new ratios relative to it (losses: C respired, N to NH4, P to PO4).
             idx2 = idx[below_min]                                    # positions needing rebalancing
-            Mic_subset = Mic[idx2]                                   # (m,4)
-            StartMicrobes = Mic_subset.copy()
-            MinRat4 = MinRat_full4[idx2]                             # (m,4): C,N,P,E mins
-
-            # Derive new ratios and Calculate difference between actual and min ratios.
-            # NOTE: this operates on all 4 columns (C,N,P,E), matching the original's
-            # `Mic_subset.divide(Mic_subset.sum(axis=1), axis=0)` -- Mic_subset there is
-            # the full 4-column DataFrame, so the denominator is C+N+P+E (not C+N+P as
-            # in the first ratio check above). With the E minimum at 0, E is always the
-            # excess column and C, N and P are always below their minima on this scale,
-            # so a rebalanced cell keeps its limiting element and the other two are set to
-            # the minimum ratios relative to it (see OPEN_ISSUES.md). That E term dominates
-            # Ratio_dif_0.sum(axis=1)/Excess.sum(axis=1) below (the "excess redistribution" scale factor), so
-            # dropping E here (an earlier version of this rewrite did exactly that)
-            # changes the rebalancing outcome substantially, not just cosmetically --
-            # confirmed via a side-by-side day-by-day biomass comparison against the
-            # original on a real run, where the E-dropped version caused runaway
-            # population collapse within ~10 days that doesn't occur with E included.
-            row_sum_all4 = Mic_subset.sum(axis=1)
+            Mic_subset = Mic[idx2, :3]                               # (m,3): C,N,P
+            StartMicrobes = Mic[idx2].copy()                         # (m,4), for the losses below
+            MinRat3 = MinRat_cnp[idx2]                               # (m,3)
             with np.errstate(invalid='ignore', divide='ignore'):
-                MicrobeRatios4 = Mic_subset / row_sum_all4[:, None]      # (m,4)
-            Ratio_dif4 = MicrobeRatios4 - MinRat4                        # (m,4)
-            # Create an array recording the ratio differences < 0
-            Ratio_dif_0_4 = np.where(Ratio_dif4 > 0, np.float32(0), Ratio_dif4)
-            # Create an array recording the ratio differences > 0
-            Excess4 = np.where(Ratio_dif4 < 0, np.float32(0), Ratio_dif4)
+                MicrobeRatios3 = Mic_subset / Mic_subset.sum(axis=1)[:, None]
+            Ratio_dif3 = MicrobeRatios3 - MinRat3
+            Ratio_dif_0_3 = np.where(Ratio_dif3 > 0, np.float32(0), Ratio_dif3)   # deficits (<= 0)
+            Excess3 = np.where(Ratio_dif3 < 0, np.float32(0), Ratio_dif3)         # excesses (>= 0)
 
-            # Determine the limiting nutrient that will be conserved
-            # (first occurrence of max in each row, skipping NaNs -- matches
-            # pandas idxmax(axis=1) with skipna=True). Considers all 4 columns,
-            # matching the original's `(-Ratio_dif / MinRat).idxmax(axis=1)` where
-            # Ratio_dif/MinRat are the full 4-column (C,N,P,E) frames -- 'E' is never the
-            # argmax (its minimum is 0 and its difference positive, so its metric is -inf);
-            # index 3 is guarded against below purely as a safety net.
+            # Limiting element: largest relative deficit (first occurrence of the maximum, as pandas idxmax)
             with np.errstate(invalid='ignore', divide='ignore'):
-                metric4 = -Ratio_dif4 / MinRat4
-            metric4_safe = np.where(np.isnan(metric4), -np.inf, metric4)
-            limiting_pos = np.argmax(metric4_safe, axis=1)            # 0=C, 1=N, 2=P, (3=E, guarded below)
+                metric3 = -Ratio_dif3 / MinRat3
+            limiting_pos = np.argmax(np.where(np.isnan(metric3), -np.inf, metric3), axis=1)   # 0=C, 1=N, 2=P
 
-            # Set all deficient ratios to their minima
-            mask_deficient4 = Ratio_dif4 < 0
-            mask_excess4 = Ratio_dif4 > 0
-            MicrobeRatios4 = MicrobeRatios4.copy()
-            MicrobeRatios4[mask_deficient4] = MinRat4[mask_deficient4]
-            # Reduce the mass fractions for non-deficient elements in proportion to the distance from the minimum
-            sum_deficit = Ratio_dif_0_4.sum(axis=1)
-            sum_excess = Excess4.sum(axis=1)
+            # Deficient shares to their minima; excess shares reduced by the total deficit, in proportion to the excess
+            mask_deficient3 = Ratio_dif3 < 0
+            mask_excess3 = Ratio_dif3 > 0
+            MicrobeRatios3 = MicrobeRatios3.copy()
+            MicrobeRatios3[mask_deficient3] = MinRat3[mask_deficient3]
             with np.errstate(invalid='ignore', divide='ignore'):
-                scale = sum_deficit / sum_excess
-                MicrobeRatios4[mask_excess4] += (Excess4 * scale[:, None])[mask_excess4]
+                scale = Ratio_dif_0_3.sum(axis=1) / Excess3.sum(axis=1)
+                MicrobeRatios3[mask_excess3] += (Excess3 * scale[:, None])[mask_excess3]
 
-            # Construct hypothetical nutrient quotas for each possible minimum nutrient
+            # Nutrient quotas scaled to each possible limiting element, then pick the limiting one
             MC, MN, MP = Mic_subset[:, 0], Mic_subset[:, 1], Mic_subset[:, 2]
-            MRC, MRN, MRP = MicrobeRatios4[:, 0], MicrobeRatios4[:, 1], MicrobeRatios4[:, 2]
-
+            MRC, MRN, MRP = MicrobeRatios3[:, 0], MicrobeRatios3[:, 1], MicrobeRatios3[:, 2]
             with np.errstate(invalid='ignore', divide='ignore'):
                 new_C = np.stack([MC, MN * MRC / MRN, MP * MRC / MRP], axis=1)
                 new_N = np.stack([MC * MRN / MRC, MN, MP * MRN / MRP], axis=1)
                 new_P = np.stack([MC * MRP / MRC, MN * MRP / MRN, MP], axis=1)
             for arr in (new_C, new_N, new_P):
                 arr[~np.isfinite(arr)] = np.float32(0)
-
-            # Insert the appropriate set of nutrient quotas scaled to the minimum nutrient.
-            # Safety net: if 'E' (index 3) were ever the limiting column -- which never
-            # happens in practice (see note above) -- new_C/new_N/new_P have no 4th
-            # column to index, so fall back to the argmax restricted to C/N/P only for
-            # those (should-never-occur) rows rather than raising.
-            if np.any(limiting_pos > 2):
-                bad = limiting_pos > 2
-                limiting_pos = limiting_pos.copy()
-                limiting_pos[bad] = np.argmax(metric4_safe[bad][:, :3], axis=1)
             rows = np.arange(len(idx2))
             C_final = new_C[rows, limiting_pos]
             N_final = new_N[rows, limiting_pos]
             P_final = new_P[rows, limiting_pos]
 
-            # Update Microbes
+            # Update Microbes (E unchanged)
             Mic[idx2, 0] = C_final
             Mic[idx2, 1] = N_final
             Mic[idx2, 2] = P_final

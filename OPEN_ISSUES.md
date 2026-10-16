@@ -5,12 +5,13 @@ file as items are resolved (the git log has the details of each change).
 
 ## Decided, to implement next
 
-- **NH4 and PO4 inputs in both the minimal and the full model.** `Input_NH4`/`Input_PO4` already act in `Grid.uptake`
-  for any input folder. Bin Wang's version also routed organic monomer inputs (with C:N:P from `elem_ratios.csv`)
-  and added substrate inputs (`SubInput`) each day; decide whether to restore those too. The `Sub`/`Mon` columns of
-  `sub_mon_inputs.csv` are currently inert.
+(none at the moment)
 
 ## Deferred (revisit later)
+
+- **Organic monomer and substrate inputs.** `Input_NH4`/`Input_PO4` act in both the minimal and the full model (checked
+  2026-10-15). Bin Wang's version also routed organic monomer inputs (C:N:P from `elem_ratios.csv`) and added
+  substrate inputs (`SubInput`) daily; the `Sub`/`Mon` columns of `sub_mon_inputs.csv` are inert. Deferred.
 
 - **Fungal distribution in the minimal model.** Fungal placement probability is scaled by `max_size_b/max_size_f`
   (about 4% of cells occupied at t0 with `taxa_per_box` 1), and fungal translocation averages every living fungal
@@ -20,22 +21,15 @@ file as items are resolved (the git log has the details of each change).
   like HSP and osmolytes (tracked pools) would need their production computed before `uptake()`.
 - **`Ferm_Cond` plays three roles**: fraction of energy-C fermented, exponent of the energy-demand curve, exponent of
   the monomer energy-value transform.
-- **Leaching shape and scope.** The rate `Leaching * exp(Leaching_psi_slope * (Psi - wp_fc))` (parameters since
-  2026-10-15, defaults 0.1 and 0.5) still applies in dry soil (1.4%/day at -5 MPa), where there is no drainage; only
-  NH4 and PO4 leach (no dissolved organic C/N). In a 60-day minimal run about 74% of the NH4 input leached, so
-  leaching largely sets how much of `Input_NH4` microbes receive. Daily and per-pulse leached N and P are now in the
-  output (`LeachingSeries`, `CumLeachByPulse`).
-- **Stoichiometric rebalancing in `Grid.mortality` includes E.** Ratios are taken over C+N+P+E with an E minimum
-  of 0, so C, N and P always look deficient: a rebalanced cell keeps its limiting element and the other two are cut
-  to the minimum ratios (Cfrac - Crange etc.) relative to it, rather than the partial reduction of DEMENT. This sets
-  how much C is respired as overflow. `E_min_ratio` is therefore kept out of the rebalancing (it acts as the
-  biosynthesis energy reserve and the lower anchor of the energy-demand curve instead).
+- **Leaching shape and scope** (left as is by decision, 2026-10-15). The rate
+  `Leaching * exp(Leaching_psi_slope * (Psi - wp_fc))` also applies in dry soil; only NH4 and PO4 leach. About a third
+  of the NH4 input leaches over a year. Daily and per-pulse leached N and P are in the output.
 - **Inducible osmolyte production is nearly inert under drought** (tied to uptake and leftover energy, both of which
   collapse); drought tolerance currently behaves as a constitutive trait.
-- **Energy deficit default.** `E_deficit_erosion` is 0 in every input folder (shortfalls floored away, energy not
-  accounted for; the output `E_unpaid_Taxon` shows how much). In a high-maintenance minimal test the population
-  persisted on ~68 unpaid energy units per day with the switch off and went extinct with it on. Decide which setting
-  the sensitivity runs use.
+- **Energy deficit default.** `E_deficit_erosion` is 0 in every input folder (shortfalls floored away; the output
+  `E_unpaid_Taxon` shows how much). The maintenance sensitivity runs use both settings.
+- **`E_min_ratio_b/_f` biosynthesis reserve.** Besides anchoring the energy-demand curve (its intended role), energy
+  below `E_min * C` is withheld from enzyme/HSP/osmolyte production. Inert at the current value 0; confirm or remove.
 - **Calibration**: `HSP_max_frac`, `Osmo_max_frac` (defaults 0.2) and `Osmo_tol_K` (default 0.05) are placeholders;
   the linear composition feedback acts as a constant tax well below the cap.
 
