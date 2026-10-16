@@ -54,11 +54,7 @@ def main():
                         ms=3.5, lw=1.6, label=STYLE[e]["label"])
             ax.axvline(1, color="#8a8981", lw=0.8, ls=":")
             if m == "CUE":
-                lo_y = -0.5
-                if (mean.xs(t, level=0)[m] < lo_y).any():
-                    ax.text(0.98, 0.04, "values below -0.5 off scale", transform=ax.transAxes, ha="right", va="bottom",
-                            fontsize=7, color="#5f5e57")
-                ax.set_ylim(lo_y, 0.75)
+                ax.set_ylim(0, 0.5)  # CUE is floored at 0 by the model; blank where the population is extinct
             if r == 0:
                 ax.set_title(f"{t:g} °C")
             if c == 0:
