@@ -59,13 +59,15 @@ def set_climate_temp(path, temp):
     df.to_csv(path)
 
 
-def run_one(src_input, changes, side, days, seed, temp=None):
+def run_one(src_input, changes, side, days, seed, temp=None, climate=None):
     tmp = tempfile.mkdtemp()
     work = os.path.join(tmp, "in")
     shutil.copytree(src_input, work)
     set_params(os.path.join(work, "parameters.csv"), changes)
     set_runtime(os.path.join(work, "runtime.txt"),
                 dict(x=side, y=side, gridsize=side * side, pulse=1))
+    if climate is not None:  # substitute a climate file (daily Temp / Psi); applied before any flat-temperature override
+        shutil.copy(climate, os.path.join(work, "climate.csv"))
     if temp is not None:
         set_climate_temp(os.path.join(work, "climate.csv"), temp)
     cwd = os.getcwd()
@@ -127,6 +129,11 @@ def run_one(src_input, changes, side, days, seed, temp=None):
                 HSP_prop=float(np.asarray(eco.HSP_prop)[alive].mean()) if n else np.nan,
                 maint_Ea_effective=float(np.asarray(eco.maint_E_cost_Ea)[alive].mean()) if n else np.nan,
                 maint_rate_percap=float(np.asarray(eco.tax_maint_E_cost)[alive].mean()) if n else np.nan,
+                Temp=float(eco.temp[i]),
+                Psi=float(eco.psi[i]),
+                Osmo_prop=float(np.asarray(eco.Osmo_prop)[alive].mean()) if n else np.nan,
+                Drought_tol=float(np.asarray(eco.Drought_tol)[alive].mean()) if n else np.nan,
+                killed=int(eco.Kill),
                 E_unpaid=unpaid,
                 erosion_C=eroded,
             ))
