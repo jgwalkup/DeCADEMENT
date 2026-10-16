@@ -18,12 +18,14 @@ file as items are resolved (the git log has the details of each change).
   cell each day. Use the bacterial minimal variant for sensitivity analyses until this is revisited.
   Repopulation now applies the same fungal scaling as the initial placement (fixed 2026-10-16; before, pulses 2-6
   started with every cell occupied).
-- **Repopulation density in multi-taxon communities.** After a pulse, repopulation places on average one
-  (bacterial-equivalent) taxon per grid cell (DEMENTpy's rule), while the initial placement places
-  n_taxa x taxa_per_box (5 in the full model). In a 20x20 mixed full-model test, pulse 2 started with 321 taxon-slots
-  and 1.0 C per grid cell against 1,684 slots and 4.9 C at the start of pulse 1. This affects every multi-pulse full-model
-  run (compare the start-biomass test in SENSITIVITY_SUMMARY). Decision 2026-10-16: keep the DEMENTpy rule for now;
-  pulses 2+ in the full model start about 5 times thinner than pulse 1, so compare pulses from pulse 2 onward.
+- **Repopulation density (resolved 2026-10-16).** DEMENTpy's repopulation placed on average one
+  (bacterial-equivalent) taxon per grid cell after each pulse, while the initial placement places
+  n_taxa x taxa_per_box (5 in the full model), so later pulses started about 5 times thinner (20x20 mixed test: 1.0 vs
+  4.9 C per grid cell). Repopulation now restores the t0 density: shares (fungi in bacterial-equivalent units) are
+  multiplied by n_taxa x taxa_per_box, a taxon is capped at one cell per grid cell, and the excess of capped taxa goes
+  to the others in proportion to their shares (`Grid._repop_probabilities`). One-taxon minimal runs are unchanged
+  (bit-identical); full-model multi-pulse results from before this change (e.g. the start-biomass test and the
+  pulse-to-pulse energy decline) used the old density.
 - **Transporters as tracked cellular compounds.** The two transport energy costs work as designed
   (transporter production per transporter produced; active transport per monomer taken up). Treating transporters
   like HSP and osmolytes (tracked pools) would need their production computed before `uptake()`.

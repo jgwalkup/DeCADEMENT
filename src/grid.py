@@ -88,6 +88,7 @@ class Grid():
         self.cycle = int(runtime.loc['end_time', 1])
         self.gridsize = int(runtime.loc['gridsize', 1])
         self.n_taxa = int(runtime.loc["n_taxa", 1])
+        self.taxa_per_box = float(runtime.loc["taxa_per_box", 1])  # placement probability at t0; sets repopulation density
         self.n_substrates = int(runtime.loc["n_substrates", 1])
         self.n_enzymes = int(runtime.loc["n_enzymes", 1])
         self.n_monomers = self.n_substrates + 3
@@ -1266,6 +1267,59 @@ class Grid():
         self._hsp_pool = np.ascontiguousarray(Mic[:, 4:4 + n_hsp])
         self._osmo_pool = np.ascontiguousarray(Mic[:, 4 + n_hsp:])
 
+    def _repop_probabilities(self, cell_days):
+        """
+        Per-cell placement probability of each taxon for repopulation.
+
+        The community is re-placed at the density of the initial placement. At t0 a bacterial taxon goes into a cell
+        with probability taxa_per_box and a fungal taxon with taxa_per_box * max_size_b / max_size_f; as a placed
+        fungal cell holds max_size_f / max_size_b times the biomass of a bacterial cell, every taxon has the same
+        expected biomass, and the expected biomass per cell is n_taxa * taxa_per_box bacterial-equivalent cells.
+        Repopulation keeps that total and divides it among taxa in proportion to their abundance over the pulse:
+
+        1. Fungal cell-days are converted to bacterial-equivalent units (x max_size_f / max_size_b) and each taxon's
+           share of the total is taken.
+        2. Each taxon receives share * n_taxa * taxa_per_box bacterial-equivalent cells per grid cell.
+        3. A taxon cannot exceed one cell per grid cell (probability 1; max_size_f / max_size_b equivalents for a
+           fungus). The excess of capped taxa is passed to the uncapped taxa in proportion to their shares, repeatedly,
+           until none exceeds its cap; if every surviving taxon is capped the total falls short of the target.
+        4. Fungal equivalents are converted back to cell probabilities (x max_size_b / max_size_f).
+
+        One-taxon communities with taxa_per_box = 1 are re-placed as at t0 (a bacterium in every cell, a fungus in
+        max_size_b / max_size_f of them). Taxa that never occupied a cell get probability 0.
+
+        Parameters:
+            cell_days: 1D array (n_taxa); occupied cells summed over the days of the pulse
+        Returns:
+            p_cell:    1D array (n_taxa); probability that a taxon is placed in a given grid cell
+        """
+        fungal = np.asarray(self.fb[0:self.n_taxa]) == 1
+        size_ratio = float(self.max_size_b) / float(self.max_size_f)
+        equivalents = np.asarray(cell_days, dtype=float).copy()
+        equivalents[fungal] /= size_ratio
+        total = equivalents.sum()
+        if total <= 0:
+            return np.zeros_like(equivalents)
+        share = equivalents / total
+        target = self.n_taxa * self.taxa_per_box               # bacterial-equivalent cells per grid cell, as at t0
+        cap = np.where(fungal, 1.0 / size_ratio, 1.0)         # one cell per grid cell, in bacterial equivalents
+        capped = np.zeros(share.shape, dtype=bool)
+        alloc = np.zeros_like(share)
+        while True:
+            free = ~capped & (share > 0)
+            alloc[capped] = cap[capped]
+            if not free.any():
+                break                                          # every surviving taxon fills every cell
+            remaining = max(target - cap[capped].sum(), 0.0)
+            alloc[free] = remaining * share[free] / share[free].sum()
+            over = free & (alloc > cap)
+            if not over.any():
+                break
+            capped |= over
+        p_cell = alloc.copy()
+        p_cell[fungal] *= size_ratio
+        return np.clip(p_cell, 0.0, 1.0)
+
     def repopulation(self, output, day, mic_reinit):
         """
         Reinitialize a microbial community on the spatial grid in a new pulse.
@@ -1294,23 +1348,9 @@ class Grid():
 
             self.Microbes = self.Microbes_init.copy(deep=True)  # NOTE copy()
 
-            # Placement probability of each taxon in each grid cell, from its abundance over the pulse (cell-days).
-            # Initial placement puts a bacterial taxon in a cell with probability taxa_per_box and a fungal taxon with
-            # taxa_per_box * max_size_b / max_size_f (the same expected biomass per taxon, as one fungal cell holds
-            # max_size_f / max_size_b times more biomass). Repopulation follows the same rule: fungal cell counts are
-            # converted to bacterial-equivalent biomass units before the shares are taken, and the fungal shares are
-            # converted back to cell probabilities. One taxon is therefore re-placed as at the start (a bacterium in every
-            # cell, a fungus in max_size_b / max_size_f of them). All-bacterial communities are unchanged. The expected
-            # number of bacterial-equivalent taxa per cell is 1, as in DEMENTpy (not n_taxa * taxa_per_box as at t0).
+            # Placement probability of each taxon in each grid cell, from its abundance (cell-days) over the pulse.
             cum_abundance = output.Taxon_count_repop.iloc[:, (day + 2 - self.cycle):(day + 2)].sum(axis=1)
-            fungal = np.asarray(self.fb[0:self.n_taxa]) == 1
-            size_ratio = float(self.max_size_b) / float(self.max_size_f)
-            equivalents = cum_abundance.to_numpy(dtype=float, copy=True)
-            equivalents[fungal] /= size_ratio
-            total = equivalents.sum()
-            p_cell = equivalents / total if total > 0 else np.zeros_like(equivalents)
-            p_cell[fungal] *= size_ratio
-            p_cell = np.clip(p_cell, 0.0, 1.0)
+            p_cell = self._repop_probabilities(cum_abundance.to_numpy(dtype=float, copy=True))
             # Randomly assign microbes to each grid box based on prior densities
             choose_taxa = np.array([0] * self.gridsize * self.n_taxa).reshape(self.n_taxa, self.gridsize)
             for i in range(self.n_taxa):
