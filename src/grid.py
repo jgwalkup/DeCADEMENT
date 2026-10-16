@@ -856,6 +856,16 @@ class Grid():
         tax_HSP_induci_prod *= r_induci[:, None]
         Taxon_Osmo_Induci *= r_induci[:, None]
         Taxon_Enzyme_Induci *= r_induci[:, None]
+        # Diagnostics (no effect on the model): enzyme production by route (per grid cell) and the joint C/N/E
+        # limitation factors of constitutive and inducible production (mean over cells with production; 1 = none)
+        if not hasattr(self, "Diag"):
+            self.Diag = {}
+        _pc, _pi = cC > 0, iC > 0
+        self.Diag.update(
+            enz_prod_consti=float(Taxon_Enzyme_Consti.sum()) / self.gridsize,
+            enz_prod_induci=float(Taxon_Enzyme_Induci.sum()) / self.gridsize,
+            r_consti=float(r_consti[_pc].mean()) if _pc.any() else np.nan,
+            r_induci=float(r_induci[_pi].mean()) if _pi.any() else np.nan)
 
         Taxon_HSP_Induci_Cost_C = tax_HSP_induci_prod.sum(axis=1)
         Taxon_HSP_Induci_Cost_E = Taxon_HSP_Induci_Cost_C * HSP_E

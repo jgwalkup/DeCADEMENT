@@ -615,3 +615,29 @@ Terminology: **endogenous respiration (R_endo)** = respiring free biomass C (at 
 - **Saturation is lowest in the warm months** (dry season), because Km follows the MMRT Vmax (Enz_Km_temp_sens = 1) and rises with temperature, while the moisture factor lowers Vmax but not Km. With a high slope this offsets part of the temperature response of decay; with a low slope it vanishes.
 - **Slope 5 approaches the dry-season energy trap** (biomass falls in the dry season, min E:C 11, CUE near 0 at the end of the dry season).
 - With S about 200 per grid cell, even the baseline is close to zero-order kinetics; at low slopes decay no longer slows as the litter is used up until very little is left.
+
+## 11. Enzyme production, ambient climate (2026-10-16)
+
+**Setup (`enzyme_production_sweep/`; `analysis/param_sweep.py`, `analysis/plot_param_sweep.py`):** bacterial minimal model, first year, ambient climate, 20x20, 3 seeds, R_endo on; baseline slopes 0.1, beta 1, `Uptake_Vmax_Km` 0.25, `Vmax_Km` 1 (set in the km25 inputs, commit d421c72). One at a time: constitutive production `Constit_Prod_min`/`max` (enzyme C per unit biomass C per day) 0.0001-0.005 (baseline 0.0002); inducible production `Enz_Prod_min`/`max` (enzyme C per unit of C taken up into biomass) 0.002 (baseline)-0.1; `Enz_loss_rate` (enzyme turnover per day) 0.04 (baseline), 0.03, 0.02, 0.01. New diagnostics in `Grid.Diag`: production by route and the joint C/N/E limitation factors of constitutive and inducible production (no effect on results; checked identical).
+
+**Baseline:** enzyme production is never resource-limited (limitation factors 1.0 all year), so it is set by the rate parameters alone. Constitutive production supplies about 94 % of it (0.0002 x biomass C per day vs 0.002 x biomass-C uptake). Enzyme C is 0.9 % of C uptake; the enzyme pool (0.04-0.09 per grid cell) is about 0.5 % of biomass; day-365 degradation 31.2 %.
+
+| Setting | Degraded day 365 | Day 50 % degraded | Max biomass C | Enzyme C / C uptake |
+|---|---|---|---|---|
+| Constit_Prod 0.0001 (x0.5) | 5.7 % (community collapses, 280 starvation deaths) | - | 4.1 | 0.6 % |
+| Constit_Prod 0.00015 (x0.75) | 10.9 % (collapses) | - | 5.8 | 0.7 % |
+| **Baseline** | **31.2 %** | - | 18.9 | 0.9 % |
+| Constit_Prod 0.0003 (x1.5) | 99.1 % | 283 | 79.5 | 1.3 % |
+| Constit_Prod 0.0005 (x2.5) | 100 % | 183 | 64.0 | 2.0 % |
+| Constit_Prod 0.002 (x10) | 100 % | 87 | 48.7 | 5.1 % |
+| Enz_Prod 0.005 (x2.5) | 53.5 % | 355 | 39.4 | 1.0 % |
+| Enz_Prod 0.01 (x5) | 100 % | 257 | 78.6 | 1.4 % |
+| Enz_Prod 0.05 (x25) | 100 % | 52 | 37.9 | 4.1 % |
+| Enz_loss_rate 0.03 | 82.6 % | 308 | 64.7 | 0.8 % |
+| Enz_loss_rate 0.02 | 100 % | 226 | 73.8 | 1.1 % |
+
+- **The response is a threshold, not a gradient.** A factor of 2 in constitutive production separates collapse (x0.5, 5.7 %) from complete degradation within the year (x1.5, 99 %); the same holds for inducible production and enzyme turnover.
+- **Why:** with enzymes saturated by substrate and uptake not limiting, nothing in the model depends on population density until the substrate runs out. Enzyme production, decay and uptake all scale with biomass, so the per-capita growth rate is fixed by enzyme per biomass, enzyme Vmax (temperature), yield and maintenance, and the community grows or declines exponentially (per-capita growth days 60-180: 0.006 per day at baseline, 0.0105 at x1.5, 0.003 at x0.75 before the collapse). Small changes in that rate compound over the year. Below the threshold the community cannot cover maintenance, its energy pool runs out (E:C 0 by about day 200 at x0.5) and it does not recover (the energy trap).
+- The lower uptake Km (section 9) and enzyme Km (section 10) slopes removed two density-dependent feedbacks (monomer competition at the transporters, substrate saturation of enzymes), which is part of why the system is now this sensitive. The same compounding will apply to temperature, through the MMRT Vmax: warming responses are likely to be threshold-like as well.
+- After the substrate is exhausted the community starves (closed litter system): biomass, CUE and enzyme saturation fall to zero, and the runs with the fastest degradation have starvation deaths late in the year.
+- Inducible production is somewhat self-limiting (tied to uptake): at Enz_Prod 0.1 decay outpaces uptake and organic monomers briefly accumulate to about 80 per grid cell.

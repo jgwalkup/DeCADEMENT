@@ -20,6 +20,11 @@ CLIM = [("ambient_temp", "Ambient"), ("moderate_warm", "+5 °C"), ("extreme_warm
 CLIM_COL = {"ambient_temp": "#3b6fb6", "moderate_warm": "#e0a030", "extreme_warm": "#c0392b"}
 
 
+def disp(p):
+    """Display name: 'X_min+X_max' -> 'X'."""
+    return p.split("+")[0].replace("_min", "") if "+" in p else p
+
+
 def load(out):
     t = pd.read_csv(os.path.join(out, "timeseries.csv.gz"))
     base = pd.read_csv(os.path.join(out, "baseline_values.csv"), header=None, index_col=0)[1]
@@ -36,6 +41,7 @@ def annual(t):
         w = g["C_uptake"].clip(lower=0)
         return pd.Series(dict(
             degraded_365=g.loc[g.doy.idxmax(), "degraded"],
+            day_50pct=g.loc[g.degraded >= 50, "doy"].min() if (g.degraded >= 50).any() else np.nan,
             biomass_mean=g["biomass_C"].mean(),
             biomass_min_dry=g.loc[g.Psi < -4, "biomass_C"].min(),
             CUE_annual=np.average(g["CUE"].fillna(0), weights=w) if w.sum() > 0 else np.nan,
@@ -80,10 +86,10 @@ def single(t, base, params, rows, clim, dry, a):
             ax.set_visible(False)
         for ax in axs[-2:]:
             ax.set_xlabel("Day of year")
-        axs[0].legend(title=p, fontsize=8, title_fontsize=9, frameon=False, loc="upper left")
-        fig.suptitle(f"{p}, {cn} climate: {a.title} (shaded: Psi below −4 MPa)", fontsize=11)
+        axs[0].legend(title=disp(p), fontsize=8, title_fontsize=9, frameon=False, loc="upper left")
+        fig.suptitle(f"{disp(p)}, {cn} climate (shaded: Psi below −4 MPa)\n{a.title}", fontsize=11)
         fig.tight_layout(rect=(0, 0, 1, 0.97))
-        fig.savefig(os.path.join(a.out, f"{p}_timeseries.png"), dpi=140)
+        fig.savefig(os.path.join(a.out, f"{disp(p)}_timeseries.png"), dpi=140)
         plt.close(fig)
 
 
@@ -129,17 +135,17 @@ def main():
                     ax[r, j].set_ylabel(lab)
             ax[-1, j].set_xlabel("Day of year")
         ax[2, 0].set_ylim(bottom=0)
-        ax[0, 0].legend(title=p, fontsize=8, title_fontsize=9, frameon=False, loc="upper left")
+        ax[0, 0].legend(title=disp(p), fontsize=8, title_fontsize=9, frameon=False, loc="upper left")
         ax[0, -1].text(0.98, 0.03, "shaded: Psi below −4 MPa", transform=ax[0, 2].transAxes, ha="right", fontsize=8, color="0.4")
-        fig.suptitle(f"{p}: {a.title}", fontsize=12)
+        fig.suptitle(f"{disp(p)}: {a.title}", fontsize=12)
         fig.tight_layout(rect=(0, 0, 1, 0.97))
-        fig.savefig(os.path.join(a.out, f"{p}_timeseries.png"), dpi=140)
+        fig.savefig(os.path.join(a.out, f"{disp(p)}_timeseries.png"), dpi=140)
         plt.close(fig)
 
     ann = annual(t)
     m = ann.groupby(["param", "value", "climate"]).mean(numeric_only=True).drop(columns="seed")
     m.round(4).to_csv(os.path.join(a.out, "param_sweep_annual.csv"))
-    mets = [("degraded_365", "Degraded, day 365 (%)"), ("biomass_mean", "Mean biomass C per grid cell"),
+    mets = [("degraded_365", "Degraded, day 365 (%)"), ("day_50pct", "Day 50 % degraded\n(missing: not reached)"), ("biomass_mean", "Mean biomass C per grid cell"),
             ("CUE_annual", "Annual CUE (uptake-weighted)"), ("dead_C", "Dead biomass C per grid cell (year)"),
             ("drought_kills", "Drought kills (cells, year)"), ("enzyme_pool_mean", "Mean enzyme pool per grid cell"),
             ("enzyme_saturation", "Mean enzyme saturation")]
@@ -152,13 +158,13 @@ def main():
                 ax[i, j].plot(d.index, d.values, marker="o", ms=6, lw=1.8, color=CLIM_COL[cl], label=cn)
             ax[i, j].axvline(base[p], color="0.6", lw=1, ls=":")
             if p in getattr(a, "logx", []):
-                ax[i, j].set_xscale("symlog", linthresh=min(v for v in m.loc[p].index.get_level_values(0) if v > 0))
+                ax[i, j].set_xscale("log")
             ax[i, j].grid(alpha=0.3, lw=0.6)
             ax[i, j].spines[["top", "right"]].set_visible(False)
             if j == 0:
                 ax[i, j].set_ylabel(lab)
-        ax[0, j].set_title(p)
-        ax[-1, j].set_xlabel(f"{p} (dotted: baseline)")
+        ax[0, j].set_title(disp(p))
+        ax[-1, j].set_xlabel(f"{disp(p)} (dotted: baseline)")
     ax[0, 0].legend(frameon=False, fontsize=8)
     fig.suptitle(a.title, fontsize=11)
     fig.tight_layout(rect=(0, 0, 1, 0.97))
