@@ -231,8 +231,7 @@ class Grid():
         self.P_min = data_init['P_min']  # P threshold value of living cell
         # Energy:biomass C bounds of each cell (bacteria: E_*_ratio_b, fungi: E_*_ratio_f). E_max: energy above
         # E_max * C is dissipated (mortality step), and the fraction of uptake C routed to energy falls to 0 as E:C
-        # approaches it. E_min: at or below it all energy-eligible uptake C is routed to energy; energy below
-        # E_min * C is also a reserve that biosynthesis (enzyme, HSP, osmolyte production) cannot draw on.
+        # approaches it. E_min: at or below it all energy-eligible uptake C is routed to energy.
         _fungal = np.asarray(data_init['fb']) == 1
         self.E_min = np.where(_fungal, data_init['E_min_ratio_f'], data_init['E_min_ratio_b']).astype(np.float32)
         self.E_max = np.where(_fungal, data_init['E_max_ratio_f'], data_init['E_max_ratio_b']).astype(np.float32)
@@ -700,7 +699,7 @@ class Grid():
 
     def metabolism(self, day):
         """
-        Intracellular production of enzymes, heat shock proteins (HSP) and osmolytes; emergent CUE.
+        Intracellular production of enzymes, heat shock proteins (HSP) and osmolytes; CUE (finished in mortality()).
 
         Compound classes
           Enzymes are exported: their C, N and P leave the cell (to the Enzymes pool).
@@ -765,10 +764,9 @@ class Grid():
         Uptake_Prod_Cost_sum = self.Uptake_Prod_Cost.to_numpy(dtype=np.float32, copy=True).sum(axis=1)
         Tax_transport_prod_E_cost = (Taxon_Total_Uptake_v * Uptake_Prod_Cost_sum) * np.float32(self.UptakeProd_E_Cost)
 
-        # energy available for biosynthesis: the pool plus this step's energy, minus transport and maintenance, minus
-        # the reserve E_min * C that production may not draw on
+        # energy available for biosynthesis: the pool plus this step's energy, minus transport and maintenance
         MicBio_avail_E = (Microbes_E + Taxon_Uptake_E_v - Tax_active_transport_E_cost
-                          - Tax_transport_prod_E_cost - Tax_cell_maint_E_cost - self.E_min * Microbes_C)
+                          - Tax_transport_prod_E_cost - Tax_cell_maint_E_cost)
         MicBio_avail_E = np.maximum(MicBio_avail_E, np.float32(0))
 
         Enz_N_cost_v, Enz_P_cost_v, Enz_E_cost_v = self._enz_cost_consti
@@ -873,15 +871,14 @@ class Grid():
         # energy that was not paid for (with erosion off, all of the shortfall; on, what free C could not cover)
         E_unpaid = np.maximum(E_deficit - C_eroded * (self._erosion_E_yield if self.E_deficit_erosion else 0), 0)
 
-        # ── Emergent CUE (HSP and osmolyte C is retained in biomass) ─────────────────────────────────────────────
-        CUE_taxon = np.zeros(G * T, dtype=np.float32)
-        pos_uptake_index = Taxon_Uptake_C_v > 0
+        # ── CUE, part 1: C retained so far (HSP and osmolyte C stays in biomass). Finished in mortality(), after the
+        # C respired by stoichiometric rebalancing (see _update_cue) ─────────────────────────────────────────────────
         Mic_BC_Use = Microbe_C_Gain - Taxon_Enzyme_Consti_Cost_C
         if self.E_deficit_erosion:
             Mic_BC_Use = Mic_BC_Use - C_eroded           # biomass respired to pay energy deficits
-        CUE_taxon[pos_uptake_index] = Mic_BC_Use[pos_uptake_index] / Taxon_Uptake_C_v[pos_uptake_index]
-        Taxon_Use_C_grid = Taxon_Uptake_C_v.sum()
-        CUE_system = np.float32(0) if Taxon_Use_C_grid == 0 else Mic_BC_Use.sum() / Taxon_Use_C_grid
+        self._cue_C_retained = np.asarray(Mic_BC_Use, dtype=np.float32)
+        self._cue_C_uptake = np.asarray(Taxon_Uptake_C_v, dtype=np.float32)
+        self._update_cue()                                # provisional until mortality() subtracts rebalancing losses
 
         # ── Publish taxon-level results (plain float32 arrays) ───────────────────────────────────────────────────
         self.Tax_active_transport_E_cost = Tax_active_transport_E_cost
@@ -890,8 +887,6 @@ class Grid():
         self.Taxon_HSP_Induci_Cost_E = Taxon_HSP_Induci_Cost_E
         self.Microbe_E_Cost = Microbe_E_Cost
         self.Microbe_E_Gain = Microbe_E_Gain
-        self.CUE_taxon = CUE_taxon
-        self.CUE_system = CUE_system
         self.Taxon_Osmo_Cost_C = Taxon_Osmo_Consti_Cost_C + Taxon_Osmo_Induci_Cost_C     # C moved into the pool
         self.Taxon_Enzyme_Cost_C = Taxon_Enzyme_Consti_Cost_C + Taxon_Enzyme_Induci_Cost_C
         self.Taxon_HSP_Cost_C = Taxon_HSP_Consti_Cost_C + Taxon_HSP_Induci_Cost_C          # C moved into the pool
@@ -933,6 +928,19 @@ class Grid():
             self.Substrates.loc[is_deadEnz, dead_cols].to_numpy(dtype=np.float32, copy=True)
             + np.stack([DeadEnz_C, DeadEnz_N, DeadEnz_P], axis=1)
         )
+
+    def _update_cue(self, rebalance_C_loss=None):
+        """CUE = (C taken up - C respired for energy - enzyme C - C eroded for energy deficits - C respired by
+        stoichiometric rebalancing) / C taken up, per cell (CUE_taxon) and for the grid (CUE_system); values below 0
+        are set to 0. Cells without C uptake get 0. Dead-cell C (necromass) is not a loss here."""
+        retained = self._cue_C_retained if rebalance_C_loss is None else self._cue_C_retained - rebalance_C_loss
+        up = self._cue_C_uptake
+        cue = np.zeros_like(up)
+        pos = up > 0
+        cue[pos] = retained[pos] / up[pos]
+        self.CUE_taxon = np.maximum(cue, np.float32(0))
+        tot = float(up.sum(dtype=np.float64))
+        self.CUE_system = np.float32(0) if tot == 0 else np.float32(max(float(retained.sum(dtype=np.float64)) / tot, 0.0))
 
     def _clip_pools(self, C, N):
         """Keep the bound pools inside the cell: bound C <= biomass C and bound N <= biomass N (pools of empty cells -> 0).
@@ -1109,6 +1117,9 @@ class Grid():
             MicLoss = StartMicrobes - Mic[idx2]
             tax_resp_mort = self.Taxon_resp_df.to_numpy(copy=True).ravel(order='C').astype(np.float32)
             tax_resp_mort[idx2] += MicLoss[:, 0]
+            rebalance_C_loss = np.zeros(n_taxa * gridsize, dtype=np.float32)
+            rebalance_C_loss[idx2] = MicLoss[:, 0]
+            self._update_cue(rebalance_C_loss)            # CUE after the C respired by rebalancing
             self.Taxon_Resp = pd.Series(tax_resp_mort, index=Mic_index)
             # Update monomer pools
             self.Monomers.loc[is_NH4, "N"] += np.float32(MicLoss[:, 1].sum() / gridsize)

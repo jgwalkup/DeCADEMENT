@@ -28,8 +28,6 @@ file as items are resolved (the git log has the details of each change).
   collapse); drought tolerance currently behaves as a constitutive trait.
 - **Energy deficit default.** `E_deficit_erosion` is 0 in every input folder (shortfalls floored away; the output
   `E_unpaid_Taxon` shows how much). The maintenance sensitivity runs use both settings.
-- **`E_min_ratio_b/_f` biosynthesis reserve.** Besides anchoring the energy-demand curve (its intended role), energy
-  below `E_min * C` is withheld from enzyme/HSP/osmolyte production. Inert at the current value 0; confirm or remove.
 - **Calibration**: `HSP_max_frac`, `Osmo_max_frac` (defaults 0.2) and `Osmo_tol_K` (default 0.05) are placeholders;
   the linear composition feedback acts as a constant tax well below the cap.
 
