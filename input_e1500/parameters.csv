@@ -118,7 +118,7 @@ Uptake_identity_map,0
 Leaching,0.1
 Leaching_psi_slope,0.5
 E_deficit_erosion,0
-Uptake_psi_slope,0.5
+Uptake_psi_slope,0.25
 Enzyme_psi_slope,0.25
 HSP_max_frac,0.2
 Osmo_max_frac,0.2

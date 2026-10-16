@@ -600,7 +600,7 @@ def initialize_data(runtime_parameters, climate_file="climate.csv", community_di
             "wp_th", 1
         ],  # threshold below which microbes in full swing to respond to drought
         # optional: moisture sensitivity of the uptake (f_psi = exp(slope * (Psi - wp_fc)) below wp_fc)
-        "Uptake_psi_slope": _optional(parameters, "Uptake_psi_slope", 0.5),
+        "Uptake_psi_slope": _optional(parameters, "Uptake_psi_slope", 0.25),
         # optional: moisture sensitivity of the enzyme Vmax in the degradation (f_psi = exp(slope * (Psi - wp_fc)) below wp_fc)
         "Enzyme_psi_slope": _optional(parameters, "Enzyme_psi_slope", 0.25),
         # optional: maximum share of biomass (C+N+P) held as HSP C / osmolyte C; production of each compound is scaled by
