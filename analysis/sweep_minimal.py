@@ -154,6 +154,7 @@ def run_one(src_input, changes, side, days, seed, temp=None, climate=None, pulse
                 killed=int(eco.Kill),
                 starved=int(getattr(eco, "Starved", 0)),
                 dead_C=float(getattr(eco, "Dead_C", np.nan)) / G,
+                **{f"d_{k}": v for k, v in getattr(eco, "Diag", {}).items()},
                 E_unpaid=unpaid,
                 R_endo_C=endo_C,
             ))

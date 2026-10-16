@@ -460,6 +460,17 @@ class Grid():
         # see docstring point 2.
         DecayRates = np.fmin(batch1, rss)  # (G*M,)
 
+        # Diagnostics (no effect on the model): enzyme saturation = realised decay / decay at substrate saturation
+        # (enzyme x Vmax), grid means of Vmax and Km, substrate mass per grid cell
+        _sat_pot = float((self._reqenz_set1_v * tev_v).sum())
+        _main = Sub_index_arr == pd.Series(rss).groupby(Sub_index_arr).sum().idxmax()   # largest substrate pool
+        _req_main = self._reqenz_set1_v[_main] > 0
+        _sat_main = (rss[_main][:, None] / (Km_v[_main] + rss[_main][:, None]))[_req_main]
+        self.Diag = dict(
+            deg_saturation=float(_sat_main.mean()) if _sat_main.size else np.nan,   # S / (Km + S), largest substrate
+            deg_Vmax=float(Vmax_v.mean()), deg_Km=float(Km_v.mean()), deg_f_psi=float(f_psi),
+            substrate_mass=float(rss.sum()) / G)
+
         # Adjust cellulose rate by linking cellulose degradation to lignin concentration (LCI)
         is_lignin = Sub_index_arr == 'Lignin'
         is_cellulose = Sub_index_arr == 'Cellulose'
@@ -599,6 +610,25 @@ class Grid():
         np.divide(np.minimum(rsm_3d, csmu), csmu,
                   out=scale, where=(csmu > 0))                           # avoids div/0
         upt    = (max_up * scale).astype(np.float32)                    # (G, M, T)
+        # Diagnostics (no effect on the model), organic monomers only: uptake capacity of the community relative to the
+        # monomer pool available (>= 1: the whole pool is taken up, uptake is supply-limited), share of the pool taken up,
+        # transporter saturation M / (Km + M), grid means of transporter Vmax and Km
+        _org = np.asarray(is_org).reshape(G, M)[0]
+        _avail = float(rsm_3d[:, _org, 0].sum())
+        _Km_u = np.asarray(Uptake_Km, dtype=np.float32).reshape(G, M, -1)[:, _org, :]
+        _rs = rsm_3d[:, _org, :]
+        _req = np.asarray(self.Uptake_ReqEnz, dtype=np.float32).reshape(G, M, -1)[:, _org, :]
+        if not hasattr(self, "Diag"):
+            self.Diag = {}
+        self.Diag.update(
+            upt_capacity_ratio=float(csmu[:, _org, 0].sum()) / _avail if _avail > 0 else np.nan,
+            upt_share_taken=float(upt[:, _org, :].sum()) / _avail if _avail > 0 else np.nan,
+            upt_saturation=float((_req * _rs / (_Km_u + _rs)).sum() / _req.sum()) if _avail > 0 else np.nan,
+            upt_Km=float((_req * _Km_u).sum() / _req.sum()),
+            upt_Vmax=float((_req * np.asarray(Uptake_Vmax, dtype=np.float32).reshape(G, M, -1)[:, _org, :]).sum() / _req.sum()),
+            upt_f_psi=float(f_psi), monomer_avail=_avail / G,
+            NH4_N=float(rsm_3d[:, np.asarray(self.Monomers.index[:M]) == "NH4", 0].sum()) / G,
+            PO4_P=float(rsm_3d[:, np.asarray(self.Monomers.index[:M]) == "PO4", 0].sum()) / G)
 
         # ── Step 2: Update Monomers pool ─────────────────────────────────────────
         # upt.sum(axis=2): (G, M) — total uptake per grid × monomer

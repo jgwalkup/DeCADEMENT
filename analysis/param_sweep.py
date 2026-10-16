@@ -3,7 +3,8 @@
     python analysis/param_sweep.py OUT_DIR --vary NAME=v1,v2,... [NAME=...] [--input DIR] [--climates CSV ...]
         [--seeds 0 1] [--days 365] [--side 20] [--set NAME=VALUE ...] [--procs 2]
 
-Each parameter is varied alone, all others at the input values; the baseline (input values) is run once and stored
+Each parameter is varied alone, all others at the input values (NAME may join several parameters with "+", e.g.
+Enz_Prod_min+Enz_Prod_max, all set to the same value); the baseline (input values) is run once and stored
 under every varied parameter at its input value. R_endo is on unless --set R_endo=0. Writes OUT_DIR/summary.csv and
 OUT_DIR/timeseries.csv.gz (columns param, value, climate, seed); restartable.
 """
@@ -30,7 +31,7 @@ def _name(path):
 
 def _job(args):
     src, clim, param, value, seed, side, days, fixed = args
-    changes = dict(fixed) if param == "baseline" else {**fixed, param: value}
+    changes = dict(fixed) if param == "baseline" else {**fixed, **{q: value for q in param.split("+")}}
     summary, series = run_one(src, changes, side, days, seed, climate=clim)
     key = dict(param=param, value=value, climate=_name(clim), seed=seed)
     return {**key, **summary}, pd.DataFrame(series).assign(**key)
@@ -53,7 +54,7 @@ def main():
     params = pd.read_csv(os.path.join(src, "parameters.csv"), header=None, index_col=0)[1]
     fixed = {k: float(v) for k, v in (x.split("=") for x in a.set)}
     vary = {k: [float(x) for x in v.split(",")] for k, v in (x.split("=") for x in a.vary)}
-    base = {k: float(fixed.get(k, params[k])) for k in vary}
+    base = {k: float(fixed.get(k.split("+")[0], params[k.split("+")[0]])) for k in vary}
     pv = [("baseline", 0.0)] + [(k, v) for k, vals in vary.items() for v in vals if v != base[k]]
     sp, tp = os.path.join(a.out_dir, "summary.csv"), os.path.join(a.out_dir, "timeseries.csv.gz")
     done = set()

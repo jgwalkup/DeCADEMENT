@@ -563,3 +563,32 @@ Terminology: **endogenous respiration (R_endo)** = respiring free biomass C (at 
 - **Energy trap at the end of the dry season.** With a steep enzyme slope (0.5, 1) the community's energy pool reaches zero during the dry season (E:C 450 at day 180 -> 0 by about day 220 at slope 1), enzyme production stops, the enzyme pool decays, and the community does not recover after rewetting: no enzymes, so no monomers, so no energy (biomass shrinks to 0.2-0.9 per grid cell through R_endo; at +10 C slope 1 also 276 starvation deaths). The same trap appears at +10 C with uptake slope 0-0.1 in one of two seeds (22 vs 30 % degraded): without the uptake restriction the large dry-season community depletes the monomer pool (0.4 vs 1.4), its energy pool hits zero at about day 290, and it never restarts (as with beta 0, section 7). Recovery after drought therefore depends on whether the energy reserve lasts through the dry season.
 - **CUE** drops through the dry season at every setting (to about 0.1 at baseline), the more the steeper the slopes; at enzyme slope >= 0.5 or uptake slope 1 it reaches 0. Annual uptake-weighted CUE is not a useful summary here: when dry-season uptake is negligible the annual value reflects the wet season only (it is lowest at the baseline).
 - **Mortality** with beta 1 is mostly basal: drought kills are 270-320 cells per year at every setting (no trend), and dead biomass C follows biomass.
+
+## 9. What limits degradation (2026-10-16)
+
+**Setup (`degradation_limits/`; `analysis/param_sweep.py`, `analysis/plot_limit_sweep.py`):** bacterial minimal model, first year, 20x20, 2 seeds, R_endo on, new baseline `Enzyme_psi_slope` = `Uptake_psi_slope` = 0.1 and beta 1; ambient / +5 C / +10 C. New step diagnostics in `Grid.Diag` (no effect on results; checked identical): enzyme saturation S / (Km + S) on the largest substrate; uptake capacity of the community relative to the organic monomer pool (>= 1: the whole pool can be taken up in a day); transporter saturation M / (Km + M); mineral N and P pools. Test runs, one at a time: `Uptake_Vmax_Km` (uptake Km = slope x transporter Vmax) 2.5 (baseline), 1, 0.5, 0.25, 0.1, 0.025, 0.0025; `Enz_Prod_min`/`max` 0.002 (baseline), 0.004, 0.008; `Vmax_Km` (enzyme Km slope) 2.5, 0.25; and `Uptake_Vmax_Km` 0.25 with `Enz_Prod` 0.004 and 0.008.
+
+**Diagnosis at the baseline:**
+- **Degradation is enzyme-limited.** Enzymes are 92-96 % saturated by substrate all year (S about 200 vs Km 10-18 per grid cell), so decay is close to enzyme pool x Vmax, and the enzyme pool (0.03-0.07 per grid cell) follows biomass.
+- **Growth is limited by uptake kinetics, not by monomer supply.** Transporters are about 1 % saturated (monomer pool about 1.2 vs uptake Km 35-60 per grid cell, because Km = 2.5 x Vmax): the community can take up only 2-30 % of the monomer pool per day (capacity ratio 0.10 / 0.17 / 0.19 annual mean), and organic monomers accumulate (2.5-3.5 per grid cell in the first 50 days, about 1.2 later). At low M the uptake rate is about Vmax / Km x M = M / 2.5 per unit transporter, so raising transporter Vmax does not help; only the Km slope (or intercept) does.
+- Not N- or P-limited: NH4 and PO4 accumulate, and biomass N:C rises above its initial value (0.19 -> 0.27-0.33; C-limited cells).
+- With slopes 0.1 biomass already grows during the dry season (+2.1 / +4.4 / +4.1 C per grid cell from the start to the end of Psi < -4 MPa).
+
+| Run | Degraded day 365 (amb / +5 / +10, %) | Capacity ratio (amb) | Dry-season biomass change (amb / +10) | Min E:C (amb) |
+|---|---|---|---|---|
+| Baseline (uptake Km slope 2.5) | 22.9 / 42.6 / 52.2 | 0.10 | +2.1 / +4.1 | 424 |
+| Uptake Km slope 1 | 26.1 / 52.2 / 63.9 | 0.31 | +2.5 / +5.6 | 377 |
+| Uptake Km slope 0.5 | 26.9 / 54.8 / 68.3 | 0.64 | +2.0 / +5.7 | 314 |
+| Uptake Km slope 0.25 | 25.3 / 55.6 / 69.8 | 1.18 | +1.3 / +6.0 | 179 |
+| Uptake Km slope 0.1 | 20.4 / 54.8 / 70.7 | 2.3 | +0.3 / +6.1 | 1-21 |
+| Uptake Km slope 0.025 | 17.4 / 56.4 / 70.9 | 6.4 | -3.8 / +5.9 | 0 (119 starved) |
+| Enz_Prod 0.004 | 29.1 / 58.0 / 73.6 | 0.13 | +3.8 / +7.7 | 461 |
+| Enz_Prod 0.008 | 51.4 / 98.0 / 99.6 | 0.18 | +8.3 / +20.3 | 527 |
+| Enzyme Km slope 0.25 | 29.2 / 59.6 / 76.7 | 0.13 | +3.9 / +8.0 | 582 |
+| Uptake Km slope 0.25 + Enz_Prod 0.004 | 35.3 / 79.8 / 93.1 | 1.56 | +3.6 / +10.4 | 380 |
+| Uptake Km slope 0.25 + Enz_Prod 0.008 | 74.7 / 100 / 100 | 2.59 | +13.1 / +14.5 | 510 (warm runs exhaust the substrate, then E -> 0) |
+
+- **Lowering the uptake Km slope removes the uptake limitation**: at 0.25 the capacity ratio is about 1 at ambient (1.1-1.2 in the dry season) and 2-3 when warm, and the monomer pool is drawn down to about 0.06. The warm runs gain 13-18 points; ambient only 2-4 points, because biomass is then set by the monomer supply, i.e. by decay, i.e. by the enzyme pool.
+- **Too fast uptake destabilises the ambient run**: at slope 0.1 and below the supply-limited community has no monomer buffer, its energy reserve runs out in the dry season (one of two seeds at 0.1; both at 0.025 and 0.0025, with 117-225 starvation deaths) and it does not recover (the energy trap of section 8). Slope 0.25-0.5 is the range where uptake is (nearly) non-limiting and the ambient run keeps an energy margin.
+- **Once uptake is not limiting, enzyme production sets degradation**: doubling `Enz_Prod` with uptake slope 0.25 gives 35 / 80 / 93 %; the enzyme Km slope helps less (saturation is already above 0.9; its effect comes through the growth feedback).
+- Ambient stays low in every case mainly because enzyme activity is slow at the cool ambient temperatures (mean enzyme Vmax about 4-7 per unit enzyme vs higher in the warm runs) and the community starts small (1 C per grid cell; the first ~150 days are slow in every run).
