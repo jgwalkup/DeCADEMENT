@@ -17,10 +17,10 @@ Uptake_C_cost_max,0.0375
 NormalizeUptake,0.0
 Enz_per_taxon_min,1.0
 Enz_per_taxon_max,1.0
-Enz_Prod_min,0.002
-Enz_Prod_max,0.002
-Constit_Prod_min,0.0002
-Constit_Prod_max,0.0002
+Enz_Prod_min,0.005
+Enz_Prod_max,0.005
+Constit_Prod_min,0.00025
+Constit_Prod_max,0.00025
 NormalizeProd,0.0
 Osmo_per_taxon_min,1.0
 Osmo_per_taxon_max,1.0
