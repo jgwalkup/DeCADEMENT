@@ -592,3 +592,26 @@ Terminology: **endogenous respiration (R_endo)** = respiring free biomass C (at 
 - **Too fast uptake destabilises the ambient run**: at slope 0.1 and below the supply-limited community has no monomer buffer, its energy reserve runs out in the dry season (one of two seeds at 0.1; both at 0.025 and 0.0025, with 117-225 starvation deaths) and it does not recover (the energy trap of section 8). Slope 0.25-0.5 is the range where uptake is (nearly) non-limiting and the ambient run keeps an energy margin.
 - **Once uptake is not limiting, enzyme production sets degradation**: doubling `Enz_Prod` with uptake slope 0.25 gives 35 / 80 / 93 %; the enzyme Km slope helps less (saturation is already above 0.9; its effect comes through the growth feedback).
 - Ambient stays low in every case mainly because enzyme activity is slow at the cool ambient temperatures (mean enzyme Vmax about 4-7 per unit enzyme vs higher in the warm runs) and the community starts small (1 C per grid cell; the first ~150 days are slow in every run).
+
+## 10. Enzyme Km slope (`Vmax_Km`), ambient climate (2026-10-16)
+
+**Setup (`enzyme_km_sweep/`; `analysis/param_sweep.py`, `analysis/plot_param_sweep.py`):** bacterial minimal model, first year, ambient climate only, 20x20, 3 seeds, R_endo on; baseline slopes 0.1, beta 1, `Uptake_Vmax_Km` 0.25 (set in the km25 inputs, commit 284d31d); `Vmax_Km` 5, 2.5 (baseline), 1, 0.5, 0.25, 0.1, 0.025, 0.0025. Enzyme Km = `Vmax_Km` x enzyme Vmax (MMRT, before the moisture factor; floor `Km_min` 0.01), so Km also rises with temperature.
+
+| Vmax_Km | Degraded, day 365 | Mean biomass C | Mean enzyme pool | Enzyme saturation | Dry-season biomass change | Min E:C |
+|---|---|---|---|---|---|---|
+| 5 | 18.5 % | 5.3 | 0.028 | 0.88 | -0.6 | 11 |
+| 2.5 (baseline) | 25.6 % | 7.0 | 0.036 | 0.94 | +1.3 | 189 |
+| 1 | 31.2 % | 8.3 | 0.042 | 0.97 | +2.7 | 307 |
+| 0.5 | 33.4 % | 8.8 | 0.044 | 0.99 | +3.3 | 338 |
+| 0.25 | 34.5 % | 9.1 | 0.045 | 0.99 | +3.5 | 359 |
+| 0.1 | 35.8 % | 9.4 | 0.047 | 1.00 | +3.8 | 371 |
+| 0.025 | 36.4 % | 9.6 | 0.048 | 1.00 | +4.0 | 376 |
+| 0.0025 | 36.7 % | 9.6 | 0.048 | 1.00 | +4.1 | 377 |
+
+(Seed spread about 1 point.)
+
+- **Small changes in saturation have a large effect through growth.** Saturation goes only from 0.94 to 1.00 between slope 2.5 and 0.1, but degradation rises from 25.6 to 35.8 %: with uptake no longer limiting, growth follows the monomer supply, so faster decay means more biomass, more enzyme and faster decay again (the curves separate from about day 100 and diverge most after the dry season).
+- **The response saturates below a slope of about 0.25-0.5** (34-37 %): enzymes are then fully saturated and decay is enzyme pool x Vmax, independent of Km and of the amount of substrate left.
+- **Saturation is lowest in the warm months** (dry season), because Km follows the MMRT Vmax (Enz_Km_temp_sens = 1) and rises with temperature, while the moisture factor lowers Vmax but not Km. With a high slope this offsets part of the temperature response of decay; with a low slope it vanishes.
+- **Slope 5 approaches the dry-season energy trap** (biomass falls in the dry season, min E:C 11, CUE near 0 at the end of the dry season).
+- With S about 200 per grid cell, even the baseline is close to zero-order kinetics; at low slopes decay no longer slows as the litter is used up until very little is left.
