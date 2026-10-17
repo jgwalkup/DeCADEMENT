@@ -89,7 +89,7 @@ Ferm_ox_p,0.5
 Active_Uptake_E_cost,10.0
 Uptake_Prod_E_cost,600.0
 Enz_Prod_E_cost,600.0
-Osmo_prod_E_cost,600.0
+Osmo_prod_E_cost,150.0
 Enz_loss_rate,0.04
 Osmo_prod_N_cost,0.3
 HSP_prod_E_cost,300.0

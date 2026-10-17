@@ -914,3 +914,21 @@ Practically the same as production x1.25 (section 22). Ambient becomes energy-li
 - **A steeper beta raises drought kills about linearly (osmolytes cut them by about 35-40 % at every beta) but changes decomposition little up to beta 5** (day 95 % at ambient 317 -> 337). Only at beta 10 do osmolytes pay for themselves at ambient (96 vs 92 % degraded at day 365); in the warm runs osmolyte production still costs more than it saves (production off decomposes slightly faster at every beta). Higher beta also thins the community, which relieves the ambient energy limitation (limited days 20.5 -> 0.5 at beta 10) while the warm runs stay limited.
 - **`Osmo_Induci_Prod` has almost no effect**: the osmolyte pool (2-2.5 % of biomass) comes from constitutive production (0.005 x biomass C per day, against inducible 0.05 x biomass-C uptake x the drought factor, about ten times smaller); cost and protection are set by `Osmo_Consti_Prod`.
 - **Lowering `Osmo_prod_E_cost` keeps the protection and removes most of the energy penalty**: at 60-150 the warm runs approach osmolyte-production-off (min E:C 11-28 vs 2; limited days 6.5-14 vs 16-24; day 95 % 3-10 days earlier) with drought kills unchanged (about 260-280). This also weakens the +5 C energy limitation that the current defaults were tuned for (section 24).
+
+## 27. Osmo_prod_E_cost 150 across beta (2026-10-17)
+
+**Decision:** `Osmo_prod_E_cost` lowered from 600 to 150 in the eight minimal km25 input folders, so osmolytes give a net benefit. The full-model km25 folders are unchanged (600).
+
+**Setup (`osmolyte_sweeps/osmo_cost150_beta.*`; `analysis/plot_osmo_cost_beta.py`):** `beta_bac` = `beta_fun` 1, 2, 3, 5, 10 at cost 150, compared with the cost-600 and osmolyte-production-off runs from section 26 (same design: MMRT, real climate, first year, 2 seeds, R_endo on).
+
+| beta | Day 95 % degraded, amb / +5 / +10: cost 150 (cost 600; off) | Limited days, amb / +5 / +10: cost 150 (cost 600; off) | Min E:C, +5: cost 150 (600; off) | Drought kills, ambient: cost 150 (600; off) |
+|---|---|---|---|---|
+| 1 | 304 / 234 / 208 (317 / 242 / 214; 304 / 231 / 207) | 12.5 / 13 / 6.5 (20.5 / 24 / 16; 13 / 9 / 4.5) | 11 (2; 40) | 278 (253; 361) |
+| 2 | 307 / 235 / 209 (320 / 244 / 215; 310 / 234 / 208) | 5.5 / 12 / 8 (8.5 / 22.5 / 15.5; 3 / 11 / 5.5) | 14 (4; 29) | 377 (403; 579) |
+| 3 | 312 / 236 / 210 (326 / 246 / 215; 318 / 235 / 210) | 9 / 14.5 / 9 (5.5 / 24 / 15; 0 / 11.5 / 7.5) | 19 (3; 48) | 518 (530; 801) |
+| 5 | 320 / 240 / 212 (337 / 248 / 217; 334 / 241 / 211) | 0 / 16.5 / 12 (3.5 / 24 / 15; 0 / 11 / 8) | 21 (11; 66) | 767 (809; 1,221) |
+| 10 | 345 / 246 / 214 (361 / 259 / 223; not reached, 92 % / 258 / 219) | 0 / 9 / 11 (0.5 / 26.5 / 19.5; 0 / 3.5 / 9.5) | 73 (31; 139) | 1,418 (1,424; 2,291) |
+
+- **At cost 150, osmolytes are neutral at beta 1 and a net benefit from beta 2 upward.** At ambient, day 95 % is 3 / 6 / 14 days earlier than with osmolyte production off at beta 2 / 3 / 5, and at beta 10 degradation reaches 98.4 % vs 92.1 %. The warm runs break even at beta 1-5 and gain at beta 10 (+5: 246 vs 258; +10: 214 vs 219). Cost 150 is faster than cost 600 everywhere (6-17 days at ambient).
+- **Protection is unchanged by the cost:** drought kills at cost 150 match cost 600 (osmolytes cut kills by 23-38 % vs off, more at higher beta), and dry-season drought tolerance stays about 0.38 at ambient and 0.24-0.31 in the warm runs.
+- **Energy limitation:** the warm runs remain energy-limited at every beta (+5: 9-16.5 days, min E:C 11-21 for beta 1-5; +10: 6.5-12 days), but much less than at cost 600 (min E:C about 2-11). Ambient is limited for 12.5 days at beta 1 (min E:C 69, about the same as with osmolyte production off) and not at all from beta 5.
