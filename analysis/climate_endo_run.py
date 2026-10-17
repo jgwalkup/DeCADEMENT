@@ -35,8 +35,9 @@ def _name(path):
 
 
 def _job(args):
-    src, clim, endo, seed, side, days, fixed, pulses = args
-    summary, series = run_one(src, {**fixed, "R_endo": float(endo)}, side, days, seed, climate=clim, pulses=pulses)
+    src, clim, endo, seed, side, days, fixed, pulses, rt = args
+    summary, series = run_one(src, {**fixed, "R_endo": float(endo)}, side, days, seed, climate=clim, pulses=pulses,
+                              runtime=rt)
     key = dict(climate=_name(clim), R_endo=endo, seed=seed)
     return {**key, **summary}, pd.DataFrame(series).assign(**key)
 
@@ -52,6 +53,8 @@ def main():
     ap.add_argument("--pulses", type=int, default=1)
     ap.add_argument("--side", type=int, default=20)
     ap.add_argument("--set", nargs="*", default=[], metavar="NAME=VALUE")
+    ap.add_argument("--runtime", nargs="*", default=[], metavar="NAME=VALUE",
+                    help="runtime.txt rows to set (appended if absent), e.g. Kinetics_Model=0 for Arrhenius")
     ap.add_argument("--procs", type=int, default=2)
     a = ap.parse_args()
     os.makedirs(a.out_dir, exist_ok=True)
@@ -66,7 +69,8 @@ def main():
         n = len(pd.read_csv(c))
         if n < a.days * a.pulses:
             sys.exit(f"{c} has {n} days, fewer than --days x --pulses = {a.days * a.pulses}")
-    jobs = [(src, os.path.abspath(c), e, s, a.side, a.days, fixed, a.pulses) for c, e, s in itertools.product(a.climates, a.endo, a.seeds)
+    rt = dict(x.split("=") for x in a.runtime)
+    jobs = [(src, os.path.abspath(c), e, s, a.side, a.days, fixed, a.pulses, rt) for c, e, s in itertools.product(a.climates, a.endo, a.seeds)
             if (_name(c), e, s) not in done]
     print(f"{len(jobs)} runs ({len(done)} already done) -> {a.out_dir}; fixed {fixed}", flush=True)
     with Pool(a.procs) as pool:

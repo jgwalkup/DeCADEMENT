@@ -715,3 +715,22 @@ Options near 80 % (degraded per quarter at ambient; day-365 degraded and day of 
 - **Production and the Km slope trade off along a ridge**: about +10 % production offsets +2.5 to +3 in `Vmax_Km` near 80 %. Options on the ridge have almost the same ambient curve (the shape is set by growth from the small inoculum, section 12).
 - **Higher Km slope with higher production damps the warming response a little**: enzyme saturation is lower (0.69-0.78 vs 0.91 at ambient) and falls further as Km rises with temperature, so +10 C reaches 50 % 20 days later (208 vs 188) and the litter is not completely used up (98 vs 100 %); the community crashes less after the substrate runs out (biomass at day 365 at +10 C 57 vs 21). The ambient curve is slightly less back-loaded (last quarter 41 vs 46 %).
 - The warm runs still exhaust the substrate within the year, and min E:C reaches about 0 at +10 C in every option (end-of-year starvation once the substrate is gone).
+
+## 15. Multi-year runs of the chosen parameters; MMRT vs Arrhenius (2026-10-16)
+
+**Setup (`multiyear/`, runs in `runs.tar.gz`; `analysis/climate_endo_run.py` now takes `--runtime`, `analysis/plot_multiyear.py`):** bacterial minimal model with the chosen parameters (production x1.4: `Constit_Prod` 0.00035, `Enz_Prod` 0.007; `Vmax_Km` 13; minimal km25 inputs, commit 5fbae43), Decay_MM_Form 0, R_endo on, three climates. (a) Six yearly pulses (litter reset and community re-placed each year; 2 seeds); (b) one continuous 3-year pulse (no reset; 1 seed). Each with `Kinetics_Model` 1 (MMRT) and 0 (Arrhenius; same Vmax0, Ea and Km slopes).
+
+| Kinetics | Climate | Degraded day 365 (pulses 1-6) | Day 50 % | Biomass C at day 365 |
+|---|---|---|---|---|
+| MMRT | Ambient | 80.1-81.8 % | 300-303 | 61-62 |
+| MMRT | +5 C | 96.9-97.1 % | 232-234 | 65-66 |
+| MMRT | +10 C | 98.0-98.2 % | 205-208 | 54-57 |
+| Arrhenius | Ambient | 94.2-95.0 % | 258-261 | 69-72 |
+| Arrhenius | +5 C | 99.0-99.1 % | 199-201 | 52-54 |
+| Arrhenius | +10 C | 98.2 % | 163-165 | 4-5 |
+
+- **The six pulses are replicates** with both kinetics (repopulation restores the t0 community; identical climate years): no drift between years.
+- **Arrhenius decomposes faster at the same parameters**: 95 vs 81 % at ambient, 50 % reached 43 days earlier. Both rate constants are similar in the cool season (enzyme Vmax 4.6 vs 4.2 at 11 C) but Arrhenius keeps rising with temperature (mean enzyme Vmax 12.0 vs 6.8 above 30 C), whereas MMRT flattens above about 20-25 C and falls at the highest temperatures; transporter Vmax is also about 40 % higher under Arrhenius (22 vs 16 annual mean at ambient).
+- **The warming shift in timing is similar** (day 50 % 303 -> 207 MMRT, 259 -> 164 Arrhenius), but under Arrhenius the +10 C community exhausts the substrate by about day 250 and then crashes (biomass 4-5 at day 365, E:C 0); under MMRT it keeps 54-57.
+- Arrhenius would need its own calibration to reach about 80 % at ambient (for example a higher `Vmax_Km` or lower production).
+- **Continuous 3-year run (no litter input):** the substrate falls to 20 % remaining at the end of year 1 (MMRT ambient), then to 10 % by day 392 and 5 % by day 411; the community then starves (biomass 0 during year 2, 330-365 starvation deaths per climate). There is no levelling off at 20 %; with a single substrate and no inputs, the remaining litter is used up within weeks of the second spring.
