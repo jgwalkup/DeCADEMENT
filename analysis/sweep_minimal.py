@@ -42,12 +42,18 @@ def set_params(path, changes):
 
 
 def set_runtime(path, changes):
-    lines = open(path).read().split("\n")
-    out = []
+    """Set runtime.txt rows in place; rows that do not exist yet (optional switches) are appended."""
+    lines = open(path).read().rstrip("\n").split("\n")
+    out, seen = [], set()
     for l in lines:
         n = l.split("\t")[0]
-        out.append(f"{n}\t{changes[n]}" if "\t" in l and n in changes else l)
-    open(path, "w").write("\n".join(out))
+        if "\t" in l and n in changes:
+            out.append(f"{n}\t{changes[n]}")
+            seen.add(n)
+        else:
+            out.append(l)
+    out += [f"{k}\t{v}" for k, v in changes.items() if k not in seen]
+    open(path, "w").write("\n".join(out) + "\n")
 
 
 def set_climate_temp(path, temp):
@@ -69,7 +75,7 @@ class _RepopStub:
         pass
 
 
-def run_one(src_input, changes, side, days, seed, temp=None, climate=None, pulses=1):
+def run_one(src_input, changes, side, days, seed, temp=None, climate=None, pulses=1, runtime=None):
     """One run of `pulses` pulses of `days` days each (repopulation between pulses as in dementpy.py: substrates,
     monomers and enzymes reset, community re-placed from the taxa's cell counts over the pulse). Returns the end-of-run
     summary (last pulse for the tail metrics) and the daily series (columns pulse, doy, day = day of the whole run)."""
@@ -78,7 +84,7 @@ def run_one(src_input, changes, side, days, seed, temp=None, climate=None, pulse
     shutil.copytree(src_input, work)
     set_params(os.path.join(work, "parameters.csv"), changes)
     set_runtime(os.path.join(work, "runtime.txt"),
-                dict(x=side, y=side, gridsize=side * side, pulse=pulses, end_time=days))
+                dict(x=side, y=side, gridsize=side * side, pulse=pulses, end_time=days, **(runtime or {})))
     if climate is not None:  # substitute a climate file (daily Temp / Psi); applied before any flat-temperature override
         shutil.copy(climate, os.path.join(work, "climate.csv"))
     if temp is not None:

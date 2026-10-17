@@ -124,3 +124,4 @@ Enzyme_psi_slope,0.1
 HSP_max_frac,0.2
 Osmo_max_frac,0.2
 Osmo_tol_K,0.05
+Enz_Sat_K,0.002

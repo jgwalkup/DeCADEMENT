@@ -1,7 +1,7 @@
 """One-at-a-time parameter sweep of the minimal model under the scenario climates.
 
     python analysis/param_sweep.py OUT_DIR --vary NAME=v1,v2,... [NAME=...] [--input DIR] [--climates CSV ...]
-        [--seeds 0 1] [--days 365] [--side 20] [--set NAME=VALUE ...] [--procs 2]
+        [--seeds 0 1] [--days 365] [--side 20] [--set NAME=VALUE ...] [--runtime NAME=VALUE ...] [--procs 2]
 
 Each parameter is varied alone, all others at the input values (NAME may join several parameters with "+", e.g.
 Enz_Prod_min+Enz_Prod_max, all set to the same value); the baseline (input values) is run once and stored
@@ -30,9 +30,9 @@ def _name(path):
 
 
 def _job(args):
-    src, clim, param, value, seed, side, days, fixed = args
+    src, clim, param, value, seed, side, days, fixed, rt = args
     changes = dict(fixed) if param == "baseline" else {**fixed, **{q: value for q in param.split("+")}}
-    summary, series = run_one(src, changes, side, days, seed, climate=clim)
+    summary, series = run_one(src, changes, side, days, seed, climate=clim, runtime=rt)
     key = dict(param=param, value=value, climate=_name(clim), seed=seed)
     return {**key, **summary}, pd.DataFrame(series).assign(**key)
 
@@ -47,6 +47,8 @@ def main():
     ap.add_argument("--days", type=int, default=365)
     ap.add_argument("--side", type=int, default=20)
     ap.add_argument("--set", nargs="*", default=["R_endo=1"], metavar="NAME=VALUE")
+    ap.add_argument("--runtime", nargs="*", default=[], metavar="NAME=VALUE",
+                    help="runtime.txt rows to set for every run (appended if absent), e.g. Decay_MM_Form=1")
     ap.add_argument("--procs", type=int, default=2)
     a = ap.parse_args()
     os.makedirs(a.out_dir, exist_ok=True)
@@ -61,10 +63,12 @@ def main():
     if os.path.exists(sp):
         d = pd.read_csv(sp)
         done = set(zip(d["param"], d["value"].astype(float), d["climate"], d["seed"]))
-    jobs = [(src, os.path.abspath(c), p, float(v), s, a.side, a.days, fixed)
+    rt = dict(x.split("=") for x in a.runtime)
+    jobs = [(src, os.path.abspath(c), p, float(v), s, a.side, a.days, fixed, rt)
             for (p, v), c, s in itertools.product(pv, a.climates, a.seeds) if (p, float(v), _name(c), s) not in done]
     pd.Series(base).to_csv(os.path.join(a.out_dir, "baseline_values.csv"), header=False)
-    print(f"{len(jobs)} runs ({len(done)} already done) -> {a.out_dir}; baseline {base}; fixed {fixed}", flush=True)
+    print(f"{len(jobs)} runs ({len(done)} already done) -> {a.out_dir}; baseline {base}; fixed {fixed}; runtime {rt}",
+          flush=True)
     with Pool(a.procs) as pool:
         for k, (row, ts) in enumerate(pool.imap_unordered(_job, jobs), 1):
             pd.DataFrame([row]).to_csv(sp, mode="a", header=not os.path.exists(sp), index=False)

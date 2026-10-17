@@ -606,6 +606,9 @@ def initialize_data(runtime_parameters, climate_file="climate.csv", community_di
         "Uptake_psi_slope": _optional(parameters, "Uptake_psi_slope", 0.1),
         # optional: moisture sensitivity of the enzyme Vmax in the degradation (f_psi = exp(slope * (Psi - wp_fc)) below wp_fc)
         "Enzyme_psi_slope": _optional(parameters, "Enzyme_psi_slope", 0.1),
+        # optional: enzyme saturation of decay (used only with runtime Decay_MM_Form = 1): enzyme C per unit substrate
+        # (C+N+P) at which decay is half of its forward Michaelis-Menten value; None when the row is absent
+        "Enz_Sat_K": float(parameters.loc["Enz_Sat_K", 1]) if "Enz_Sat_K" in parameters.index else None,
         # optional: maximum share of biomass (C+N+P) held as HSP C / osmolyte C; production of each compound is scaled by
         # (1 - share / max) and stops at the max (composition feedback, see Grid.metabolism)
         "HSP_max_frac": _optional(parameters, "HSP_max_frac", 0.2),

@@ -94,6 +94,21 @@ class Grid():
         self.n_monomers = self.n_substrates + 3
         self.kinetics_model = int(
             runtime.loc["Kinetics_Model", 1])  # specifies use of Arrhenius or MMRT to calculate rxn rates
+        # Form of the decay rate law (runtime.txt row Decay_MM_Form; absent = 0):
+        #   0: forward Michaelis-Menten, Decay = Vmax * E * S / (Km + S): saturating in substrate, linear in enzyme
+        #      (the original model);
+        #   1: forward Michaelis-Menten times an enzyme-saturation factor (reverse Michaelis-Menten limit),
+        #      Decay = Vmax * E * S / (Km + S) * K_E S / (K_E S + E), K_E = Enz_Sat_K (parameters.csv; enzyme C per
+        #      unit substrate C+N+P). Scarce enzyme (E << K_E S): as form 0. Enzyme in excess (E >> K_E S): decay
+        #      approaches Vmax * K_E * S^2 / (Km + S), about Vmax * K_E * S when S >> Km, i.e. first order in substrate and
+        #      independent of more enzyme. E is the enzyme acting on the substrate (summed over the enzymes it requires).
+        self.decay_mm_form = int(runtime.loc["Decay_MM_Form", 1]) if "Decay_MM_Form" in runtime.index else 0
+        if self.decay_mm_form not in (0, 1):
+            raise ValueError(f"runtime.txt: Decay_MM_Form must be 0 (forward Michaelis-Menten) or 1 (with enzyme "
+                             f"saturation); got {self.decay_mm_form}")
+        self.Enz_Sat_K = data_init.get('Enz_Sat_K')
+        if self.decay_mm_form == 1 and not (self.Enz_Sat_K is not None and self.Enz_Sat_K > 0):
+            raise ValueError("Decay_MM_Form = 1 requires a positive Enz_Sat_K row in parameters.csv")
         # self.kinetics_model = runtime.loc["Kinetics_Model", 1]  # Arrhenius or MMRT to calculate rxn rates
 
         # Degradation
@@ -453,6 +468,18 @@ class Grid():
         # repeating a MultiIndex `.loc[]` selection every single day.
         if not hasattr(self, "_reqenz_set1_v"):
             self._reqenz_set1_v = self.ReqEnz.loc['set1'].to_numpy(dtype=np.float32, copy=True)  # (G*M, NE)
+
+        # Enzyme saturation (Decay_MM_Form 1): scale decay by K_E S / (K_E S + E), E = enzyme acting on each substrate
+        enz_sat_factor = None
+        if self.decay_mm_form == 1:
+            E_rows = np.repeat(Enzymes_v.reshape(G, NE), M, axis=0)                     # (G*M, NE), grid-major rows
+            E_on_sub = (self._reqenz_set1_v * E_rows).sum(axis=1)                        # (G*M,)
+            KS = np.float32(self.Enz_Sat_K) * rss                                        # (G*M,)
+            denom = KS + E_on_sub
+            enz_sat_factor = np.ones_like(rss)
+            np.divide(KS, denom, out=enz_sat_factor, where=denom > 0)
+            Decay_v = Decay_v * enz_sat_factor[:, None]
+
         batch1 = (self._reqenz_set1_v * Decay_v).sum(axis=1)  # (G*M,)
 
         # Compare to substrate available and take the min -- np.fmin (not np.minimum!)
@@ -469,7 +496,8 @@ class Grid():
         self.Diag = dict(
             deg_saturation=float(_sat_main.mean()) if _sat_main.size else np.nan,   # S / (Km + S), largest substrate
             deg_Vmax=float(Vmax_v.mean()), deg_Km=float(Km_v.mean()), deg_f_psi=float(f_psi),
-            substrate_mass=float(rss.sum()) / G)
+            substrate_mass=float(rss.sum()) / G,
+            enz_sat_factor=float(enz_sat_factor[_main].mean()) if enz_sat_factor is not None else 1.0)
 
         # Adjust cellulose rate by linking cellulose degradation to lignin concentration (LCI)
         is_lignin = Sub_index_arr == 'Lignin'

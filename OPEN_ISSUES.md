@@ -55,3 +55,7 @@ file as items are resolved (the git log has the details of each change).
 - Older module copies in `src/` (`grid_vJW.py`, `initialization_big_files.py`) still use the retired Km rows and
   tables; they are not imported by the model.
 - Performance: stop expanding grid-uniform tables to every cell; cache temperature-dependent kinetics.
+- **Decay rate-law switch (2026-10-16).** `Decay_MM_Form` (runtime.txt) and `Enz_Sat_K` (parameters.csv) are provisional
+  names (the runtime row `Kinetics_Model` already selects MMRT vs Arrhenius). To decide: final names; whether enzyme
+  saturation should also apply to uptake (currently degradation only); calibration of Enz_Sat_K and enzyme production
+  for form 1 (SENSITIVITY_SUMMARY 13).

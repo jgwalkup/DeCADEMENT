@@ -16,3 +16,4 @@ dist	1
 interval	1
 Kinetics_Model	1
 output_format	csv
+Decay_MM_Form	0

@@ -666,3 +666,25 @@ Terminology: **endogenous respiration (R_endo)** = respiring free biomass C (at 
 - A higher Km slope damps decay as the substrate is used up (saturation 0.98 -> 0.8-0.9), but because decay stays proportional to the enzyme pool, and the enzyme pool to biomass, it does not create a plateau in biomass. Very high slopes (20) push the community into the dry-season energy trap.
 - **A larger starting biomass shortens the slow start but does not produce a steady decline**: the curve is still sigmoidal, with the fast phase earlier (x5) or the substrate exhausted in the first half-year (x20).
 - A steady decline needs density dependence that the model now lacks: something that lowers the per-capita return as biomass or the enzyme pool grows (for example decay saturating in enzyme, i.e. reverse Michaelis-Menten or ECA kinetics; uptake competition that depends on biomass; or density-dependent mortality).
+
+## 13. Decay with enzyme saturation (runtime switch `Decay_MM_Form`) (2026-10-16)
+
+**New option (`src/grid.py`, `Grid.degradation`):** runtime.txt row `Decay_MM_Form` (provisional name; absent = 0). 0 = forward Michaelis-Menten, Decay = Vmax E S / (Km + S), saturating in substrate and linear in enzyme (the original model; checked bit-identical). 1 = the same times an enzyme-saturation factor K_E S / (K_E S + E), with K_E = `Enz_Sat_K` (parameters.csv; enzyme C per unit substrate C+N+P; E = enzyme acting on the substrate). With scarce enzyme it equals form 0; with enzyme in excess decay approaches Vmax K_E S^2 / (Km + S), about Vmax K_E S for S >> Km, i.e. first order in substrate and no longer increasing with enzyme (the reverse Michaelis-Menten limit), so Vmax K_E is the maximum relative decay rate per day and keeps the MMRT temperature and moisture responses. All input folders now carry `Decay_MM_Form 0` and an inactive `Enz_Sat_K` 0.002. Uptake is unchanged (forward Michaelis-Menten). New step diagnostic `d_enz_sat_factor` (the factor on the largest substrate).
+
+**Runs (`enzyme_saturation/`; ambient unless stated, minimal model, first year, R_endo on, Enz_Prod 0.005, Vmax_Km 2.5, Uptake_Vmax_Km 0.25):**
+
+| Run | Degraded day 365 | Day 50 % | Degraded per quarter (%) | Max biomass C |
+|---|---|---|---|---|
+| Form 0, defaults (Constit_Prod 0.00025) | 83.7 % | 307 | 5 / 11 / 21 / 47 | 66 |
+| Form 1, Constit 0.00025, K_E 0.0005 / 0.001 / 0.002 / 0.005 / 0.01 / 0.05 | 14 / 27 / 38 / 52 / 62 / 76 % | - (to 0.005: 358) | e.g. K_E 0.005: 5 / 9 / 14 / 24 | 7-58 |
+| Form 1, Constit 0.001, K_E 0.001 | 61.5 % | 295 | 10 / 20 / 17 / 15 | 31 |
+| Form 1, Constit 0.001, K_E 0.002 | 82.1 % | 200 | 14 / 31 / 22 / 15 | 39 |
+| Form 1, Constit 0.002, K_E 0.001 | 67.1 % | 250 | 15 / 23 / 16 / 14 | 27 |
+| Form 1, Constit 0.002, K_E 0.002 | 86.2 % | 163 | 22 / 34 / 19 / 11 | 33 |
+| Form 1, Constit 0.005, K_E 0.002 | 88.6 % | 136 | 32 / 32 / 15 / 9 | 23 |
+
+Climate response (2 seeds), day-365 degraded (day 50 %): form 0 defaults 83 % (308) / 100 % (223) / 100 % (188) for ambient / +5 C / +10 C; form 1 Constit 0.001, K_E 0.001: 62 % (295) / 70 % (237) / 72 % (214); K_E 0.002: 82 % (200) / 87 % (161) / 88 % (146).
+
+- **With the production rates of form 0, form 1 only slows decay** (the curve still accelerates; enzyme never far exceeds K_E S). **With higher enzyme production it gives the steady decline**: biomass and the enzyme pool level off by about day 200 (density dependence), the saturation factor falls to 0.1-0.2, and decay settles near Vmax K_E S, an exponential decline modulated by temperature and moisture.
+- **The warming response becomes graded instead of threshold-like**: +10 C shortens the time to 50 % by 50-80 days instead of exhausting the substrate by day 250-300 (form 0).
+- Cost: at saturation most of the extra enzyme is wasted (factor 0.1-0.2), CUE falls (0.34 vs 0.43), and the warm runs with K_E 0.002 come close to the energy trap at the end of the dry season (min E:C 0.1-2 at +5/+10 C); lower enzyme production that still saturates (for example Constit 0.0005) would cost less.
