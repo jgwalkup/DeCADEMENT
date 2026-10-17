@@ -850,3 +850,17 @@ From the runs of sections 15-18 (six yearly pulses on the climate data, MMRT and
 | +10 C | 98.1-98.2 % | 212-213 | 15-16 / 101-105 (196-198) | 3 | 54-55 |
 
   At ambient the energy pool stays above about 170 through the dry season and the community is limited only as the last of the substrate runs out (from about day 303). At +5 and +10 C the larger, warmer community runs out of energy in the dry season (from about day 220 / 197) while 10-20 % of the substrate is left; the remaining substrate is still used up within about 20 days, after which the community starves. Warming advances the 95 % date by 78 / 105 days.
+
+## 23. Rounded production values with Vmax_Km 6, maintenance 8 (2026-10-17)
+
+`Constit_Prod` 0.0004 with `Enz_Prod` 0.007 / 0.008 / 0.009 (vs 0.0004375 / 0.00875 in section 22); three climates, 2 seeds (`energy_limitation/runs_ecost7.tar.gz`). Limited days while substrate > 5 % (first day); after = once below 5 %.
+
+| Constit / Enz_Prod | Ambient: degraded, day 95 %, limited (first), min E:C | +5 C: degraded, day 95 %, limited before / after (first) | +10 C: degraded, day 95 %, limited before / after |
+|---|---|---|---|
+| 0.0004 / 0.007 | 89 %, -, 0, 207 | 92 %, -, 123 / 0 (243) | 90 %, -, 154 / 0 |
+| 0.0004 / 0.008 | 95 %, -, 11.5 (354), 109 | 94 %, -, 130 / 0 (236) | 94 %, -, 120 / 0 |
+| 0.0004 / 0.009 | 98 %, 349, 6 (343), 96 | 96 %, 299, 70 / 67 (230) | 96 %, 253, 50 / 71 |
+| 0.0004375 / 0.00875 | 99 %, 318, 14.5 (303), 59 | 98 %, 240, 21 / 97 (220) | 98 %, 213, 16 / 103 |
+
+- Rounding `Constit_Prod` down to 0.0004 (-9 %) slows the community more than rounding `Enz_Prod` up to 0.009 (+3 %) speeds it, because constitutive production supplies most of the enzyme. With 0.0004 / 0.009 the pattern is kept: ambient decomposes through the dry season (min E:C about 220-250 then) and is limited only near the end of the litter (from about day 343); +5 and +10 C run out of energy in the dry season (from day 230 / 203) and collapse with more substrate left than in section 22 (about 10 % at the crash vs 5-10 %), reaching 96 % by day 365.
+- With `Enz_Prod` 0.008 or 0.007 the warm communities collapse earlier relative to their substrate and end at 92-94 %, with ambient similar or slightly ahead.
