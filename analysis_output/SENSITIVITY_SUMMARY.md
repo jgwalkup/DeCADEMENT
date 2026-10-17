@@ -834,3 +834,19 @@ From the runs of sections 15-18 (six yearly pulses on the climate data, MMRT and
 
 - A lower Km slope raises decay per unit biomass, so a higher maintenance is needed for the same degradation; near 80 % this brings ambient to the edge of energy limitation in the late dry season (Vmax_Km 10 / maintenance 8.5: one seed limited on days 267-281, min E:C 131; Vmax_Km 9 / maintenance 9: 23 days, min E:C 98).
 - **It does not prevent the warm-climate collapse**: at +5 and +10 C the community still runs out of energy from about day 225-240 (+5 C) and 200-210 (+10 C), shrinks to 1-2 C per grid cell and does not recover; annual degradation is the same in all three climates. In runs that degrade more than 90 % at ambient, the ambient limited days come at the end of the year, when the substrate is nearly gone (days 309-361).
+
+## 22. Energy limitation when near-complete degradation is allowed (2026-10-17)
+
+**Setup (`energy_limitation/runs_ecost6.tar.gz`, `production_x_km_x_maintenance_wide.txt`; `analysis/energy_limitation_grid_summary.py`):** production x1.25 / x1.5 / x2 x `Vmax_Km` 4 / 6 / 8 x `Maint_E_Rate_Const` 8 / 10 / 12, ambient and +5 C (and +10 C for the chosen option), 2 seeds, MMRT, R_endo on. Degradation at ambient may now approach 100 %. Limited days counted while substrate remains (> 5 %).
+
+- **With high production the substrate is used up before the dry season** (all x2 runs, x1.5 at +5 C): no energy limitation while substrate remains, only starvation afterwards. Warming then only advances the exhaustion date.
+- **x1.5 / Vmax_Km 6-8 / maintenance 8-10** make ambient barely limited in the dry season (1.5-29 days, min E:C 1-122) but +5 C exhausts the substrate first and is not limited before exhaustion: the opposite of the target.
+- **Production x1.25, Vmax_Km 6, maintenance 8** gives the requested pattern:
+
+| Climate | Degraded day 365 | Day 95 % degraded | Limited days before / after 95 % (first day) | Min E:C before 95 % | Max biomass C |
+|---|---|---|---|---|---|
+| Ambient | 99.0 % | 316-319 | 12-17 / 47-50 (302-304) | 57-60 | 44-45 |
+| +5 C | 97.9-98.1 % | 239-241 | 18-23 / 93-101 (218-221) | 1-2 | 53 |
+| +10 C | 98.1-98.2 % | 212-213 | 15-16 / 101-105 (196-198) | 3 | 54-55 |
+
+  At ambient the energy pool stays above about 170 through the dry season and the community is limited only as the last of the substrate runs out (from about day 303). At +5 and +10 C the larger, warmer community runs out of energy in the dry season (from about day 220 / 197) while 10-20 % of the substrate is left; the remaining substrate is still used up within about 20 days, after which the community starves. Warming advances the 95 % date by 78 / 105 days.
