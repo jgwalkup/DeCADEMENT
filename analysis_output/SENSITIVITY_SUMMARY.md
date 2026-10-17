@@ -818,3 +818,19 @@ From the runs of sections 15-18 (six yearly pulses on the climate data, MMRT and
 
 - **"Energy-limited" at +5 C is a collapse, not a slowdown.** The warmer community grows faster and larger early in the year; late in the dry season its maintenance exceeds the supply, its energy pool runs out (from about day 230-250 at +5 C, 210 at +10 C), it shrinks through R_endo to about 1-2 C per grid cell and does not recover, and decomposition stalls with 20-30 % of the substrate left. Ambient stays above the threshold and keeps decomposing through the autumn, so all three climates end the year at about the same % degraded (the warming response of annual decomposition disappears).
 - The model has no graded energy-limited state: a community either covers its maintenance or enters the energy trap (sections 8, 11). A persistent low-activity energy-limited state would need a mechanism such as maintenance that falls when energy is scarce (dormancy).
+
+## 21. Lower enzyme Km slope with higher maintenance (2026-10-17)
+
+**Setup:** as section 20 (production x1.25), `Vmax_Km` 10 / 9 / 8 x `Maint_E_Rate_Const` 7.5-9, three climates, 2 seeds (`energy_limitation/runs_ecost5.tar.gz`, `lower_km_x_maintenance_x1.25.txt`). Limited days counted while substrate remains (> 5 %).
+
+| Vmax_Km, maintenance | Ambient: degraded / limited days (first day) / min E:C | +5 C: degraded / limited days (from day) / biomass day 365 | +10 C: degraded / limited days |
+|---|---|---|---|
+| 12, 7.5 (section 20) | 79 % / 0 / 192 | 79 % / 125 (239) / 1.1 | - |
+| 10, 8 | 86 % / 0 / 185 | 85 % / 132 (234) / 1.6 | 84 % / 112 |
+| 10, 8.5 | 80 % / 4.5 (267) / 131 | 80 % / 135 (231) / 1.9 | 79 % / 106 |
+| 9, 8.5 | 87 % / 0 / 159 | 86 % / 137 (230) / 1.5 | 85 % / 118 |
+| 9, 9 | 81 % / 23 (260) / 98 | 82 % / 142 (224) / 1.9 | 80 % / 146 |
+| 8, 9 | 89 % / 8.5 (309) / 130 | 88 % / 141 (225) / 1.7 | 87 % / 130 |
+
+- A lower Km slope raises decay per unit biomass, so a higher maintenance is needed for the same degradation; near 80 % this brings ambient to the edge of energy limitation in the late dry season (Vmax_Km 10 / maintenance 8.5: one seed limited on days 267-281, min E:C 131; Vmax_Km 9 / maintenance 9: 23 days, min E:C 98).
+- **It does not prevent the warm-climate collapse**: at +5 and +10 C the community still runs out of energy from about day 225-240 (+5 C) and 200-210 (+10 C), shrinks to 1-2 C per grid cell and does not recover; annual degradation is the same in all three climates. In runs that degrade more than 90 % at ambient, the ambient limited days come at the end of the year, when the substrate is nearly gone (days 309-361).

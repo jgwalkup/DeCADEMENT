@@ -16,6 +16,6 @@ for d in sorted(glob.glob(sys.argv[1]+'/*')):
         rows.append(dict(set=lab,value=v,climate=c.replace('_temp','').replace('_warm',''),deg=dg[-1],d50=f(50),
             def_days=int((sub.R_endo_C>0).sum()), capped=int(((sub.d_r_consti<0.999)|(sub.d_r_induci<0.999)).sum()),
             EC_min=sub.energy_to_C.min(), E_frac=1-np.average(sub.CAE.fillna(0),weights=sub.C_uptake.clip(lower=1e-12)),
-            CUE=np.average(sub.CUE.fillna(0),weights=sub.C_uptake.clip(lower=1e-12)), bio_max=g.biomass_C.max()))
+            CUE=np.average(sub.CUE.fillna(0),weights=sub.C_uptake.clip(lower=1e-12)), bio_max=g.biomass_C.max(), bio_end=g.biomass_C.iloc[-1]))
 m=pd.DataFrame(rows).groupby(['set','value','climate']).mean(numeric_only=True).unstack('climate')
 pd.set_option('display.width',300); print(m.round(1).to_string())
