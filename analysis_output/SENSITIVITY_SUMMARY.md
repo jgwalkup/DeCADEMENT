@@ -756,3 +756,22 @@ Options near 80 % (degraded per quarter at ambient; day-365 degraded and day of 
 - **Cold:** at 0-5 C the MMRT community barely grows (maximum biomass 1.7-8.5 vs 19-48, CUE 0.18-0.34, min E:C 37 at 0 C), so differences of about 2x in the rate constants become 4-8x differences in decomposition.
 - **Warm:** above 15-20 C the substrate is exhausted within the year under both (except MMRT at 40 C) and the community then starves; under Arrhenius at 30-40 C almost all cells die after the substrate runs out (13-385 starvation deaths; biomass at day 365 near 0), under MMRT biomass at day 365 stays higher because decomposition is slower.
 - Annual CUE declines with temperature above 10 C under both (0.43 -> 0.29-0.32 at 40 C), more steeply under Arrhenius.
+
+## 17. Arrhenius Vmax matched to MMRT at 15-20 C (2026-10-16)
+
+**Change:** in the minimal km25 inputs (MMRT parameters unchanged) `Vmax0_min`/`max` 55,000,000 -> 50,370,000 (x0.916) and `Uptake_Vmax0_min`/`max` 55,000,000 -> 41,745,000 (x0.759). Both are used only by the Arrhenius branch (and set the Arrhenius Km through the Km slopes). The factors are the inverse geometric-mean Arrhenius/MMRT ratios at 15-20 C (1 C steps) of the enzyme Vmax on the main substrate (IdealSub; new diagnostic `d_deg_Vmax_main`, plus `d_deg_Km_main`) and of the transporter Vmax.
+
+- **The first matching attempt used the wrong measure.** Section 16's "enzyme Vmax" is the mean over all three substrates; Arrhenius gives each substrate its own Ea (IdealSub 36,000, DeadMic 37,000, DeadEnz 35,000 J/mol), so the mean matched MMRT (ratio 1.01-1.05 at 15-20 C) while the rate on the litter substrate was 8-12 % higher. Scaling by the mean (x0.982) and the transporter alone left Arrhenius 13-15 days ahead at 15-20 C; the transporter scaling alone had no effect (uptake is not limiting at Uptake_Vmax_Km 0.25).
+- **Matched on IdealSub, the curves overlap at 12.5-20 C** (`kinetics_gradient_matched/`, 2 seeds; day of 25 / 50 / 75 % degraded):
+
+| T (C) | MMRT | Arrhenius, original | Arrhenius, matched |
+|---|---|---|---|
+| 10 | 252 / 328 / - | 206 / 269 / 315 | 227 / 296 / 346 |
+| 12.5 | 205 / 268 / 313 | - | 200 / 261 / 306 |
+| 15 | 176 / 231 / 272 | 162 / 214 / 254 | 176 / 232 / 274 |
+| 17.5 | 156 / 206 / 245 | - | 157 / 208 / 247 |
+| 20 | 145 / 193 / 231 | 131 / 176 / 213 | 141 / 188 / 226 |
+| 22.5 | 139 / 186 / 223 | - | 128 / 172 / 208 |
+| 25 | 138 / 184 / 221 | 109 / 148 / 183 | 116 / 157 / 192 |
+
+- Outside the match range the two still diverge as expected from their temperature functions: Arrhenius is faster in the cold (0-10 C) and keeps accelerating above 20 C, while MMRT slows above about 25 C (day 50 % at 40 C: 107 vs 355 days).

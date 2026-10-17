@@ -496,6 +496,8 @@ class Grid():
         self.Diag = dict(
             deg_saturation=float(_sat_main.mean()) if _sat_main.size else np.nan,   # S / (Km + S), largest substrate
             deg_Vmax=float(Vmax_v.mean()), deg_Km=float(Km_v.mean()), deg_f_psi=float(f_psi),
+            deg_Vmax_main=float(Vmax_v[:, int(np.argmax(rss.reshape(G, M).sum(axis=0)))].mean()),   # largest substrate
+            deg_Km_main=float(Km_v[_main].mean()),
             substrate_mass=float(rss.sum()) / G,
             enz_sat_factor=float(enz_sat_factor[_main].mean()) if enz_sat_factor is not None else 1.0)
 

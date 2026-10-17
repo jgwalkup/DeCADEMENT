@@ -1,6 +1,6 @@
 """Figures and table for analysis/kinetics_gradient.py output.
 
-    python analysis/plot_kinetics_gradient.py OUT_DIR
+    python analysis/plot_kinetics_gradient.py OUT_DIR [TITLE_PREFIX]
 
 Writes OUT_DIR/kinetics_gradient.png (against temperature: enzyme and transporter Vmax on day 1, day-365 % degraded,
 day of 50 % degraded, mean biomass C, annual CUE, minimum E:C) and OUT_DIR/kinetics_gradient_timeseries.png
@@ -16,9 +16,12 @@ import numpy as np  # noqa: E402
 import pandas as pd  # noqa: E402
 
 KIN = [("MMRT", "#1f77b4", "-", "o"), ("Arrhenius", "#d62728", "--", "s")]
+TITLE_PREFIX = ""
 
 
-def main(out):
+def main(out, prefix=""):
+    global TITLE_PREFIX
+    TITLE_PREFIX = prefix
     t = pd.read_csv(os.path.join(out, "timeseries.csv.gz"))
     t["degraded"] = 100 - t.substrate_remaining_pct
 
@@ -52,7 +55,7 @@ def main(out):
         a.grid(alpha=0.3, lw=0.6)
         a.spines[["top", "right"]].set_visible(False)
     ax[0, 0].legend(frameon=False)
-    fig.suptitle("MMRT vs Arrhenius across constant temperatures (Psi -0.5 MPa): bacterial minimal model, first year, "
+    fig.suptitle(TITLE_PREFIX + "MMRT vs Arrhenius across constant temperatures (Psi -0.5 MPa): bacterial minimal model, first year, "
                  "production x1.4, Vmax_Km 13, R_endo on; mean of 2 seeds", fontsize=11)
     fig.tight_layout(rect=(0, 0, 1, 0.95))
     fig.savefig(os.path.join(out, "kinetics_gradient.png"), dpi=140)
@@ -77,11 +80,11 @@ def main(out):
     for a in ax[(nr - 1) * nc:]:
         a.set_xlabel("Day")
     ax[0].legend(frameon=False, fontsize=8)
-    fig.suptitle("Substrate remaining at constant temperatures: MMRT (solid) vs Arrhenius (dashed)", fontsize=11)
+    fig.suptitle(TITLE_PREFIX + "Substrate remaining at constant temperatures: MMRT (solid) vs Arrhenius (dashed)", fontsize=11)
     fig.tight_layout(rect=(0, 0, 1, 0.94))
     fig.savefig(os.path.join(out, "kinetics_gradient_timeseries.png"), dpi=140)
     print(m.round(2).to_string())
 
 
 if __name__ == "__main__":
-    main(sys.argv[1])
+    main(sys.argv[1], sys.argv[2] if len(sys.argv) > 2 else "")
