@@ -775,3 +775,19 @@ Options near 80 % (degraded per quarter at ambient; day-365 degraded and day of 
 | 25 | 138 / 184 / 221 | 109 / 148 / 183 | 116 / 157 / 192 |
 
 - Outside the match range the two still diverge as expected from their temperature functions: Arrhenius is faster in the cold (0-10 C) and keeps accelerating above 20 C, while MMRT slows above about 25 C (day 50 % at 40 C: 107 vs 355 days).
+
+## 18. Rounded Arrhenius Vmax (5e7 / 4.2e7): gradient and climate runs (2026-10-16)
+
+**Change:** minimal km25 inputs `Vmax0` 5.037e7 -> 5.0e7, `Uptake_Vmax0` 4.1745e7 -> 4.2e7 (commit 2eff07f). The MMRT runs are unaffected (these parameters are Arrhenius-only; same inputs and seeds) and are reused from sections 15-17. Outputs: `kinetics_gradient_rounded/`, `multiyear_arrh_matched/`.
+
+- **Gradient (constant T, Psi -0.5):** day of 50 % degraded MMRT / Arrhenius: 10 C 328 / 298.5; 12.5 C 267.5 / 262.5; 15 C 230.5 / 234.5; 17.5 C 206 / 209; 20 C 193 / 189.5; 22.5 C 185.5 / 172; 25 C 184 / 158; 40 C 354.5 / 107. Rounding moved the Arrhenius timing by 0.5-2.5 days.
+- **Six yearly pulses, real climate (2 seeds):**
+
+| Climate | Degraded day 365, MMRT / Arrhenius | Day 50 %, MMRT / Arrhenius | Biomass C at day 365, MMRT / Arrhenius |
+|---|---|---|---|
+| Ambient | 80.1-81.8 / 85.5-86.5 % | 300-303 / 288-291 | 61-62 / 64-65 |
+| +5 C | 96.9-97.1 / 98.5-98.6 % | 232-234 / 220-222 | 65-66 / 66-68 |
+| +10 C | 98.0-98.2 / 98.4-98.5 % | 205-208 / 176-178 | 54-57 / 14-16 |
+
+  (Before matching, Arrhenius at ambient was 94-95 % with day 50 % at 258-261.) The pulses replicate under both kinetics. The remaining gap comes from the parts of the year outside 12.5-20 C: Arrhenius is faster both in the cold season and in the warm season above about 20 C, so it stays 12 days ahead at ambient, 11 at +5 C and 30 at +10 C, and at +10 C its community again exhausts the substrate and crashes (biomass 14-16 vs 54-57 at day 365).
+- **Continuous 3-year run (Arrhenius):** 20 % remaining at day 349 (ambient) / 290 (+5 C) / 237 (+10 C) and 5 % at day 396 / 335 / 299; the community starves in year 2, as under MMRT.

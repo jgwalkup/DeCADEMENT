@@ -54,7 +54,7 @@ def main(out, s1, s0, c1, c0):
     cont["degraded"] = 100 - cont.substrate_remaining_pct
     rows = [("substrate_remaining_pct", "Substrate remaining (%)", 1), ("biomass_C", "Biomass C per grid cell", 1),
             ("enzyme_pool", "Enzyme pool per grid cell", 1), ("CUE", "CUE (15-day mean)", 15)]
-    base = ("bacterial minimal model: production x1.4 (Constit_Prod 0.00035, Enz_Prod 0.007), Vmax_Km 13, "
+    base = ("bacterial minimal model: production x1.4 (Constit_Prod 0.00035, Enz_Prod 0.007), Vmax_Km 13, " + os.environ.get("MULTIYEAR_NOTE", "") +
             "Uptake_Vmax_Km 0.25, slopes 0.1, beta 1, R_endo on")
     figure(six, rows, os.path.join(out, "multiyear_six_pulse.png"),
            f"Six yearly pulses (litter reset, community re-placed each year; mean of 2 seeds)\n{base}",
