@@ -734,3 +734,25 @@ Options near 80 % (degraded per quarter at ambient; day-365 degraded and day of 
 - **The warming shift in timing is similar** (day 50 % 303 -> 207 MMRT, 259 -> 164 Arrhenius), but under Arrhenius the +10 C community exhausts the substrate by about day 250 and then crashes (biomass 4-5 at day 365, E:C 0); under MMRT it keeps 54-57.
 - Arrhenius would need its own calibration to reach about 80 % at ambient (for example a higher `Vmax_Km` or lower production).
 - **Continuous 3-year run (no litter input):** the substrate falls to 20 % remaining at the end of year 1 (MMRT ambient), then to 10 % by day 392 and 5 % by day 411; the community then starves (biomass 0 during year 2, 330-365 starvation deaths per climate). There is no levelling off at 20 %; with a single substrate and no inputs, the remaining litter is used up within weeks of the second spring.
+
+## 16. MMRT vs Arrhenius across a constant-temperature gradient (2026-10-16)
+
+**Setup (`kinetics_gradient/`; `analysis/kinetics_gradient.py`, `analysis/plot_kinetics_gradient.py`):** bacterial minimal model with the chosen parameters (section 15), flat climate at 0-40 C in 5 C steps, Psi -0.5 MPa (no moisture effects), first year, 20x20, 2 seeds, R_endo on, `Kinetics_Model` 1 (MMRT) and 0 (Arrhenius). The kinetics switch changes only the enzyme and transporter rate constants (degradation and uptake); Km follows Vmax in both (Vmax_Km 13, Uptake_Vmax_Km 0.25).
+
+| T (C) | Enzyme Vmax MMRT / Arrh | Transporter Vmax MMRT / Arrh | Degraded day 365 MMRT / Arrh | Day 50 % MMRT / Arrh |
+|---|---|---|---|---|
+| 0 | 1.1 / 2.5 | 3.8 / 11.1 | 2.7 / 23.0 % | - / - |
+| 5 | 2.3 / 3.4 | 7.7 / 14.6 | 12.6 / 55.3 % | - / 353 |
+| 10 | 3.9 / 4.4 | 13.0 / 19.1 | 67.5 / 95.2 % | 328 / 269 |
+| 15 | 5.7 / 5.7 | 18.9 / 24.7 | 99.4 / 99.7 % | 231 / 214 |
+| 20 | 7.1 / 7.4 | 23.4 / 31.7 | 99.7 / 99.8 % | 193 / 176 |
+| 25 | 7.6 / 9.5 | 25.2 / 40.3 | 99.6 / 99.6 % | 184 / 148 |
+| 30 | 7.2 / 12.0 | 23.8 / 50.9 | 99.4 / 99.5 % | 197 / 128 |
+| 35 | 6.0 / 15.1 | 19.7 / 63.8 | 98.1 / 99.5 % | 240 / 114 |
+| 40 | 4.4 / 18.9 | 14.6 / 79.3 | 53.8 / 99.4 % | 355 / 102 |
+
+- **The enzyme rate constants agree at 10-20 C** (the reference range of the two parameter sets) and diverge outside it: MMRT is lower in the cold (1.1 vs 2.5 at 0 C), peaks at about 25 C and declines above it (4.4 at 40 C), while Arrhenius rises monotonically (18.9 at 40 C). The transporter rate constant is higher under Arrhenius at every temperature (about 1.3-1.4 x at 10-20 C, 3 x at 0 C, 5 x at 40 C).
+- **Decomposition follows the rate constants with amplification by growth**: under MMRT the community decomposes the litter fastest at 25 C (50 % at day 184) and slows on both sides, failing to reach 50 % within the year at <= 5 C and at 40 C (54 % degraded); under Arrhenius time to 50 % falls monotonically (353 -> 102 days from 5 to 40 C).
+- **Cold:** at 0-5 C the MMRT community barely grows (maximum biomass 1.7-8.5 vs 19-48, CUE 0.18-0.34, min E:C 37 at 0 C), so differences of about 2x in the rate constants become 4-8x differences in decomposition.
+- **Warm:** above 15-20 C the substrate is exhausted within the year under both (except MMRT at 40 C) and the community then starves; under Arrhenius at 30-40 C almost all cells die after the substrate runs out (13-385 starvation deaths; biomass at day 365 near 0), under MMRT biomass at day 365 stays higher because decomposition is slower.
+- Annual CUE declines with temperature above 10 C under both (0.43 -> 0.29-0.32 at 40 C), more steeply under Arrhenius.
