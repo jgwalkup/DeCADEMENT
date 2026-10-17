@@ -895,3 +895,22 @@ Practically the same as production x1.25 (section 22). Ambient becomes energy-li
 - **Feedback in the warm runs:** once energy runs short in the dry season, HSP production is capped, the HSP share falls (turnover 0.1/day) and the maintenance Ea climbs back towards 40,000-44,000, which raises maintenance further and accelerates the collapse.
 - **Osmolytes do not pay for themselves with beta 1.** Their protection lowers drought kills (253 vs 357 at ambient) but hardly changes decomposition; their production costs energy in the dry season, and removing it relieves the warm runs (min E:C at +5 / +10 C 40 / 29 instead of 2; energy-limited days 9 / 4.5 instead of 24 / 16) and speeds decomposition slightly (day 95 % at ambient 304 vs 317).
 - Without both, the community does better than without HSP alone at warm temperatures, because it no longer pays the osmolyte energy cost.
+
+## 26. Osmolyte sweeps: beta, Osmo_prod_E_cost, Osmo_Induci_Prod (2026-10-17)
+
+**Setup (`osmolyte_sweeps/`; `analysis/param_sweep.py`, `analysis/plot_osmo_sweeps.py`):** current minimal defaults, MMRT, real climate (three scenarios), first year, 2 seeds, R_endo on. `beta_bac` = `beta_fun` 1 (default), 2, 3, 5, 10, each with osmolytes on and with osmolyte production off; `Osmo_prod_E_cost` 600 (default), 300, 150, 60; `Osmo_Induci_Prod` 0.05 (default), 0.025, 0.01, 0.005. Limited days and min E:C while > 5 % of the substrate is left.
+
+| Setting | Day 95 % degraded (amb / +5 / +10) | Limited days (amb / +5 / +10) | Min E:C (amb / +5 / +10) | Drought kills, ambient |
+|---|---|---|---|---|
+| beta 1, osmolytes on (default) | 317 / 242 / 214 | 20.5 / 24 / 16 | 77 / 2 / 2 | 253 |
+| beta 1, osmolyte production off | 304 / 231 / 207 | 13 / 9 / 4.5 | 101 / 40 / 29 | 361 |
+| beta 3, on / off | 326 / 246 / 215; 318 / 235 / 210 | 5.5 / 24 / 15; 0 / 11.5 / 7.5 | 115 / 3 / 5; 191 / 48 / 27 | 530; 801 |
+| beta 10, on / off | 361 / 259 / 223; - (92 %) / 258 / 219 | 0.5 / 26.5 / 19.5; 0 / 3.5 / 9.5 | 162 / 31 / 19; 293 / 139 / 93 | 1,424; 2,291 |
+| Osmo_prod_E_cost 300 | 308 / 236 / 211 | 16.5 / 15 / 11.5 | 73 / 5 / 11 | 259 |
+| Osmo_prod_E_cost 150 | 304 / 234 / 208 | 12.5 / 13 / 6.5 | 69 / 11 / 16 | 278 |
+| Osmo_prod_E_cost 60 | 302 / 232 / 208 | 12.5 / 14 / 9 | 82 / 22 / 28 | 264 |
+| Osmo_Induci_Prod 0.005-0.025 | 317 / 242 / 214 | 14.5-17 / 22 / 14-15.5 | 75-80 / 2-3 / 2 | 261-278 |
+
+- **A steeper beta raises drought kills about linearly (osmolytes cut them by about 35-40 % at every beta) but changes decomposition little up to beta 5** (day 95 % at ambient 317 -> 337). Only at beta 10 do osmolytes pay for themselves at ambient (96 vs 92 % degraded at day 365); in the warm runs osmolyte production still costs more than it saves (production off decomposes slightly faster at every beta). Higher beta also thins the community, which relieves the ambient energy limitation (limited days 20.5 -> 0.5 at beta 10) while the warm runs stay limited.
+- **`Osmo_Induci_Prod` has almost no effect**: the osmolyte pool (2-2.5 % of biomass) comes from constitutive production (0.005 x biomass C per day, against inducible 0.05 x biomass-C uptake x the drought factor, about ten times smaller); cost and protection are set by `Osmo_Consti_Prod`.
+- **Lowering `Osmo_prod_E_cost` keeps the protection and removes most of the energy penalty**: at 60-150 the warm runs approach osmolyte-production-off (min E:C 11-28 vs 2; limited days 6.5-14 vs 16-24; day 95 % 3-10 days earlier) with drought kills unchanged (about 260-280). This also weakens the +5 C energy limitation that the current defaults were tuned for (section 24).
