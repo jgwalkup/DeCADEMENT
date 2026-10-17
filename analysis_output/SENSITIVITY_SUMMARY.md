@@ -688,3 +688,30 @@ Climate response (2 seeds), day-365 degraded (day 50 %): form 0 defaults 83 % (3
 - **With the production rates of form 0, form 1 only slows decay** (the curve still accelerates; enzyme never far exceeds K_E S). **With higher enzyme production it gives the steady decline**: biomass and the enzyme pool level off by about day 200 (density dependence), the saturation factor falls to 0.1-0.2, and decay settles near Vmax K_E S, an exponential decline modulated by temperature and moisture.
 - **The warming response becomes graded instead of threshold-like**: +10 C shortens the time to 50 % by 50-80 days instead of exhausting the substrate by day 250-300 (form 0).
 - Cost: at saturation most of the extra enzyme is wasted (factor 0.1-0.2), CUE falls (0.34 vs 0.43), and the warm runs with K_E 0.002 come close to the energy trap at the end of the dry season (min E:C 0.1-2 at +5/+10 C); lower enzyme production that still saturates (for example Constit 0.0005) would cost less.
+
+## 14. Enzyme Km slope x enzyme production options, forward Michaelis-Menten (2026-10-16)
+
+**Setup (`km_production/`, runs in `runs.tar.gz`; `analysis/param_sweep.py`, `analysis/plot_km_production.py`):** bacterial minimal model, first year, 20x20, 2 seeds, Decay_MM_Form 0, R_endo on, Uptake_Vmax_Km 0.25, slopes 0.1, beta 1. Enzyme production scaled together (`Constit_Prod` / `Enz_Prod` = x1 0.00025 / 0.005 (defaults), x1.1, x1.2, x1.4) crossed with `Vmax_Km` 2.5-13 at ambient; five options near 80 % then run under the three climates.
+
+Ambient, day-365 % degraded:
+
+| Production \ Vmax_Km | 2.5 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 11 |
+|---|---|---|---|---|---|---|---|---|---|
+| x1 (defaults) | **83.2** | 77.8 | 68.2 | 61.1 | | | | | |
+| x1.1 | 99.4 | 97.6 | 91.2 | **82.5** | | | | | |
+| x1.2 | 100 | 100 | 99.6 | 97.2 | 93.2 | 86.9 | **80.0** | | |
+| x1.4 | 100 | 100 | 100 | 100 | | 99.7 | | 97.3 | 91.0 |
+
+Options near 80 % (degraded per quarter at ambient; day-365 degraded and day of 50 % at +5 / +10 C):
+
+| Option | Ambient | Quarters (%) | +5 C | +10 C | Biomass C at day 365, +10 C |
+|---|---|---|---|---|---|
+| x1, Vmax_Km 2.5 (defaults) | 83.2 % (day 308) | 5 / 11 / 20 / 46 | 100 % (223) | 100 % (188) | 21 |
+| x1, Vmax_Km 3 | 77.8 % (314) | 5 / 10 / 19 / 43 | 100 % (230) | 100 % (194) | 33 |
+| x1.1, Vmax_Km 5 | 82.5 % (306) | 5 / 11 / 21 / 45 | 99.9 % (224) | 99.9 % (192) | 34 |
+| x1.2, Vmax_Km 8 | 80.0 % (306) | 5 / 11 / 21 / 42 | 98.7 % (232) | 99.4 % (202) | 49 |
+| x1.4, Vmax_Km 13 | 80.1 % (303) | 5 / 12 / 22 / 41 | 97.1 % (232) | 98.2 % (208) | 57 |
+
+- **Production and the Km slope trade off along a ridge**: about +10 % production offsets +2.5 to +3 in `Vmax_Km` near 80 %. Options on the ridge have almost the same ambient curve (the shape is set by growth from the small inoculum, section 12).
+- **Higher Km slope with higher production damps the warming response a little**: enzyme saturation is lower (0.69-0.78 vs 0.91 at ambient) and falls further as Km rises with temperature, so +10 C reaches 50 % 20 days later (208 vs 188) and the litter is not completely used up (98 vs 100 %); the community crashes less after the substrate runs out (biomass at day 365 at +10 C 57 vs 21). The ambient curve is slightly less back-loaded (last quarter 41 vs 46 %).
+- The warm runs still exhaust the substrate within the year, and min E:C reaches about 0 at +10 C in every option (end-of-year starvation once the substrate is gone).
