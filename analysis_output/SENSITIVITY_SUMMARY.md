@@ -864,3 +864,15 @@ From the runs of sections 15-18 (six yearly pulses on the climate data, MMRT and
 
 - Rounding `Constit_Prod` down to 0.0004 (-9 %) slows the community more than rounding `Enz_Prod` up to 0.009 (+3 %) speeds it, because constitutive production supplies most of the enzyme. With 0.0004 / 0.009 the pattern is kept: ambient decomposes through the dry season (min E:C about 220-250 then) and is limited only near the end of the litter (from about day 343); +5 and +10 C run out of energy in the dry season (from day 230 / 203) and collapse with more substrate left than in section 22 (about 10 % at the crash vs 5-10 %), reaching 96 % by day 365.
 - With `Enz_Prod` 0.008 or 0.007 the warm communities collapse earlier relative to their substrate and end at 92-94 %, with ambient similar or slightly ahead.
+
+## 24. New minimal-model defaults: Constit_Prod 0.00045, Enz_Prod 0.008, Vmax_Km 6, Maint_E_Rate_Const 8 (2026-10-17)
+
+Set in the 8 minimal km25 input folders (commit b14b846; Uptake_Vmax_Km 0.25, slopes 0.1, beta 1, Arrhenius Vmax0 5e7 / Uptake_Vmax0 4.2e7 unchanged). Check run: MMRT, real climate, first year, 2 seeds (`energy_limitation/runs_defaults_check.tar.gz`, figure `energy_limitation_defaults_c0.00045_e0.008_km6_maint8.png`).
+
+| Climate | Degraded day 365 | Day 50 % / 95 % | Energy-limited days while > 5 % left (first day; % left then) | Min E:C while > 5 % left | Limited days after |
+|---|---|---|---|---|---|
+| Ambient | 99.2 % | 223-224 / 315-318 | 18-23 (291-299; 12-15 %) | 68-85 | 48-51 |
+| +5 C | 98.0 % | 165 / 242 | 24 (218; 12 %) | 2.3-2.4 | 90-102 |
+| +10 C | 98.2 % | 147 / 214 | 15-17 (197-199; 9-10 %) | 2.3-2.6 | 99-104 |
+
+Practically the same as production x1.25 (section 22). Ambient becomes energy-limited only at the end of the dry season with 12-15 % of the litter left; the warm communities run out of energy in the dry season and collapse with 10-12 % left, after which the remaining litter is used up and the community starves. The Arrhenius match of section 17-18 is unaffected (it compares rate constants, which do not depend on production, maintenance or the Km slope).
