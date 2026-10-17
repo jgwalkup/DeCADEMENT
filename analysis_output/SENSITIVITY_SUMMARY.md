@@ -799,3 +799,22 @@ From the runs of sections 15-18 (six yearly pulses on the climate data, MMRT and
 - **While substrate remains, energy is essentially never limiting.** No shortfalls and no capped production in any climate run (except about 2 days just before exhaustion at +10 C under Arrhenius) or at 5-40 C; the lowest E:C is 165-540 (E_max ratio 1,400). The exception is MMRT at 0 C, where rates are so slow that the community runs short on 30 days and production is energy-capped on 211 days (min E:C 37).
 - **Energy shapes allocation all the time:** 53-60 % of the C taken up is respired to make energy (the demand curve keeps E:C well below E_max), more where rates are slow (MMRT: 78 % at 0 C, 62-67 % at 35-40 C) and less where they are fast (Arrhenius: 45 % at 40 C). This is a cost on CUE rather than a hard limit.
 - **After the substrate is exhausted, energy becomes limiting** and the community lives on R_endo until it starves: real climate, days per year with shortfalls MMRT / Arrhenius: ambient 0 / 0 (substrate never exhausted), +5 C 0 / 3, +10 C 19 / 66 (R_endo C 4 / 41 per grid cell); gradient: from 17.5 C upward (20-140 days). No energy was left unpaid in any run.
+
+## 20. Making ambient nearly energy-limited and +5 C energy-limited (2026-10-17)
+
+**Setup (`energy_limitation/`; `analysis/param_sweep.py`, `analysis/energy_limitation_summary.py`, `analysis/plot_energy_limitation.py`):** bacterial minimal model, MMRT, first year, 2 seeds, R_endo on, real climate (ambient and +5 C; +10 C for the last set). Energy limitation is scored only while substrate remains (> 5 %): days with a shortfall paid by R_endo, days with production capped by the C/N/E limit, minimum E:C. Sets: (a) `Enz_Prod_E_cost` 600-9,600 x production x1 / x1.5 / x2 (relative to Constit_Prod 0.00035 / Enz_Prod 0.007); (b) `Maint_E_Rate_Const` 2.5-15; (c) production x1.25 / x1.5 / x2 x maintenance 5-8; (d) production x1.25 with `Vmax_Km` 10-13 and maintenance 7-8.
+
+- **Enzyme energy cost does not produce energy limitation.** Even at 16 x the cost (9,600) there are no shortfalls and no capped production; min E:C stays above 140. Cells cover any cost that scales with their activity by routing more of their uptake C to energy, and enzyme spending pays for itself through decay; the cost only slows growth (ambient 80 -> 66.5 % at x1 production).
+- **Maintenance does, but with a threshold**: costs that scale with biomass rather than activity can outrun the supply. At current production, maintenance 5 gives min E:C 295 (ambient) / 205 (+5 C) and no limitation; 6 gives ambient barely limited (2.5 shortfall days, 80 capped days, min E:C 80) and +5 C limited (55 days), but only 39 / 64 % degraded; 7.5 and above collapse both.
+- **Higher production with higher maintenance gives the requested contrast at about 80 % degraded:**
+
+| Production x1.25 (Constit 0.0004375, Enz_Prod 0.00875) | Ambient: degraded / min E:C / limited days | +5 C: degraded / limited days | +10 C: degraded / limited days |
+|---|---|---|---|
+| Vmax_Km 13, maintenance 7 | 78 % / 221 / 0 | 81 % / 111 | 77 % / 134 |
+| Vmax_Km 12, maintenance 7.5 | 79 % / 192 / 0 | 79 % / 125 | - |
+| Vmax_Km 11, maintenance 7.75 | 82 % / 184 / 0 | 82 % / 125 | - |
+| Vmax_Km 10, maintenance 7.5 | 91 % / 147 / 1.5 | 88 % / 125 | 87 % / 125 |
+| Vmax_Km 13, maintenance 8 | 65 % / 114 / 31.5 | 67 % / 134 | 65 % / 104 |
+
+- **"Energy-limited" at +5 C is a collapse, not a slowdown.** The warmer community grows faster and larger early in the year; late in the dry season its maintenance exceeds the supply, its energy pool runs out (from about day 230-250 at +5 C, 210 at +10 C), it shrinks through R_endo to about 1-2 C per grid cell and does not recover, and decomposition stalls with 20-30 % of the substrate left. Ambient stays above the threshold and keeps decomposing through the autumn, so all three climates end the year at about the same % degraded (the warming response of annual decomposition disappears).
+- The model has no graded energy-limited state: a community either covers its maintenance or enters the energy trap (sections 8, 11). A persistent low-activity energy-limited state would need a mechanism such as maintenance that falls when energy is scarce (dormancy).
