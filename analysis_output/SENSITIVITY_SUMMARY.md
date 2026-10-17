@@ -791,3 +791,11 @@ Options near 80 % (degraded per quarter at ambient; day-365 degraded and day of 
 
   (Before matching, Arrhenius at ambient was 94-95 % with day 50 % at 258-261.) The pulses replicate under both kinetics. The remaining gap comes from the parts of the year outside 12.5-20 C: Arrhenius is faster both in the cold season and in the warm season above about 20 C, so it stays 12 days ahead at ambient, 11 at +5 C and 30 at +10 C, and at +10 C its community again exhausts the substrate and crashes (biomass 14-16 vs 54-57 at day 365).
 - **Continuous 3-year run (Arrhenius):** 20 % remaining at day 349 (ambient) / 290 (+5 C) / 237 (+10 C) and 5 % at day 396 / 335 / 299; the community starves in year 2, as under MMRT.
+
+## 19. Is energy limiting with the chosen parameters? (2026-10-17)
+
+From the runs of sections 15-18 (six yearly pulses on the climate data, MMRT and matched Arrhenius; constant-temperature gradient), split into the time while substrate remains (> 5 % left) and after it is exhausted. Energy shortfall = a day on which endogenous respiration (R_endo) had to pay for an energy deficit; production limitation = a day on which constitutive or inducible production (enzymes, osmolytes, HSP) was capped by the C/N/E limit.
+
+- **While substrate remains, energy is essentially never limiting.** No shortfalls and no capped production in any climate run (except about 2 days just before exhaustion at +10 C under Arrhenius) or at 5-40 C; the lowest E:C is 165-540 (E_max ratio 1,400). The exception is MMRT at 0 C, where rates are so slow that the community runs short on 30 days and production is energy-capped on 211 days (min E:C 37).
+- **Energy shapes allocation all the time:** 53-60 % of the C taken up is respired to make energy (the demand curve keeps E:C well below E_max), more where rates are slow (MMRT: 78 % at 0 C, 62-67 % at 35-40 C) and less where they are fast (Arrhenius: 45 % at 40 C). This is a cost on CUE rather than a hard limit.
+- **After the substrate is exhausted, energy becomes limiting** and the community lives on R_endo until it starves: real climate, days per year with shortfalls MMRT / Arrhenius: ambient 0 / 0 (substrate never exhausted), +5 C 0 / 3, +10 C 19 / 66 (R_endo C 4 / 41 per grid cell); gradient: from 17.5 C upward (20-140 days). No energy was left unpaid in any run.
