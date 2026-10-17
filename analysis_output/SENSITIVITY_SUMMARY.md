@@ -876,3 +876,22 @@ Set in the 8 minimal km25 input folders (commit b14b846; Uptake_Vmax_Km 0.25, sl
 | +10 C | 98.2 % | 147 / 214 | 15-17 (197-199; 9-10 %) | 2.3-2.6 | 99-104 |
 
 Practically the same as production x1.25 (section 22). Ambient becomes energy-limited only at the end of the dry season with 12-15 % of the litter left; the warm communities run out of energy in the dry season and collapse with 10-12 % left, after which the remaining litter is used up and the community starves. The Arrhenius match of section 17-18 is unaffected (it compares rate constants, which do not depend on production, maintenance or the Km slope).
+
+## 25. HSP and osmolyte effects and production on/off, current defaults (2026-10-17)
+
+**Setup (`hsp_osmo_test/`; `analysis/hsp_osmo_test.py`, `analysis/plot_hsp_osmo_test.py`):** current minimal defaults (section 24), MMRT, real climate, first year, 2 seeds, R_endo on. Effect off (production and its C/N/E costs kept): HSP `Maint_E_HSP_Ea_Slope` 0 (maintenance Ea stays 45,000); osmolytes `Osmo_tol_K` 1e9 (drought tolerance about 0). Production off: both production rates 0 (no cost, no effect).
+
+| Variant | Degraded day 365 (amb / +5 / +10) | Energy-limited days while > 5 % left, ambient (first day) | Drought kills, ambient | Annual CUE, ambient |
+|---|---|---|---|---|
+| Baseline | 99.2 / 98.0 / 98.2 % | 20.5 (295) | 253 | 0.26 |
+| HSP effect off | 58.0 / 69.2 / 53.1 % | 143 (223) | 281 | 0.18 |
+| HSP production off | 67.1 / 74.6 / 60.4 % | 131.5 (233) | 276 | 0.19 |
+| Osmolyte effect off | 99.2 / 98.0 / 98.1 % | 7 (312) | 357 | 0.28 |
+| Osmolyte production off | 99.5 / 98.9 / 98.9 % | 13 (290) | 361 | 0.30 |
+| Both effects off | 57.4 / 69.0 / 53.1 % | 142.5 (220) | 380 | 0.19 |
+| Both production off | 95.5 / 83.1 / 68.7 % | 104 (256) | 377 | 0.22 |
+
+- **HSP is what keeps the community viable at Maint_E_Rate_Const 8.** HSP holds the maintenance Ea at about 30,000-34,000 instead of 45,000 (about 30 % less maintenance at 20 C); without its effect the community runs out of energy in the dry season at every temperature (from day 220 at ambient, 135-140 at +10 C) and decomposition stalls at 53-69 %. Producing HSP without the effect costs a little more than not producing it (58 vs 67 % at ambient), so the benefit outweighs the cost by far.
+- **Feedback in the warm runs:** once energy runs short in the dry season, HSP production is capped, the HSP share falls (turnover 0.1/day) and the maintenance Ea climbs back towards 40,000-44,000, which raises maintenance further and accelerates the collapse.
+- **Osmolytes do not pay for themselves with beta 1.** Their protection lowers drought kills (253 vs 357 at ambient) but hardly changes decomposition; their production costs energy in the dry season, and removing it relieves the warm runs (min E:C at +5 / +10 C 40 / 29 instead of 2; energy-limited days 9 / 4.5 instead of 24 / 16) and speeds decomposition slightly (day 95 % at ambient 304 vs 317).
+- Without both, the community does better than without HSP alone at warm temperatures, because it no longer pays the osmolyte energy cost.
