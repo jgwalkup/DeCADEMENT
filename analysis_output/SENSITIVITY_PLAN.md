@@ -19,6 +19,7 @@ decisions that frame it. Tick items off here as they are done.
 | Rebalancing energy (2026-10-19) | C respired in stoichiometric rebalancing yields energy (`R_stoich` 1, independent of `R_endo`) |
 | Nutrient inputs (2026-10-19) | `Input_NH4` 0.05, `Input_PO4` 0.005 (minimal km25 folders): no N or P limitation |
 | HSP cost (2026-10-19) | `HSP_prod_E_cost` 600: HSP pays off above about 10 C, -7 to -14 % biomass at 5-7.5 C |
+| Negligible parameters (2026-10-19) | Kept at their baseline values as defaults (Morris, sections 36-37): `Enz_Prod_E_cost` 600, `Active_Uptake_E_cost` 10, `Uptake_Prod_E_cost` 600, `Uptake_C_cost` 0.0375, `Uptake_Vmax_Km` 0.25, `Uptake_psi_slope` 0.1; HSP and osmolyte production rates and osmolyte parameters unchanged |
 | Energy-limitation metric (2026-10-19) | Whole-year endogenous-respiration C and its share of respiration, substrate left when energy limitation starts, substrate left at day 365 (section 35). Not a count of days with any cell in deficit (grows with grid size), and not only the > 5 %-substrate window (misleads between kinetics) |
 
 Calibration targets carried forward (minimal and full model): about 80 % or more of the substrate degraded with a steady
@@ -43,7 +44,7 @@ able to grow somewhat in the dry season.
 - [x] **1.3 MMRT vs Arrhenius at the final set.** Gradient and real climate; re-match `Vmax0` / `Uptake_Vmax0` in the
   15-20 C range if needed (the current match was made at maintenance 2.5).
   - 2026-10-19: done (section 35). The 12.5-20 C match holds; Vmax0 / Uptake_Vmax0 unchanged.
-- [ ] **1.4 Morris screening** (first pass done 2026-10-19, sections 36-37: 3,240 runs; open: 20 trajectories if the middle of the ranking matters, decisions on Enz_loss_rate and Maint_E_Rate_Const; `analysis/morris_minimal.py`, factor table `analysis/morris_factors_minimal.csv`, HPC3 array `analysis/submit_morris_minimal.sh`; both kinetics, MMRT and Arrhenius; 26 factors (Ferm_Cond excluded), `Maint_E_Rate_Const` 2.5-10). Three climates analysed separately, plus the warming response (+5 C minus ambient, and
+- [ ] **1.4 Morris screening** (first pass done 2026-10-19, sections 36-37: 3,240 runs; open: 20 trajectories if the middle of the ranking matters; Maint_E_Rate_Const x Enz_loss_rate grid (3-8 x 0.02-0.06, `analysis/grid2d_sweep.py`) to choose both; `analysis/morris_minimal.py`, factor table `analysis/morris_factors_minimal.csv`, HPC3 array `analysis/submit_morris_minimal.sh`; both kinetics, MMRT and Arrhenius; 26 factors (Ferm_Cond excluded), `Maint_E_Rate_Const` 2.5-10). Three climates analysed separately, plus the warming response (+5 C minus ambient, and
   +10 C minus ambient, from the same parameter points). Outputs: % degraded at day 365, day 50 % and 95 % degraded,
   annual CUE, whole-year endogenous respiration and its share of respiration, substrate left at the onset of energy
   limitation and at day 365, drought kills, maximum and mean biomass.
