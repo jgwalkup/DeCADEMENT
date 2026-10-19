@@ -43,7 +43,7 @@ able to grow somewhat in the dry season.
 - [x] **1.3 MMRT vs Arrhenius at the final set.** Gradient and real climate; re-match `Vmax0` / `Uptake_Vmax0` in the
   15-20 C range if needed (the current match was made at maintenance 2.5).
   - 2026-10-19: done (section 35). The 12.5-20 C match holds; Vmax0 / Uptake_Vmax0 unchanged.
-- [ ] **1.4 Morris screening** (in progress 2026-10-19: `analysis/morris_minimal.py`, factor table `analysis/morris_factors_minimal.csv`, HPC3 array `analysis/submit_morris_minimal.sh`; both kinetics, MMRT and Arrhenius; 26 factors (Ferm_Cond excluded), `Maint_E_Rate_Const` 2.5-10). Three climates analysed separately, plus the warming response (+5 C minus ambient, and
+- [ ] **1.4 Morris screening** (first pass done 2026-10-19, sections 36-37: 3,240 runs; open: 20 trajectories if the middle of the ranking matters, decisions on Enz_loss_rate and Maint_E_Rate_Const; `analysis/morris_minimal.py`, factor table `analysis/morris_factors_minimal.csv`, HPC3 array `analysis/submit_morris_minimal.sh`; both kinetics, MMRT and Arrhenius; 26 factors (Ferm_Cond excluded), `Maint_E_Rate_Const` 2.5-10). Three climates analysed separately, plus the warming response (+5 C minus ambient, and
   +10 C minus ambient, from the same parameter points). Outputs: % degraded at day 365, day 50 % and 95 % degraded,
   annual CUE, whole-year endogenous respiration and its share of respiration, substrate left at the onset of energy
   limitation and at day 365, drought kills, maximum and mean biomass.

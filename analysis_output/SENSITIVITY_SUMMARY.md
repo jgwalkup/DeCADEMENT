@@ -1145,3 +1145,42 @@ Mean biomass C over the year, HSP vs control (%):
 - Maintenance: lower maintenance raises CUE (the largest single effect on CUE) and biomass; completion of decomposition depends on the interaction with enzyme turnover: with Enz_loss_rate 0.02 every point completes at every maintenance level, at 0.032 completion falls from 91 % of points (maintenance 4.0) to 0 % (10). (Level means in the design are confounded by the unbalanced Morris sampling; use the elementary effects, not the marginal means.)
 - With 10 trajectories the bootstrap intervals are wide (e.g. Enz_loss_rate mu* for degradation 40-106); the top five factors are separated from the rest, the middle of the ranking is not. 20 trajectories would tighten it.
 
+## 37. Morris screening, full first pass: three climates x MMRT and Arrhenius (2026-10-19)
+
+**Setup:** as section 36 (26 factors, 270 points, 2 seeds), now all three climates and both kinetics: 3,240 runs (about 30 min on the Mac). `morris_minimal/morris_indices.csv` includes the warming responses (+5 C minus ambient, +10 C minus ambient, same point and kinetics); figure `morris_mu_star.png`.
+
+**Outcomes across the design** (median over points; % of points with >= 95 % / < 25 % degraded):
+
+| | Ambient | +5 C | +10 C |
+|---|---|---|---|
+| MMRT: % degraded / day 50 % / CUE | 63 / 328 / 0.32 | 95 / 232 / 0.33 | 96 / 198 / 0.32 |
+| MMRT: complete / stalled (% of points) | 45 / 33 | 50 / 26 | 51 / 26 |
+| Arrhenius: % degraded / day 50 % / CUE | 75 / 309 / 0.33 | 99 / 218 / 0.33 | 99 / 148 / 0.32 |
+| Arrhenius: complete / stalled | 45 / 31 | 54 / 21 | 59 / 15 |
+
+Warming almost never lowers degradation (<= 1 % of points lose more than 5 points); 37-47 % of points gain more than 5 points; median CUE change -0.005 to -0.014; median endogenous-respiration share +0.7 (+5 C) to +2.8 points (+10 C). Under MMRT a quarter of the points still stall at +10 C (15 % under Arrhenius).
+
+**Ranking** (mean relative mu* over degradation, day 50 %, CUE, endogenous-respiration share, substrate left, maximum biomass, drought kills):
+
+| Factor | Ambient MMRT / Arr | +10 C MMRT / Arr | Warming response +10 C, MMRT / Arr |
+|---|---|---|---|
+| Enz_loss_rate | 1.66 / 1.65 | 1.45 / 1.38 | 1.77 / 2.11 |
+| Constit_Prod | 0.84 / 0.88 | 0.80 / 1.07 | 1.46 / 1.36 |
+| E_resp_IdealSub | 0.73 / 0.74 | 0.66 / 0.68 | 1.47 / 1.29 |
+| Maint_E_Rate_Const | 0.75 / 0.73 | 0.89 / 0.72 | 1.38 / 1.34 |
+| Enzyme_psi_slope | 0.51 / 0.59 | 0.52 / 0.51 | 1.21 / 0.84 |
+| HSP_turnover | 0.25 / 0.26 | 0.47 / 0.47 | 0.86 / 0.71 |
+| Maint_E_HSP_Ea_Intercept | 0.26 / 0.27 | 0.44 / 0.49 | 0.78 / 0.74 |
+| Enz_Prod | 0.25 / 0.24 | 0.30 / 0.35 | 0.78 / 0.72 |
+| beta, death_rate_bac | about 0.4-0.5 everywhere | (drought kills) | |
+| Vmax_Km, HSP_prod_E_cost, Maint_E_HSP_Ea_n | 0.13-0.27 | 0.16-0.45 | 0.41-0.72 |
+| Remaining 13 | <= 0.2 | <= 0.2 | <= 0.6 |
+
+(Warming-response values are relative to the SD of the differences, which is smaller than the SD of the outputs themselves; compare the order, not the size, with the single-climate columns.)
+
+- The ranking is the same in every climate and under both kinetics; enzyme turnover, constitutive enzyme production, substrate energy yield, maintenance and the enzyme moisture slope lead throughout.
+- HSP parameters (turnover, maintenance Ea intercept) roughly double in importance from ambient to +10 C, as expected for the warm limb.
+- For the warming response, sigma exceeds |mu| for almost every factor: the size and even the sign of a factor's effect on the warming response depend on the other factors (points near the decomposition threshold respond most). The exception is HSP_turnover, whose effect has a consistent direction: faster HSP turnover reduces the warming gain in degradation (mu -13 / -7 points at +10 C) and delays day 50 % (+50 / +67 days).
+- Maintenance remains the leading factor for CUE in every climate and kinetics; lower maintenance raises CUE.
+- Energy costs of enzyme and transporter production, the active-uptake cost, uptake Km and the uptake moisture slope stay negligible everywhere, including for the warming responses.
+
