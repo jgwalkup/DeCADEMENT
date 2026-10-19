@@ -1312,3 +1312,20 @@ Warming almost never lowers degradation (<= 1 % of points lose more than 5 point
 - **With the minimal production totals the full-model taxon barely decomposes** (9 % of the litter), biomass plateaus at about 10 C per cell and collapses in the dry season. Cause: enzyme specificity. In the first-order regime decay = (enzyme acting on the substrate) x S / Vmax_Km, independent of Vmax. The minimal taxon's single enzyme acts on all 200 C of IdealSub; a full-model taxon spreads the same production over 40 genes on 12 substrates (about 3.3 genes per substrate), so each unit of enzyme sees about 1/12 of the litter. Decay capacity per unit production is about 200 / (344.6 / 12) = 7 times lower.
 - **Raising production 3.5-7x restores decomposition, but with a different time course:** the labile pools (starch, proteins, chitin, OrgP) fall below 5 % by day 94-157 at x7 and day 141-265 at x4.5, day 50 % comes at day 89-168 instead of 244, and 2-15 % of the litter (mostly cellulose and lignin) is still left when decay stops (day 237 at x7, 286 at x4.5), as the community starves in the dry season (endogenous respiration about 100 % of respiration from then on, 23-28 % over the year). CUE falls as production rises (0.35 at x3.5 to 0.26 at x7). Daily CUE drops from 0.6 to about 0.3 within the first 100 days in every full-model run (cause not yet isolated).
 - **Realised energy yield is below the minimal model's** (1030-1130 vs 1252 per unit C taken up) despite the static match: necromass uptake (15-19 % of uptake at higher production) and the N-rich monomers route little C to energy. Litter E_resp x1.45 instead of x1.245 restores the realised yield (1200-1245).
+
+**41b. Litter E_resp multipliers** (x the e1500 table: 1.245 = current port, 1.5, 2, 3; enzyme production x1 and x4.5; three climates, MMRT, 3 seeds; figure `litter_eresp_scale.png` (ambient), table `litter_eresp_scale_summary.csv`). Ambient / +5 / +10 C:
+
+| Litter E_resp, production | % litter degraded | Day 50 % | Day 95 % | CUE | Endogenous resp. (% of resp.) | Realised energy per uptake C (ambient) |
+|---|---|---|---|---|---|---|
+| x1.245, x1 | 9 / 10 / 9 | - | - | 0.39 / 0.37 / 0.37 | 36 / 37 / 40 | 1130 |
+| x1.5, x1 | 12 / 13 / 13 | - | - | 0.40 / 0.39 / 0.38 | 32 / 35 / 37 | 1357 |
+| x2, x1 | 20 / 20 / 17 | - | - | 0.43 / 0.41 / 0.41 | 0 / 21 / 35 | 1805 |
+| x3, x1 | 26 / 30 / 31 | - | - | 0.53 / 0.50 / 0.47 | 0 / 0 / 0 | 2682 |
+| x1.245, x4.5 | 91 / 92 / 91 | 131 / 115 / 109 | 323 / 314 / 311 | 0.33 / 0.31 / 0.31 | 28 / 29 / 29 | 1065 |
+| x1.5, x4.5 | 93 / 93 / 93 | 124 / 110 / 103 | 318 / 310 / 307 | 0.32 / 0.31 / 0.30 | 27 / 28 / 29 | 1257 |
+| x2, x4.5 | 95 / 95 / 95 | 117 / 104 / 97 | 315 / 307 / 304 | 0.32 / 0.31 / 0.30 | 25 / 28 / 28 | 1617 |
+| x3, x4.5 | 97 / 97 / 96 | 110 / 97 / 91 | 265 / 239 / 235 | 0.32 / 0.31 / 0.30 | 21 / 27 / 27 | 2333 |
+
+- At the ported enzyme production, more energy removes the starvation (endogenous respiration 0 at x3, CUE up to 0.53) but decomposition stays slow (at most 26-31 %): the taxon is limited by enzyme capacity, not energy.
+- At production x4.5, energy shortens the cellulose/lignin tail (97 % degraded and day 95 % 235-265 at x3) and advances day 50 % by 6-21 days, but annual CUE stays at 0.30-0.33 at every multiplier, and the early drop in daily CUE (0.6 to about 0.25 around day 75-100) is the same at every multiplier, so neither is set by energy supply.
+- Seed SD of % degraded falls from 3-4 points (x1.245) to about 1 point (x3) at production x4.5; at production x1 it is 3-11 points.
