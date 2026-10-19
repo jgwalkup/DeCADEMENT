@@ -184,6 +184,9 @@ class Grid():
         # fermentation condition score (0-1): reflects environmental favorability of fermentation vs respiration
         self.ferm_cond = data_init['FermCond']  # currently set to 0.1; can update to vary with environmental conditions
         self.active_uptake_E_cost = data_init['ActiveUptakeE_cost']  # energy cost of transporting monomers
+        # Mineral uptake by passive diffusion: when on, NH4 and PO4 taken up are left out of the uptake that the
+        # transport energy costs (active transport and transporter production) are charged on
+        self.mineral_uptake_passive = bool(data_init.get('Mineral_Uptake_Passive', 1))
         # Endogenous respiration (R_endo): when on, a cell whose energy costs exceed its energy pays the shortfall by
         # respiring free biomass C (C not bound in HSP/osmolytes) at the respiration energy yield of the necromass monomer
         # (E_resp of Mon_DeadMic; no fermentation, all of that C leaves as CO2); when off, the shortfall is floored away
@@ -712,6 +715,12 @@ class Grid():
         TUN  = n_3d.sum(axis=1)       # (G, T) N
         TUP  = p_3d.sum(axis=1)       # (G, T) P
         TU   = TUCb + TUN + TUP       # (G, T) total biomass
+        # uptake charged with the transport energy costs: all of it, or without NH4 and PO4 (passive diffusion)
+        if self.mineral_uptake_passive:
+            _mineral = np.isin(np.asarray(self.Monomers.index[:M]), ["NH4", "PO4"])
+            TU_transport = TU - (n_3d[:, _mineral, :] + p_3d[:, _mineral, :]).sum(axis=1)
+        else:
+            TU_transport = TU
 
         self.Taxon_resp_df = pd.DataFrame(co2_3d.sum(axis=1),    # (G, T) CO2
                                           columns=mic_idx[:T])
@@ -731,6 +740,7 @@ class Grid():
         self.Taxon_Uptake_P = _cell(TUP)
         self.Taxon_Uptake_E = _cell(TUE)      # energy produced from the C routed to energy
         self.Taxon_Total_Uptake = _cell(TU)   # biomass C + N + P taken up
+        self.Taxon_Transport_Uptake = _cell(TU_transport)   # the part charged with transport energy costs
 
         # Taxon-specific C assimilation efficiency (CAE)
         #
@@ -797,6 +807,7 @@ class Grid():
         Microbes_CNP = Microbes_C + Microbes_N + Microbes_P
 
         Taxon_Total_Uptake_v = np.asarray(self.Taxon_Total_Uptake, dtype=np.float32)
+        Taxon_Transport_Uptake_v = np.asarray(self.Taxon_Transport_Uptake, dtype=np.float32)
         Taxon_Uptake_BC_v = np.asarray(self.Taxon_Uptake_BC, dtype=np.float32)
         Taxon_Uptake_N_v = np.asarray(self.Taxon_Uptake_N, dtype=np.float32)
         Taxon_Uptake_P_v = np.asarray(self.Taxon_Uptake_P, dtype=np.float32)
@@ -819,14 +830,14 @@ class Grid():
         free_N = np.maximum(Microbes_N - np.float32(self.HSP_N_cost) * hsp_C - np.float32(self.Osmo_N_cost) * osmo_C, 0)
 
         # ── Transport and maintenance energy (charged in full) ───────────────────────────────────────────────
-        Tax_active_transport_E_cost = Taxon_Total_Uptake_v * np.float32(self.active_uptake_E_cost)
+        Tax_active_transport_E_cost = Taxon_Transport_Uptake_v * np.float32(self.active_uptake_E_cost)
         maint_E_cost_Ea = ((HSP_prop / (HSP_prop + self.maint_E_HSP_Ea_n)) * self.maint_E_HSP_Ea_slope
                            ) + self.maint_E_HSP_Ea_int
         tax_maint_E_cost = self.maint_E_rate_const * Arrhenius(
             maint_E_cost_Ea, self.gas_const, self.temp[day], self.maint_E_rate_Tref)
         Tax_cell_maint_E_cost = tax_maint_E_cost * Microbes_CNP
         Uptake_Prod_Cost_sum = self.Uptake_Prod_Cost.to_numpy(dtype=np.float32, copy=True).sum(axis=1)
-        Tax_transport_prod_E_cost = (Taxon_Total_Uptake_v * Uptake_Prod_Cost_sum) * np.float32(self.UptakeProd_E_Cost)
+        Tax_transport_prod_E_cost = (Taxon_Transport_Uptake_v * Uptake_Prod_Cost_sum) * np.float32(self.UptakeProd_E_Cost)
 
         # energy available for biosynthesis: the pool plus this step's energy, minus transport and maintenance
         MicBio_avail_E = (Microbes_E + Taxon_Uptake_E_v - Tax_active_transport_E_cost

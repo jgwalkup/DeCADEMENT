@@ -118,6 +118,7 @@ Uptake_identity_map,1
 Leaching,0.1
 Leaching_psi_slope,0.5
 R_endo,1
+Mineral_Uptake_Passive,1
 Uptake_psi_slope,0.1
 Enzyme_psi_slope,0.1
 HSP_max_frac,0.2

@@ -618,6 +618,9 @@ def initialize_data(runtime_parameters, climate_file="climate.csv", community_di
         # optional switch (0/1): pay energy shortfalls by respiring free biomass C at the respiration yield (E_resp) of the
         # necromass monomer (Mon_DeadMic in monomer_energy.csv); 0 = shortfalls are floored away (energy pool set to 0)
         "R_endo": _optional(parameters, "R_endo", 1),
+        # optional switch (0/1): NH4 and PO4 enter cells by passive diffusion, so their uptake carries no active-transport or
+        # transporter-production energy cost; 0 = they are charged like the organic monomers (per unit mass taken up)
+        "Mineral_Uptake_Passive": _optional(parameters, "Mineral_Uptake_Passive", 1),
         # optional: daily NH4 and PO4 leaching fraction = Leaching * exp(Leaching_psi_slope * (Psi - wp_fc))
         "Leaching": _optional(parameters, "Leaching", 0.1),
         "Leaching_psi_slope": _optional(parameters, "Leaching_psi_slope", 0.5),
