@@ -1251,3 +1251,36 @@ Warming almost never lowers degradation (<= 1 % of points lose more than 5 point
 - The crossover moved from about 10 C to about 12.5 C, and the cold penalty is larger (-15 to -17 % biomass at 2.5-7.5 C vs -7 to -14 %). With lower maintenance, the maintenance saving from HSP (lower Ea) is smaller relative to the fixed HSP production cost. The cold penalty slows degradation (7.5 C: 44 vs 52 % degraded; 10 C: day 50 % 284 vs 276).
 - Controls now survive to about 30 C (96 % degraded) and collapse at 35 C (19 %); previously they collapsed at 30 C. HSP runs degrade 99.6 % at 35 C and 71 % at 40 C.
 - The ambient climate range (about 5-31 C) spans the crossover, so HSP is a net cost in winter and a net benefit in summer, as intended; the cost is now somewhat steeper than the "modest" target. Lowering `HSP_prod_E_cost` to about 450 would probably restore a crossover near 10 C (not run).
+
+## 40. Morris screening, second pass: 14 factors around the final minimal baseline (2026-10-19)
+
+**Setup (`morris_minimal_v2/`):** factor table `analysis/morris_factors_minimal_v2.csv`: the 14 factors left after removing the 6 negligible (section 37) and 6 borderline factors (Maint_E_HSP_Ea_Slope, HSP_Induci_Prod, and the four osmolyte factors; all held at baseline). Baseline as in section 39 (maintenance 4, turnover 0.05). Narrowed ranges: Maint_E_Rate_Const 2.5-6.4, Enz_loss_rate 0.035-0.07, HSP_prod_E_cost 300-900, beta 0.5-2; other ranges as in the first pass. r = 20 trajectories (pool 80, seed 2), 4 levels, 300 points x 3 climates x MMRT and Arrhenius x 2 seeds = 3,600 runs (about 30 min on the Mac). Figure `morris_mu_star.png`.
+
+**Ranking** (mean relative mu* over degradation, day 50 %, CUE, endogenous-respiration share, substrate left, maximum biomass, drought kills; first-pass rank among the same 14 factors in brackets):
+
+| Factor | Ambient MMRT / Arr | +10 C MMRT / Arr | Warming response +10 C, MMRT / Arr | Rank (first pass) |
+|---|---|---|---|---|
+| Constit_Prod | 1.16 / 1.17 | 1.18 / 1.14 | 1.61 / 1.58 | 1 (2) |
+| Enz_loss_rate | 0.85 / 0.82 | 0.87 / 0.77 | 1.45 / 1.37 | 2 (1) |
+| E_resp_IdealSub | 0.70 / 0.71 | 0.77 / 0.69 | 0.83 / 0.84 | 3 (3) |
+| Vmax_Km | 0.43 / 0.47 | 0.46 / 0.64 | 0.95 / 1.08 | 4 (11) |
+| Enzyme_psi_slope | 0.49 / 0.46 | 0.29 / 0.37 | 0.98 / 0.86 | 5 (5) |
+| Maint_E_Rate_Const | 0.37 / 0.37 | 0.47 / 0.46 | 0.95 / 0.72 | 6 (4) |
+| Enz_Prod | 0.26 / 0.26 | 0.33 / 0.37 | 0.67 / 0.63 | 7 (8) |
+| Maint_E_HSP_Ea_Intercept | 0.34 / 0.32 | 0.37 / 0.43 | 0.70 / 0.60 | 8 (7) |
+| death_rate_bac | 0.49 / 0.49 | 0.46 / 0.46 | 0.39 / 0.32 | 9 (10) |
+| HSP_turnover | 0.25 / 0.26 | 0.33 / 0.32 | 0.58 / 0.41 | 10 (6) |
+| Maint_E_HSP_Ea_n | 0.22 / 0.21 | 0.35 / 0.40 | 0.57 / 0.50 | 11 (13) |
+| HSP_prod_E_cost | 0.19 / 0.19 | 0.21 / 0.27 | 0.34 / 0.42 | 12 (12) |
+| beta | 0.27 / 0.28 | 0.27 / 0.27 | 0.25 / 0.26 | 13 (9) |
+| HSP_Consti_Prod | 0.07 / 0.08 | 0.06 / 0.08 | 0.21 / 0.22 | 14 (14) |
+
+(Relative mu* is scaled by each output's SD over the design, which changed with the narrower ranges; compare orders between passes, not sizes.)
+
+- **The top three are unchanged and separated from the rest:** constitutive enzyme production, enzyme turnover and the substrate energy yield lead in every climate and under both kinetics (ambient MMRT, % degraded: mu* 64 [48-82], 34 [19-54], 10 [5-15] points). Constit_Prod moves ahead of turnover because turnover's range was narrowed.
+- **Rank changes follow the range changes and the new baseline:** maintenance (range narrowed 2.5-10 -> 2.5-6.4) drops from 4th to 6th, beta (0.5-5 -> 0.5-2) from 9th to 13th. Vmax_Km rises from 11th to 4th with its range unchanged: at the new baseline the community sits closer to the decomposition threshold, where a higher enzyme Km tips points into stalling (51 % of points stall at the highest Vmax_Km level vs 16 % at the lowest).
+- **The middle of the ranking (ranks 4-11) is still loosely ordered:** the mu* intervals overlap (ambient MMRT, % degraded: Vmax_Km 6-25, Ea intercept 2-19, Enz_Prod 4-13, HSP_turnover 2-15, maintenance 3-11 points).
+- **CUE:** led by the substrate energy yield (higher E_resp raises CUE), maintenance (lower maintenance raises CUE) and Constit_Prod. Median design CUE 0.35-0.37 in every climate (10th-90th percentile 0.23-0.47).
+- **Drought kills:** death_rate_bac and beta, as before; the drought factors otherwise matter little.
+- **Warming:** median day 50 % advances by 33 days (+5 C) and 49 (MMRT) / 63 (Arrhenius) days (+10 C); 32-41 % of points gain > 5 points of degradation at +10 C, <= 4 % lose more than 5; +10 C degrades less than +5 C by > 5 points at 4.7 % of points under MMRT and 0.3 % under Arrhenius. Median CUE change -0.006 to -0.016; median endogenous-respiration share +1 to +4 points. Sigma exceeds |mu| for almost every factor's warming effect. HSP_turnover again has a consistent direction (MMRT: mu -5 / -8 points of degradation at +10 / +5 C, day 50 % +20 / +14 days): faster HSP turnover reduces the warming gain.
+- **The baseline sits close to the decomposition threshold.** 30 % of design points stall at ambient (< 25 % degraded). Stalling is set mostly by Constit_Prod and Enz_loss_rate: 63 % of points stall at the lowest Constit_Prod level (0.0003) and none at the highest; 4-8 % stall at turnover 0.035-0.044 and 54-56 % at 0.056-0.07. The baseline (Constit_Prod 0.00045, turnover 0.05) lies between those turnover levels, so a modest increase in turnover or decrease in constitutive production would stall ambient decomposition.
