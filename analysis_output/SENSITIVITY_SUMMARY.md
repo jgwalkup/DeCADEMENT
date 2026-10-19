@@ -932,3 +932,27 @@ Practically the same as production x1.25 (section 22). Ambient becomes energy-li
 - **At cost 150, osmolytes are neutral at beta 1 and a net benefit from beta 2 upward.** At ambient, day 95 % is 3 / 6 / 14 days earlier than with osmolyte production off at beta 2 / 3 / 5, and at beta 10 degradation reaches 98.4 % vs 92.1 %. The warm runs are within 1-3 days of osmolyte production off at beta 1-5 and gain at beta 10 (+5: 246 vs 258; +10: 214 vs 219). Cost 150 is faster than cost 600 everywhere (12-17 days at ambient, 5-13 days in the warm runs).
 - **Protection is unchanged by the cost:** drought kills at cost 150 match cost 600 (osmolytes cut kills by 23-38 % vs off, more at higher beta), and dry-season drought tolerance stays about 0.38 at ambient and 0.24-0.31 in the warm runs.
 - **Energy limitation:** the warm runs remain energy-limited at every beta (+5: 9-16.5 days, min E:C 11-21 for beta 1-5; +10: 6.5-12 days), but much less than at cost 600 (min E:C about 2-11). Ambient is limited for 12.5 days at beta 1 (min E:C 69, about the same as with osmolyte production off) and not at all from beta 5.
+
+## 28. HSP cold cost at the final set (2026-10-19)
+
+**Decisions recorded the same day** (see `SENSITIVITY_PLAN.md`): beta 1; endogenous respiration on by default (`R_endo,1` in every input folder, code default 1); HSP should carry a modest cold cost; Morris design for the final sensitivity analysis; no fungi; CUE 0.26-0.35 accepted, higher CUE a secondary benchmark.
+
+**Setup (`hsp_cold_cost/`; `analysis/kinetics_gradient.py`, `analysis/plot_hsp_cold_cost.py`):** final minimal set (Osmo_prod_E_cost 150), MMRT, constant temperature 0-40 C with wet Psi (-0.5 MPa), one 365-day pulse, 2 seeds, R_endo on. Each setting is compared with its control (HSP_Consti_Prod = HSP_Induci_Prod = 0). The control does not depend on HSP cost, production or the Ea slope; for the Tref variant, Maint_E_Rate_Const was rescaled (8 -> 16, i.e. 8 x exp(45000/R x (1/273 - 1/283)) = 16.1) so that the control maintenance curve is unchanged (its results match the original control).
+
+Mean biomass C over the year, HSP vs control (%):
+
+| Setting | 0 C | 5 C | 7.5 C | 10 C | 12.5 C | 15 C | 20 C | 25 C | Crossover |
+|---|---|---|---|---|---|---|---|---|---|
+| Current (HSP_prod_E_cost 300) | -18 | +1 | +9 | +12 | +10 | +9 | +16 | +44 | ~5 C |
+| HSP_prod_E_cost 450 | -24 | -6 | +5 | +7 | +8 | +8 | +15 | +44 | ~6 C |
+| HSP_prod_E_cost 600 | -28 | -10 | -2 | +2 | +7 | +7 | +15 | +43 | ~9 C |
+| HSP_prod_E_cost 1200 | -40 | -28 | -23 | -14 | 0 | +4 | +12 | +40 | ~12.5 C |
+| HSP_Consti_Prod 0.003 | -24 | 0 | +13 | +14 | +13 | +12 | +22 | +55 | ~5 C |
+| Ea slope -60000 | -18 | -3 | +4 | +5 | +6 | +5 | +11 | +36 | ~6 C |
+| Tref 283 K, Maint_E_Rate_Const 16 | -27 | -13 | -12 | -6 | 0 | +2 | +7 | +25 | ~12.5 C |
+
+- **At the final set HSP costs biomass only below about 5 C**, so it is a net benefit in every climate scenario (ambient daily temperature 5.3-30.7 C, median 15.7). Controls collapse at 30 C and above in every setting (degradation 14 % vs 93-100 % with HSP).
+- **Production-cost route** (matches the rationale that HSP diverts resources from enzymes and growth): HSP_prod_E_cost 600 (the original value, before the settled set lowered it to 300) moves the crossover to about 9 C with a modest winter cost (-10 % at 5 C, -2 % at 7.5 C) and leaves the warm benefit unchanged; 1200 gives an extreme cold penalty. More constitutive HSP strengthens the benefit without a cold cost; a shallower Ea slope shrinks the benefit everywhere.
+- **Tref route** (Tref is where HSP's Ea reduction has no effect on maintenance; below it HSP raises maintenance): Tref 283 K with the rescaled rate constant gives a crossover at about 12.5 C, a cold cost of 6-13 % at 5-10 C and a smaller warm benefit (+7 % at 20 C, +25 % at 25 C). It is a thermal cost, not a resource cost, and it raises the maintenance of HSP-carrying cells by roughly 10-20 % at every temperature.
+- Degradation by day 365 is nearly unaffected between 10 and 25 C (99-100 %); the HSP effect shows in biomass and timing (day 50 % 8-35 days earlier with HSP at 10-25 C in the current setting).
+- Either change will shift the climate-scenario energy calibration (section 24-27), so it needs the climate re-baseline (plan step 1.1) before the Morris runs.

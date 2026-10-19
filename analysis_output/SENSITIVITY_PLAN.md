@@ -29,6 +29,9 @@ able to grow somewhat in the dry season.
   MMRT. Target: a modest penalty at low temperature (earlier window: 5-10 % lower biomass) with a benefit at warm
   temperatures. If the cold penalty is missing, tune HSP production or cost (`HSP_Consti_Prod`, `HSP_prod_E_cost`) or
   the Ea slope; keep `Maint_E_Rate_Tref` and the maintenance rate fixed, as they set the energy-limitation calibration.
+  - 2026-10-19: lever screen done (`SENSITIVITY_SUMMARY.md` section 28). The current crossover is about 5 C (no cold
+    cost in any climate); HSP_prod_E_cost 600 gives about 9 C, Tref 283 K with a rescaled rate constant about 12.5 C.
+    Choose the lever, then re-baseline (1.1).
 - [ ] **1.3 MMRT vs Arrhenius at the final set.** Gradient and real climate; re-match `Vmax0` / `Uptake_Vmax0` in the
   15-20 C range if needed (the current match was made at maintenance 2.5).
 - [ ] **1.4 Morris screening.** Three climates analysed separately, plus the warming response (+5 C minus ambient, and
