@@ -1,9 +1,15 @@
 #!/bin/bash
 # Morris screening of the minimal model on HPC3 as a SLURM job array.
 #
+# Files needed (same layout as the repository): src/, analysis/morris_minimal.py, analysis/morris_factors_minimal.csv,
+# analysis/sweep_minimal.py, this script, input_minimal_e1500_crich_km25_in/ and input/climate_data/.
+# For a subset add e.g. --climates input/climate_data/climate_ambient_temp.csv --kinetics 1 to the run line below.
+#
 # 1. Make the design once (login node is fine, takes seconds):
 #      python analysis/morris_minimal.py design morris_out --r 10 --pool 40
-# 2. Submit the runs (each array task runs every N_TASKS-th job with CPUS workers):
+# 2. Submit the runs from the repository root (each array task runs every N_TASKS-th job with CPUS workers); the
+#    logs/ folder must exist before sbatch (SLURM opens the --output file before the script runs):
+#      mkdir -p logs
 #      sbatch --array=0-$((N_TASKS-1)) analysis/submit_morris_minimal.sh morris_out
 #    The array size must match N_TASKS below. Tasks are restartable: resubmit a failed index with --array=<id>.
 # 3. When all tasks are done, analyse (seconds):
