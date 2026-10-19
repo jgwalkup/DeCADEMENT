@@ -119,7 +119,7 @@ Enzyme_psi_slope,0.1
 Uptake_identity_map,1
 Leaching,0.1
 Leaching_psi_slope,0.5
-R_endo,0
+R_endo,1
 HSP_max_frac,0.2
 Osmo_max_frac,0.2
 Osmo_tol_K,0.05
