@@ -111,7 +111,16 @@ def _job(args):
         T = int(rt.loc["n_taxa", 1])
         stub = _RepopStub(pd.unique(eco.Microbes.index), days + 2)
         rows = []
+        reb = {"C": 0.0}
+        _orig_update_cue = eco._update_cue
+
+        def _update_cue(rebalance_C_loss=None):            # record the C respired by stoichiometric rebalancing
+            reb["C"] = 0.0 if rebalance_C_loss is None else float(np.sum(rebalance_C_loss))
+            return _orig_update_cue(rebalance_C_loss)
+        eco._update_cue = _update_cue
+        is_nh4, is_po4 = mon_idx == "NH4", mon_idx == "PO4"
         for i in range(days):
+            reb["C"] = 0.0
             eco.degradation(0, i)
             m_before = by(mon_idx, eco.Monomers, org)
             eco.uptake(0, i)
@@ -130,7 +139,17 @@ def _job(args):
                        R_endo_C=float(np.sum(getattr(eco, "Taxon_R_endo_C", 0.0))) / G,
                        respiration=float(np.asarray(eco.Taxon_Resp).sum()) / G,
                        enzyme_pool=float(np.asarray(eco.Enzymes).sum()) / G,
-                       killed=int(eco.Kill), Temp=float(eco.temp[i]), Psi=float(eco.psi[i]))
+                       killed=int(eco.Kill), Temp=float(eco.temp[i]), Psi=float(eco.psi[i]),
+                       rebalance_C=reb["C"] / G,
+                       R_stoich_E=float(np.sum(getattr(eco, "Taxon_R_stoich_E", 0.0))) / G,
+                       N_uptake=float(np.asarray(eco.Taxon_Uptake_N).sum()) / G,
+                       P_uptake=float(np.asarray(eco.Taxon_Uptake_P).sum()) / G,
+                       NH4_N=float(np.asarray(eco.Monomers["N"])[is_nh4].sum()) / G,
+                       PO4_P=float(np.asarray(eco.Monomers["P"])[is_po4].sum()) / G,
+                       leached_N=float(np.sum(eco.Leached_N)) / G,
+                       biomass_NC=float(np.asarray(eco.Microbes["N"])[alive].sum() / C[alive].sum()) if alive.any() else np.nan,
+                       biomass_PC=float(np.asarray(eco.Microbes["P"])[alive].sum() / C[alive].sum()) if alive.any() else np.nan,
+                       induci_limitation=float(np.nanmean(eco.Induci_limitation)) if np.size(eco.Induci_limitation) else np.nan)
             row.update({f"S_{s}": v for s, v in sc.items()})
             row.update({f"U_{m}": v for m, v in upt.items()})
             rows.append(row)
@@ -150,6 +169,7 @@ def _job(args):
                 day_95pct=float(np.argmax(deg >= 95) + 1) if (deg >= 95).any() else 366.0,
                 CUE_annual=float(np.average(s.CUE.fillna(0), weights=w)) if w.sum() > 0 else 0.0,
                 endo_share_pct=100 * s.R_endo_C.sum() / s.respiration.sum() if s.respiration.sum() > 0 else 0.0,
+                rebalance_share_of_uptake_pct=100 * s.rebalance_C.sum() / s.C_uptake.sum() if s.C_uptake.sum() > 0 else 0.0,
                 E_max_per_uptake_C=float(eyield), biomass_max=float(s.biomass_C.max()),
                 **{f"uptake_share_{m}": float(U[f"U_{m}"] / U.sum()) for m in org},
                 **{f"left_{x}": float(100 * s[f"S_{x}"].iloc[-1] / max(s[f"S_{x}"].iloc[0], 1e-12)) for x in lit})

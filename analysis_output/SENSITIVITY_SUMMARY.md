@@ -1329,3 +1329,19 @@ Warming almost never lowers degradation (<= 1 % of points lose more than 5 point
 - At the ported enzyme production, more energy removes the starvation (endogenous respiration 0 at x3, CUE up to 0.53) but decomposition stays slow (at most 26-31 %): the taxon is limited by enzyme capacity, not energy.
 - At production x4.5, energy shortens the cellulose/lignin tail (97 % degraded and day 95 % 235-265 at x3) and advances day 50 % by 6-21 days, but annual CUE stays at 0.30-0.33 at every multiplier, and the early drop in daily CUE (0.6 to about 0.25 around day 75-100) is the same at every multiplier, so neither is set by energy supply.
 - Seed SD of % degraded falls from 3-4 points (x1.245) to about 1 point (x3) at production x4.5; at production x1 it is 3-11 points.
+
+**41c. N limitation in the full-model single-taxon runs** (`full_single_taxon.py` now records the C respired by stoichiometric rebalancing, biomass N:C and P:C, NH4 and PO4 pools, N and P uptake and leaching; ambient climate, MMRT, enzyme production x4.5, 3 seeds; table `n_limitation_summary.csv`). The NH4 / PO4 inputs are on (`Input_NH4` 0.05, `Input_PO4` 0.005 per grid cell per day, added in `degradation()` before uptake).
+
+| Setting | % degraded | Day 95 % | CUE | Rebalancing C (% of C uptake) | Endogenous resp. (% of resp.) |
+|---|---|---|---|---|---|
+| Minimal baseline | 99.7 | 329 | 0.37 | 0 | 1 |
+| Litter E_resp x1.245 | 91 | 323 | 0.33 | 9.6 | 28 |
+| x1.245, Input_NH4 0.2 | 90 | 316 | 0.36 | 1.0 | 33 |
+| x1.245, Input_PO4 0.02 | 91 | 324 | 0.32 | 10.6 | 28 |
+| Litter E_resp x3 | 97 | 265 | 0.32 | 30.0 | 21 |
+| x3, Input_NH4 0.2 | 98 | 225 | 0.39 | 18.0 | 34 |
+
+- **The early CUE drop is N limitation.** The full-model taxon grows much faster than the minimal one (biomass C 54 vs 7 per cell on day 100); NH4 is drawn down to about 0.001-0.007 per cell by day 30-50 (minimal: 0.2-0.25 through day 100), biomass N:C falls from 0.25 to 0.14 by day 125 (rebalancing trigger about 0.138), and rebalancing then respires 13-24 % of the C taken up on days 100-150. Four times the NH4 input removes nearly all of it (1 % of uptake) and raises CUE to 0.36; four times the PO4 input changes nothing.
+- **More energy per unit C deepens the N limitation:** with a higher litter E_resp less of the C taken up is respired for energy and more goes to biomass, which needs N; at x3 rebalancing takes 30 % of the C uptake, which is why annual CUE stayed at 0.32 in 41b. With NH4 0.2 the x3 run reaches CUE 0.39 and day 95 % 225.
+- Enzyme N is a minor sink (0.7-1.2 N per cell in the enzyme pool on days 100-150 vs 9-12 in biomass).
+- Daily CUE still declines on days 125-200 with NH4 0.2 (0.39 -> 0.15) without rebalancing, as the dry season and the end of the labile substrates set in; endogenous respiration rises (28 -> 33 %), partly because less energy is credited from rebalancing (R_stoich).
