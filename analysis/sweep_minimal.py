@@ -122,6 +122,7 @@ def run_one(src_input, changes, side, days, seed, temp=None, climate=None, pulse
             resp_cum += float(np.asarray(eco.Taxon_Resp).sum()) / G
             unpaid = float(np.sum(getattr(eco, "Taxon_E_unpaid", 0.0))) / G      # energy shortfall not paid for
             endo_C = float(np.sum(getattr(eco, "Taxon_R_endo_C", 0.0))) / G     # biomass C respired for shortfalls
+            stoich_E = float(np.sum(getattr(eco, "Taxon_R_stoich_E", 0.0))) / G  # energy from rebalancing C (R_stoich)
             unpaid_cum += unpaid
             endo_C_cum += endo_C
             deficit_days += float(np.sum(getattr(eco, "Taxon_E_deficit", 0.0))) > 0
@@ -163,6 +164,7 @@ def run_one(src_input, changes, side, days, seed, temp=None, climate=None, pulse
                 **{f"d_{k}": v for k, v in getattr(eco, "Diag", {}).items()},
                 E_unpaid=unpaid,
                 R_endo_C=endo_C,
+                R_stoich_E=stoich_E,
             ))
             if np.isnan(collapse_day) and n0 - n >= 100:
                 collapse_day = i + 1

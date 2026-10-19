@@ -12,8 +12,9 @@ Per grid cell and day, per group g (bac = bacteria, fun = fungi):
   E_clip_g        energy shortfall (costs above the energy available) that brings a negative E pool back to zero;  cells_Eclip_g = number of cells with a shortfall
   E_unpaid_g      part of the shortfall not paid for (all of it unless R_endo = 1, which pays it by respiring biomass C)
   R_endo_C_g     biomass C respired endogenously to pay shortfalls (R_endo = 1)
+  E_stoich_g      energy credited for the C respired in stoichiometric rebalancing (R_stoich = 1)
   E_cap_g         energy lost by capping E:C at E_max;   E_dead_g = energy in cells killed that day
-  resid_E         (E at end - E at start of the day) - (uptake - costs + clip - cap - dead), summed over groups (should be ~0)
+  resid_E         (E at end - E at start of the day) - (uptake - costs + clip + stoich - cap - dead), summed over groups (should be ~0)
   CUE (model), cells_g (occupied cells)
 
 Usage:
@@ -99,13 +100,14 @@ def run(job):
                 unpaid, endo_C = f32(eco.Taxon_E_unpaid), f32(eco.Taxon_R_endo_C)
                 eco.mortality(i)
                 M1 = eco.Microbes.to_numpy(dtype=np.float64).reshape(G, T, 4)
+                stoichE = f32(getattr(eco, "Taxon_R_stoich_E", np.zeros(G * T)))
                 eco.reproduction(i)
                 M2 = eco.Microbes.to_numpy(dtype=np.float64).reshape(G, T, 4)
                 a0, a1, a2 = Mm[..., 0] > 0, M1[..., 0] > 0, M2[..., 0] > 0
                 dead = a0 & ~a1
                 row = dict(seed=seed, pulse=pl + 1, doy=i - pl * CYCLE + 1, CUE=float(eco.CUE_system),
                            sub_C_litter=float(eco.Substrates.to_numpy(dtype=np.float64)[:, 0][sub_litter].sum() / G))
-                tot_up = tot_cost = tot_clip = tot_cap = tot_dead = 0.0
+                tot_up = tot_cost = tot_clip = tot_cap = tot_dead = tot_stoich = 0.0
                 for g, m in grp.items():
                     live = a1[:, m]
                     row[f"E_uptake_{g}"] = upE[:, m].sum() / G
@@ -128,17 +130,19 @@ def run(job):
                     row[f"E_unpaid_{g}"] = unpaid[:, m].sum() / G
                     row[f"R_endo_C_{g}"] = endo_C[:, m].sum() / G
                     row[f"cells_Eclip_{g}"] = int(((pre[:, m] < 0) & (Mu[:, m, 0] > 0)).sum())
-                    row[f"E_cap_{g}"] = ((Mm[:, m, 3] - M1[:, m, 3]) * live).sum() / G
+                    row[f"E_stoich_{g}"] = (stoichE[:, m] * live).sum() / G
+                    row[f"E_cap_{g}"] = ((Mm[:, m, 3] + stoichE[:, m] - M1[:, m, 3]) * live).sum() / G
                     row[f"E_dead_{g}"] = (Mm[:, m, 3] * dead[:, m]).sum() / G
                     row[f"cells_{g}"] = int(a2[:, m].sum())
                     tot_up += row[f"E_uptake_{g}"]
                     tot_cost += row[f"E_cost_{g}"]
                     tot_clip += row[f"E_clip_{g}"]
                     tot_cap += row[f"E_cap_{g}"]
+                    tot_stoich += row[f"E_stoich_{g}"]
                     tot_dead += row[f"E_dead_{g}"]
                 e0 = (M_start[..., 3] * (M_start[..., 0] > 0)).sum() / G
                 e1 = (M2[..., 3] * a2).sum() / G
-                row["resid_E"] = (e1 - e0) - (tot_up - tot_cost + tot_clip - tot_cap - tot_dead)
+                row["resid_E"] = (e1 - e0) - (tot_up - tot_cost + tot_clip + tot_stoich - tot_cap - tot_dead)
                 rows.append(row)
                 stub.Taxon_count_repop.iloc[:, i + 1] = a2.sum(axis=0)
                 if i == (pl + 1) * CYCLE - 1 and pl < pulses - 1:

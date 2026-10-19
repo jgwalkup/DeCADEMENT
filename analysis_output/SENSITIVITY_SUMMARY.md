@@ -1022,3 +1022,22 @@ Mean biomass C over the year, HSP vs control (%):
 - With more NH4 the flagged energy-limited days rise (ambient 14.5 -> 21 / 54 / 127 at 0.05 / 0.1 / 0.2) through inducible production running below potential (`r_induci` < 1) while E:C stays high, not through energy shortfalls (days with endogenous respiration unchanged). From here on the limited-days metric should count only endogenous-respiration days, or be split by limiting resource.
 - Constant-temperature gradient (wet, one pulse): passive uptake also changes the cold limb. At 0 C endogenous respiration falls from 176 days to 0 and degradation rises from 2.0 to 3.9 %; at 5 C CUE is 0.31 vs 0.27 and degradation 22.8 vs 18.3 % (the NH4 transport cost was a large share of the cold energy budget). With NH4 0.05: no N floor at any temperature, CUE 0.33 / 0.35 / 0.34 / 0.33 at 10 / 15 / 20 / 25 C (the step down at 12.5-30 C is gone), day 50 % within 3 days of the current runs.
 - The HSP cold-cost screen (section 28) and the energy calibration (sections 24-27) were made with charged mineral uptake and N limitation in the warm runs; both need re-running once Input_NH4 is chosen.
+
+## 31. Energy credit for C respired in stoichiometric rebalancing, R_stoich (2026-10-19)
+
+**Code change.** When a cell falls below its minimum N or P share, rebalancing (`mortality()`) cuts its C to the minimum ratio and respires the excess. With `R_stoich` on, that C yields energy at the necromass respiration yield (`Mon_DeadMic` E_resp, 700 per unit C, the same yield as R_endo), credited to the cell's energy pool just before the E:C cap (energy above E_max x C is dissipated there). The C is still respired and still counts against CUE. Optional switch `R_stoich` (parameters.csv; default 1; row added to every input folder), independent of `R_endo`. New outputs: `Taxon_R_stoich_E` (grid), `R_stoich_E_Taxon` (output.py, per taxon per day), `R_stoich_E` (sweep series), `E_stoich_g` (e_tracker, which now separates the credit from `E_cap_g` and includes it in `resid_E`).
+
+**Checks** (final minimal set, passive mineral uptake, R_endo on, 2 seeds, real climate first year):
+- `R_stoich` 0 reproduces the previous code exactly (identical daily output, Input_NH4 0.02 and 0.05, three climates).
+- Energy balance with `R_stoich` 1 (e_tracker, +10 C, seed 0): daily residual at most 2e-4 (6e-7 of the day's uptake energy); credit = 700 x rebalancing C on every day it occurs; no credit dissipated at the cap (E:C 500-650 during N limitation, cap 1400).
+
+**Effect under N limitation** (Input_NH4 0.02; ambient / +5 / +10 C; ambient has no rebalancing, so it is unchanged):
+
+| R_stoich | Days at N floor | Energy credited (per cell, year; share of uptake energy) | Days with endogenous respiration | Min E:C | CUE | Day 95 % degraded | % degraded, day 365 |
+|---|---|---|---|---|---|---|---|
+| 0 | 0 / 48 / 69 | 0 | 14.5 / 12 / 7 | 74 / 26 / 16 | 0.289 / 0.300 / 0.292 | 303 / 230 / 207 | 99.4 / 98.8 / 98.7 |
+| 1 | 0 / 52 / 72 | - / 7,260 (4.0 %) / 12,300 (7.1 %) | 14.5 / 7 / 3 | 74 / 51 / 83 | 0.289 / 0.304 / 0.297 | 303 / 229 / 205 | 99.4 / 99.0 / 99.0 |
+
+- The credit arrives on 90-100 days in the warm runs (peak about 240-310 energy units per cell per day) and halves the endogenous-respiration days; the minimum E:C rises from 26 / 16 to 51 / 83. Cells route less uptake C to energy (uptake energy -2 to -5 %), so CUE rises slightly (+0.004-0.005).
+- With Input_NH4 0.05 (no N floor) rebalancing is rare: the credit is 0.01 % of uptake energy and the outputs are unchanged to three digits.
+

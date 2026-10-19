@@ -272,6 +272,7 @@ class Output():
         self.Osmo_E_Taxon      = pd.Series(data=[0] * n_taxa, index=Mic_index)
         self.HSP_E_Taxon       = pd.Series(data=[0] * n_taxa, index=Mic_index)
         self.E_unpaid_Taxon    = pd.Series(data=[0] * n_taxa, index=Mic_index)   # energy shortfall left unpaid
+        self.R_stoich_E_Taxon  = pd.Series(data=[0] * n_taxa, index=Mic_index)   # energy from rebalancing C (R_stoich)
 
 
         # Enzymes
@@ -336,7 +337,7 @@ class Output():
             "EnergySeries", "Taxon_HSP_Series", "Taxon_Osmo_Series", "C_Uptake_Taxon", "BC_Uptake_Taxon",
             "Enzyme_C_Taxon", "HSP_C_Taxon", "Osmo_C_Taxon", "Transport_C_Taxon",
             "Transport_E_Taxon", "Maint_E_Taxon", "Enzyme_E_Taxon", "Osmo_E_Taxon",
-            "HSP_E_Taxon", "E_Prod_Taxon", "R_endo_C_Taxon", "E_unpaid_Taxon", "Microbe_E_Gain", "Microbe_E_Cost",
+            "HSP_E_Taxon", "E_Prod_Taxon", "R_endo_C_Taxon", "E_unpaid_Taxon", "R_stoich_E_Taxon", "Microbe_E_Gain", "Microbe_E_Cost",
             "CAE_TaxonSeries", "CAE_system", "CUE_TaxonSeries", "CUE_system", "Drought_tol_Taxon",
             "Respiration_Taxon", "RespSeries", "EnzymesSeries", "EnzymesProduction",
             "EnzymesGain", "EnzymesLoss", "Kill", "Taxon_count_repop", "LeachingSeries",
@@ -458,7 +459,8 @@ class Output():
                                 ("Enzyme_E_Taxon",    "Taxon_Enzyme_E_Cost"),
                                 ("Osmo_E_Taxon",      "Taxon_Osmo_E_Cost_total"),
                                 ("HSP_E_Taxon",       "Taxon_HSP_E_Cost"),
-                                ("E_unpaid_Taxon",    "Taxon_E_unpaid")]:
+                                ("E_unpaid_Taxon",    "Taxon_E_unpaid"),
+                                ("R_stoich_E_Taxon",  "Taxon_R_stoich_E")]:
             grid_val = _taxa_sum(getattr(ecosystem, eco_attr), self.gridsize, self.n_taxa, self._taxa_index)
             grid_val = grid_val / self.taxon_count
             grid_val[np.isinf(grid_val)] = np.nan

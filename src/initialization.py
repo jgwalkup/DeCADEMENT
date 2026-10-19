@@ -621,6 +621,10 @@ def initialize_data(runtime_parameters, climate_file="climate.csv", community_di
         # optional switch (0/1): NH4 and PO4 enter cells by passive diffusion, so their uptake carries no active-transport or
         # transporter-production energy cost; 0 = they are charged like the organic monomers (per unit mass taken up)
         "Mineral_Uptake_Passive": _optional(parameters, "Mineral_Uptake_Passive", 1),
+        # optional switch (0/1): energy credit for the C respired in stoichiometric rebalancing (cells short of N or P give up
+        # C, which leaves as CO2); when on, that C yields energy at the respiration yield of the necromass monomer
+        # (E_resp of Mon_DeadMic), as for R_endo; independent of R_endo
+        "R_stoich": _optional(parameters, "R_stoich", 1),
         # optional: daily NH4 and PO4 leaching fraction = Leaching * exp(Leaching_psi_slope * (Psi - wp_fc))
         "Leaching": _optional(parameters, "Leaching", 0.1),
         "Leaching_psi_slope": _optional(parameters, "Leaching_psi_slope", 0.5),

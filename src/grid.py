@@ -196,6 +196,15 @@ class Grid():
             if 'Mon_DeadMic' not in self.Monomer_energy.index:
                 raise ValueError("R_endo = 1 needs a 'Mon_DeadMic' row in monomer_energy.csv")
             self._R_endo_E_yield = np.float32(self.Monomer_energy.loc['Mon_DeadMic', 'E_resp'])  # energy per C respired
+        # Respiration of the C lost in stoichiometric rebalancing (R_stoich): when on, the C that cells short of N or P give
+        # up (mortality(), respired as CO2) yields energy at the same necromass respiration yield as R_endo, credited to
+        # the cell's energy pool before the E:C cap; when off, that C is respired without an energy return. Independent
+        # of R_endo.
+        self.R_stoich = bool(data_init.get('R_stoich', 1))
+        if self.R_stoich:
+            if 'Mon_DeadMic' not in self.Monomer_energy.index:
+                raise ValueError("R_stoich = 1 needs a 'Mon_DeadMic' row in monomer_energy.csv")
+            self._R_stoich_E_yield = np.float32(self.Monomer_energy.loc['Mon_DeadMic', 'E_resp'])  # energy per C respired
 
         # Metabolism
         self.Consti_Enzyme_C = data_init["EnzProdConstit"]  # C cost of encoding constitutive enzyme
@@ -1090,6 +1099,7 @@ class Grid():
         MinRat_cnp = self.MinRatios[['C', 'N', 'P']].to_numpy(dtype=np.float32, copy=True)   # (N,3)
         Death = np.zeros_like(Mic)
         kill = np.zeros(n_taxa * gridsize, dtype=bool)
+        self.Taxon_R_stoich_E = np.zeros(n_taxa * gridsize, dtype=np.float32)  # energy from rebalancing C (R_stoich), this day
 
         # Start of calcualtion of mortality first with THRESHOLD
         # Kill microbes deterministically based on threshold values: C_min; N_min; P_min
@@ -1204,6 +1214,11 @@ class Grid():
             tax_resp_mort[idx2] += MicLoss[:, 0]
             rebalance_C_loss = np.zeros(n_taxa * gridsize, dtype=np.float32)
             rebalance_C_loss[idx2] = MicLoss[:, 0]
+            # R_stoich: the C given up yields energy (credited before the E:C cap below; any excess is dissipated there)
+            if self.R_stoich:
+                E_credit = np.maximum(MicLoss[:, 0], np.float32(0)) * self._R_stoich_E_yield
+                Mic[idx2, 3] += E_credit
+                self.Taxon_R_stoich_E[idx2] = E_credit
             self._update_cue(rebalance_C_loss)            # CUE after the C respired by rebalancing
             self.Taxon_Resp = pd.Series(tax_resp_mort, index=Mic_index)
             # Update monomer pools
