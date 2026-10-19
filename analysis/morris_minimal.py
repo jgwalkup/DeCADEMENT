@@ -243,7 +243,9 @@ def analyze(a):
                                 "+10 C minus ambient"] for kn in ["MMRT", "Arrhenius"]
               if ((ind.climate == c) & (ind.kinetics == kn)).any()]
     order = (ind[ind.output.isin(sel)].groupby("factor").mu_star_rel.mean().sort_values(ascending=False).index)
-    fig, axs = plt.subplots(int(np.ceil(len(panels) / 2)), 2, figsize=(15, 4.6 * np.ceil(len(panels) / 2)), squeeze=False)
+    nc = 1 if len(panels) == 1 else 2
+    nr = int(np.ceil(len(panels) / nc))
+    fig, axs = plt.subplots(nr, nc, figsize=(8.5 * nc, 5.2 * nr), squeeze=False)
     for ax, (c, kn) in zip(axs.ravel(), panels):
         m = (ind[(ind.climate == c) & (ind.kinetics == kn) & ind.output.isin(sel)]
              .pivot(index="factor", columns="output", values="mu_star_rel").reindex(index=order, columns=sel))

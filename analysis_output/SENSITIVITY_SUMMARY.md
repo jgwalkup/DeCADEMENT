@@ -1122,3 +1122,26 @@ Mean biomass C over the year, HSP vs control (%):
 - **Energy limitation in this single-pulse model is end-of-substrate starvation under both kinetics:** it begins when 8-14 % of the substrate is left (4 % for Arrhenius at +10 C) and, over the whole year, Arrhenius has more endogenous respiration than MMRT. Warming moves the onset earlier (ambient about day 280-310, +10 C about day 180-200). Under MMRT in the warm runs the community collapses with about 3 % of the substrate unconsumed (MMRT +10 C revives briefly after day 290 when it cools).
 - The metric used in sections 30-34 (endogenous respiration while > 5 % substrate is left) therefore mostly measures whether the collapse comes before the last 5 % is used, and it misleads between kinetics (Arrhenius +10 C: 0.006 vs MMRT 37, although Arrhenius respires more over the year). For the Morris outputs, use whole-year endogenous respiration (and its share of respiration), the substrate left at the onset of energy limitation, and the substrate left at day 365.
 
+## 36. Morris screening, first subset: ambient climate, MMRT (2026-10-19)
+
+**Setup (`morris_minimal/`; `analysis/morris_minimal.py`, `analysis/morris_factors_minimal.csv`):** 26 factors (table in `factors.csv`; `Ferm_Cond` excluded; `Maint_E_Rate_Const` 2.5-10), 4 levels, 10 trajectories chosen from a pool of 40 (270 points), 2 seeds per point, ambient climate, MMRT, one pulse, 20x20, R_endo 1, current minimal baseline otherwise. 540 runs, about 5 min on the Mac. The other climates and Arrhenius are still to run against the same design.
+
+**Outcomes across the design are bimodal:** % degraded at day 365 ranges 2-100 (median 64; a quarter of the points below 13 %), CUE 0.10-0.55 (median 0.33), maximum biomass 2-92.
+
+**Ranking** (mu* relative to the output's SD over all points; mean over degradation, day 50 %, CUE, endogenous-respiration share, substrate left, maximum biomass and drought kills):
+
+| Factor | Mean relative mu* | Main effects (mu, per full range) |
+|---|---|---|
+| Enz_loss_rate | 1.66 | dominant for degradation (-73 points), day 50 % (+197 days), biomass, endogenous respiration |
+| Constit_Prod | 0.84 | degradation +45 points |
+| Maint_E_Rate_Const | 0.75 | top factor for CUE (-0.14 over 2.5 -> 10); degradation -29 points; biomass -25 |
+| E_resp_IdealSub | 0.73 | CUE +0.11; degradation +31 points |
+| Enzyme_psi_slope | 0.51 | degradation -31 points |
+| beta, death_rate_bac | 0.50, 0.46 | drive drought kills (relative mu* about 1.8 each); little effect on degradation |
+| HSP_prod_E_cost, Maint_E_HSP_Ea_Intercept, HSP_turnover, Enz_Prod, Vmax_Km | 0.20-0.27 | mostly CUE and endogenous respiration |
+| All others | <= 0.13 | Uptake costs and Km, HSP and osmolyte production rates, osmolyte parameters (except kills), Maint_E_HSP_Ea_Slope / _n; enzyme production energy cost, active uptake energy cost and the uptake moisture slope have almost no effect (<= 0.03) |
+
+- sigma is about as large as mu* for the leading factors (relative sigma 0.6-2.9): their effects depend strongly on the other factors (threshold behaviour), which is also why the outcomes are bimodal.
+- Maintenance: lower maintenance raises CUE (the largest single effect on CUE) and biomass; completion of decomposition depends on the interaction with enzyme turnover: with Enz_loss_rate 0.02 every point completes at every maintenance level, at 0.032 completion falls from 91 % of points (maintenance 4.0) to 0 % (10). (Level means in the design are confounded by the unbalanced Morris sampling; use the elementary effects, not the marginal means.)
+- With 10 trajectories the bootstrap intervals are wide (e.g. Enz_loss_rate mu* for degradation 40-106); the top five factors are separated from the rest, the middle of the ranking is not. 20 trajectories would tighten it.
+
