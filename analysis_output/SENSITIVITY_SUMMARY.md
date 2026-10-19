@@ -995,7 +995,30 @@ Mean biomass C over the year, HSP vs control (%):
 | C:N 20, NH4 0 | 0 / 5 / 10.5 | 0.19 / 0.30 / 0.32 | 0.294 / 0.279 / 0.289 | 1.5 / 28 / 28 | 178 / 0.9 / 0.2 | 326 / 265 / 237 |
 | C:N 20, NH4 0.02 | 0 / 0 / 0 | 0.33 | 0.267 / 0.293 / 0.302 | 14.5 / 29.5 / 20.5 | 75 / 0.1 / 0.04 | 322 / 251 / 223 |
 
-- NH4 uptake is not regulated by N demand: cells take up NH4 until their C share reaches its minimum (Cfrac_b - Crange = 0.735, biomass N:C about 0.34), rebalancing then returns the excess N to the NH4 pool, and it is taken up again. Every unit of monomer mass taken up, NH4 included, is charged `Active_Uptake_E_cost` and the transporter-production energy cost, so this cycle drains energy. At 0.1-0.2 NH4 the communities collapse; on the gradient the cost falls hardest where growth is slow (10 C: 64 % degraded at NH4 0.1, 5 % at 0.2).
+- NH4 uptake is not regulated by N demand: cells take up NH4 until their C share reaches its minimum (Cfrac_b - Crange = 0.735, biomass N:C about 0.34), rebalancing then returns the excess N to the NH4 pool, and it is taken up again. Every unit of monomer mass taken up, NH4 included, is charged `Active_Uptake_E_cost` and the transporter-production energy cost, so this cycle drains energy. At 0.1-0.2 NH4 the communities collapse; on the gradient the cost falls hardest where growth is slow (10 C: 64 % degraded at NH4 0.1, 6 % at 0.2; corrected, see section 30).
 - Luxury N uptake already happens with the current inputs during slow growth (biomass N:C 0.26-0.33 at ambient and at 10 C).
 - Removing the floor by either route makes the warm runs more energy-limited (min E:C about 0) and 15-25 days slower to 95 % degraded, and removes the CUE step on the gradient (CUE at 15-25 C 0.33-0.35 with NH4 0.05, vs 0.30-0.33).
 - Not fixed yet; options are in OPEN_ISSUES.md. The energy calibration (sections 24-28) will need re-checking after the fix.
+
+## 30. Passive mineral uptake (2026-10-19)
+
+**Decision and code change.** NH4 and PO4 enter cells by passive diffusion: their uptake is no longer charged the active-transport energy cost (`Active_Uptake_E_cost`) or the transporter-production energy cost (`Uptake_Prod_E_cost`, from which the transporter C cost output is derived). Optional switch `Mineral_Uptake_Passive` (parameters.csv, default 1; row added to every input folder); 0 reproduces the earlier behaviour exactly (checked: identical daily output for Input_NH4 0.02 and 0.05, three climates, 2 seeds). `grid.py`: `Taxon_Transport_Uptake` (biomass C + N + P taken up, without NH4 and PO4 when the switch is on) replaces `Taxon_Total_Uptake` in the two transport energy costs; `Taxon_Total_Uptake` is unchanged elsewhere (it still scales inducible HSP production).
+
+**Correction to section 29.** A test folder for the C:N 20 runs was created as a link to the C-rich input folder in the analysis workspace, so that folder's `initial_substrates.csv` was overwritten with 200:10:1 from 11:53 to 12:20 on 2026-10-19. Affected and re-run: the gradient runs at Input_NH4 0.1 and 0.2 (10 C at 0.2: 6 % degraded, not 5 %; other conclusions unchanged). Unaffected: the climate NH4 runs, the gradient at NH4 0.05, the C:N 20 runs and all HSP runs. The repository input folders were never touched.
+
+**Results** (final minimal set, osmolyte cost 150, HSP cost 300, R_endo on, 2 seeds; real climate, first year):
+
+| Case | Days at N floor (amb / +5 / +10) | Max biomass N:C | CUE | Days with endogenous respiration | Min E:C | Day 95 % degraded | % degraded, day 365 |
+|---|---|---|---|---|---|---|---|
+| Charged, NH4 0.02 (previous) | 0 / 45 / 67 | 0.29 / 0.22 / 0.20 | 0.287 / 0.303 / 0.296 | 14 / 12 / 7 | 69 / 11 / 16 | 304 / 234 / 208 | 99.4 / 98.6 / 98.7 |
+| Passive, NH4 0.02 | 0 / 48 / 69 | 0.29 / 0.22 / 0.20 | 0.289 / 0.300 / 0.292 | 14 / 12 / 7 | 74 / 26 / 16 | 303 / 230 / 207 | 99.4 / 98.8 / 98.7 |
+| Passive, NH4 0.05 | 0 / 0 / 0 | 0.34 | 0.265 / 0.300 / 0.304 | | 24 / 2 / 2 | 309 / 239 / 214 | 98.9 / 98.0 / 98.0 |
+| Passive, NH4 0.1 | 0 / 0 / 0 | 0.35 | 0.278 / 0.279 / 0.283 | | 59 / 1 / 2 | 306 / 244 / 215 | 99.3 / 97.4 / 97.7 |
+| Passive, NH4 0.2 | 0 / 0 / 0 | 0.35 | 0.296 / 0.286 / 0.288 | 11 / 16 / | 74 / 10 / 11 | 299 / 234 / 206 | 99.4 / 98.5 / 98.6 |
+| Charged, NH4 0.1 / 0.2 (for comparison) | 0 | 0.35 | 0.16-0.27 | | 0 | not reached in most | 8-95 |
+
+- Passive uptake removes the energy drain of the N hoarding cycle: no collapse at any NH4 input (degradation 97-99 %, biomass and timing close to the current runs). Cells still take up NH4 to the C-share minimum (biomass N:C about 0.35, C:N about 2.9) when N is plentiful; this no longer costs energy.
+- With Input_NH4 0.02 the warm runs are still N-limited (48 / 69 days at the floor); 0.05 or more removes the floor in every climate and on the gradient.
+- With more NH4 the flagged energy-limited days rise (ambient 14.5 -> 21 / 54 / 127 at 0.05 / 0.1 / 0.2) through inducible production running below potential (`r_induci` < 1) while E:C stays high, not through energy shortfalls (days with endogenous respiration unchanged). From here on the limited-days metric should count only endogenous-respiration days, or be split by limiting resource.
+- Constant-temperature gradient (wet, one pulse): passive uptake also changes the cold limb. At 0 C endogenous respiration falls from 176 days to 0 and degradation rises from 2.0 to 3.9 %; at 5 C CUE is 0.31 vs 0.27 and degradation 22.8 vs 18.3 % (the NH4 transport cost was a large share of the cold energy budget). With NH4 0.05: no N floor at any temperature, CUE 0.33 / 0.35 / 0.34 / 0.33 at 10 / 15 / 20 / 25 C (the step down at 12.5-30 C is gone), day 50 % within 3 days of the current runs.
+- The HSP cold-cost screen (section 28) and the energy calibration (sections 24-27) were made with charged mineral uptake and N limitation in the warm runs; both need re-running once Input_NH4 is chosen.
