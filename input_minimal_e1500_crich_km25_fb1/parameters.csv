@@ -54,7 +54,7 @@ Monomer_Substrate_Ratio,0.0001
 Init_NH4,0.0
 Init_PO4,0.0
 Init_FermProd,0.0
-Input_NH4,0.02
+Input_NH4,0.05
 Input_PO4,0.002
 Input_FermProd,0.0
 death_rate_bac,0.001

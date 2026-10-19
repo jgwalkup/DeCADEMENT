@@ -15,6 +15,9 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
 import numpy as np  # noqa: E402
 import pandas as pd  # noqa: E402
+import os  # noqa: E402
+
+SUBTITLE = os.environ.get("PLOT_SUBTITLE", "")   # optional extra line under the title
 
 RAMP = ["#6da7ec", "#2a78d6", "#0d366b", "#06203f"]   # ordinal blue steps (light -> dark)
 CONTROL = "#8a8a85"
@@ -58,7 +61,7 @@ def main(out, ctl_dir, specs):
     fig.legend(h, l, loc="upper center", ncol=len(l), fontsize=9, frameon=False, bbox_to_anchor=(0.5, 0.955))
     fig.suptitle("Daily CUE by HSP energy cost across constant temperatures (bacterial minimal model, final set, MMRT, wet Psi, "
                  "one pulse, R_endo on; mean of 2 seeds)\nLines end when < 1 % of the substrate is left; ticks on the x axis "
-                 "mark the day 95 % is degraded", fontsize=10)
+                 "mark the day 95 % is degraded" + (f"; {SUBTITLE}" if SUBTITLE else ""), fontsize=10)
     fig.tight_layout(rect=(0, 0, 1, 0.92))
     fig.savefig(out, dpi=130)
 

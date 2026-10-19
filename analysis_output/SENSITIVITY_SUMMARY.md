@@ -1041,3 +1041,32 @@ Mean biomass C over the year, HSP vs control (%):
 - The credit arrives on 90-100 days in the warm runs (peak about 240-310 energy units per cell per day) and halves the endogenous-respiration days; the minimum E:C rises from 26 / 16 to 51 / 83. Cells route less uptake C to energy (uptake energy -2 to -5 %), so CUE rises slightly (+0.004-0.005).
 - With Input_NH4 0.05 (no N floor) rebalancing is rare: the credit is 0.01 % of uptake energy and the outputs are unchanged to three digits.
 
+## 32. Re-run with Input_NH4 0.05, passive mineral uptake and R_stoich (2026-10-19)
+
+**Change:** `Input_NH4` 0.02 -> 0.05 in the eight minimal km25 input folders (full-model folders unchanged at 0.02 until the port). All runs: final minimal set (osmolyte cost 150, beta 1, maintenance 8), `Mineral_Uptake_Passive` 1, `R_stoich` 1, `R_endo` 1, MMRT, 2 seeds (`hsp_cold_cost_nh4_0.05/`). Energy limitation is counted as days with endogenous respiration while > 5 % substrate is left (section 30).
+
+**HSP cold cost, constant-temperature gradient** (wet, one pulse). Mean biomass, HSP vs control (%):
+
+| HSP_prod_E_cost | 0 C | 5 C | 7.5 C | 10 C | 12.5 C | 15 C | 20 C | 25 C | Crossover |
+|---|---|---|---|---|---|---|---|---|---|
+| 300 (current) | -6 | -2 | +5 | +11 | +11 | +16 | +29 | +60 | ~6 C |
+| 450 | -11 | -7 | -0.5 | +7 | +9 | +14 | +28 | +56 | ~7.5 C |
+| 600 | -15 | -14 | -7 | +2 | +7 | +11 | +25 | +54 | ~10 C |
+
+- CUE: at 5 C 0.308 / 0.297 / 0.284 for cost 300 / 450 / 600 (control 0.309); at 10-20 C 0.33-0.35 (300) and 0.32-0.34 (600), control 0.25-0.31; at 0 C HSP lowers CUE (0.20 / 0.19 / 0.18 vs 0.24). The N-limitation step is gone; a small dip remains at 17.5-25 C with cost 300 (P floor reached for 4-31 days at peak growth; PO4 drawn down to the daily input; R_stoich credits energy then).
+- No HSP run is energy-limited below 30 C; the control is limited from 20 C (15 days; 173 at 25 C) and collapses at 30 C and above.
+
+**Real climate, HSP cost** (ambient / +5 / +10 C):
+
+| HSP_prod_E_cost | CUE | Endogenous-respiration days | Min E:C | Day 95 % degraded | % degraded, day 365 |
+|---|---|---|---|---|---|
+| 300 | 0.265 / 0.300 / 0.304 | 21 / 22.5 / 17 | 24 / 1.9 / 1.9 | 309 / 239 / 214 | 98.9 / 98.0 / 98.0 |
+| 450 | 0.252 / 0.290 / 0.294 | 34 / 28.5 / 25 | 40 / 1.3 / 0.5 | 316 / 247 / 221 | 98.9 / 97.5 / 97.5 |
+| 600 | 0.249 / 0.280 / 0.284 | 21 / 38 / 32 | 40 / 0.05 / 0.2 | 321 / 257 / 231 | 98.8 / 96.9 / 96.9 |
+
+**HSP/osmolyte on-off at cost 300** (ambient / +5 / +10 C): baseline 98.9 / 98.0 / 98.0 % degraded; HSP effect off 79 / 68 / 52 %; HSP production off 89 / 75 / 59 %; osmolyte production off 99.2 / 98.4 / 98.4 % (day 95 % 2-4 days earlier, CUE 0.286 / 0.309 / 0.310, drought kills 361 / 367 / 349 vs 265 / 305 / 295); osmolyte effect off within 0.2 points of baseline. Endogenous-respiration days 21 / 22.5 / 17 (baseline) vs 105 / 168 / 156 with the HSP effect off.
+
+- Compared with the earlier calibration (NH4 0.02, charged mineral uptake; sections 26-28): ambient is closer to the energy limit (21 vs about 14 endogenous-respiration days, min E:C 24 vs 69-77) and +5 C is clearly tipped (min E:C 2 vs 11); ambient CUE 0.265 (was 0.287), warm-run CUE unchanged (0.30). The calibration targets still hold: ambient close to energy-limited (late in the season), +5 C energy-limited, about 98-99 % degraded.
+- HSP stays essential at every climate; osmolytes still cost slightly more than they save at beta 1 (as in section 27).
+- P is close to limiting in the warm runs (biomass P:C minimum 0.013 vs a floor of about 0.012) and limits briefly on the wet constant-temperature gradient. `Input_PO4` 0.002 gives an N:P input ratio of 25 (substrate 10).
+

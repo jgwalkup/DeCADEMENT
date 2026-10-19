@@ -13,6 +13,9 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
 import numpy as np  # noqa: E402
 import pandas as pd  # noqa: E402
+import os  # noqa: E402
+
+SUBTITLE = os.environ.get("PLOT_SUBTITLE", "")   # optional extra line under the title
 
 
 def summ(d):
@@ -55,7 +58,7 @@ def main(out, specs):
         a.spines[["top", "right"]].set_visible(False)
     ax[0].legend(fontsize=8, frameon=False, loc="upper left")
     fig.suptitle("HSP cold cost across a constant-temperature gradient (bacterial minimal model, final set, MMRT, wet Psi, "
-                 "one pulse, R_endo on; mean of 2 seeds)", fontsize=10.5)
+                 "one pulse, R_endo on; mean of 2 seeds)" + (f"\n{SUBTITLE}" if SUBTITLE else ""), fontsize=10.5)
     fig.tight_layout(rect=(0, 0, 1, 0.94))
     fig.savefig(out, dpi=130)
 
