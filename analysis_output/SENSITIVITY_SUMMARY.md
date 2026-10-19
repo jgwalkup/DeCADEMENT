@@ -956,3 +956,22 @@ Mean biomass C over the year, HSP vs control (%):
 - **Tref route** (Tref is where HSP's Ea reduction has no effect on maintenance; below it HSP raises maintenance): Tref 283 K with the rescaled rate constant gives a crossover at about 12.5 C, a cold cost of 6-13 % at 5-10 C and a smaller warm benefit (+7 % at 20 C, +25 % at 25 C). It is a thermal cost, not a resource cost, and it raises the maintenance of HSP-carrying cells by roughly 10-20 % at every temperature.
 - Degradation by day 365 is nearly unaffected between 10 and 25 C (99-100 %); the HSP effect shows in biomass and timing (day 50 % 8-35 days earlier with HSP at 10-25 C in the current setting).
 - Either change will shift the climate-scenario energy calibration (section 24-27), so it needs the climate re-baseline (plan step 1.1) before the Morris runs.
+
+**28b. CUE and energy limitation for the HSP options (2026-10-19).** Annual CUE is uptake-weighted; limited days and minimum E:C are counted while > 5 % substrate is left.
+
+*Constant-temperature gradient (wet, one pulse):*
+- CUE: HSP raises CUE above the control from 7.5 C (current setting +0.01-0.03 at 7.5-20 C, +0.12 at 25 C, +0.17 at 30 C). HSP_prod_E_cost 600 lowers CUE vs the current setting by 0.024 at 5 C and by 0.005-0.01 at 7.5-15 C (0.32-0.34 at 7.5-15 C); 1200 by 0.07 at 5 C. The Tref 283 K option lowers CUE by 0.01-0.03 at 5-20 C and by 0.03 / 0.12 at 25 / 30 C.
+- Energy limitation: no HSP setting is energy-limited during decomposition between 5 and 20 C; all are limited for most of the year at 0 C (kinetic limb; HSP runs 200-235 days vs 140 for the control). Controls become limited from 20 C (8.5 days; 165 at 25 C). Minimum E:C at 5-25 C: current 340-470; cost 600 285-440; cost 1200 140-375; Tref option 176 at 20 C, 28 at 25 C, 1.5 at 30 C. Endogenous respiration after the substrate is exhausted (about 60 C units per cell at 12.5-25 C) is the same in every setting.
+
+*Real climate (first year, 2 seeds):*
+
+| Setting | CUE (amb / +5 / +10) | Limited days | Min E:C | Day 95 % degraded | % degraded, day 365 |
+|---|---|---|---|---|---|
+| Current (HSP_prod_E_cost 300) | 0.287 / 0.303 / 0.296 | 12.5 / 13 / 6.5 | 69 / 11 / 16 | 304 / 234 / 208 | 99.4 / 98.6 / 98.7 |
+| HSP_prod_E_cost 450 | 0.280 / 0.300 / 0.295 | 8.5 / 16.5 / 10.5 | 68 / 7 / 8 | 308 / 237 / 211 | 99.3 / 98.5 / 98.4 |
+| HSP_prod_E_cost 600 | 0.269 / 0.297 / 0.292 | 12 / 20 / 19 | 64 / 3 / 2 | 314 / 241 / 217 | 99.2 / 98.2 / 98.1 |
+| Tref 283 K, rate constant 16, cost 300 | 0.220 / 0.248 / 0.242 | 62 / 155 / 168 | 36 / 0 / 0 | 340 / - / - | 97.7 / 92.9 / 90.0 |
+| Tref 283 K, rate constant 16, cost 600 | 0.212 / 0.239 / 0.230 | 63 / 156 / 170 | 29 / 0 / 0 | 348 / - / - | 97.2 / 90.8 / 87.4 |
+
+- HSP_prod_E_cost 600 leaves ambient as before (12 limited days, min E:C 64) and deepens the warm-run energy limitation (+5: 20 days, min E:C 3; +10: 19 days, min E:C 2), restoring the +5 C tipping that the osmolyte cost cut (section 27) had weakened. CUE falls by 0.02 at ambient and by less than 0.01 in the warm runs.
+- The Tref option breaks the calibration: CUE 0.21-0.25, ambient limited for about 60 days, warm runs limited for 155-170 days with degradation 87-93 %. It would need maintenance re-tuned.
