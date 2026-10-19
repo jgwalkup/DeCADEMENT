@@ -1184,3 +1184,26 @@ Warming almost never lowers degradation (<= 1 % of points lose more than 5 point
 - Maintenance remains the leading factor for CUE in every climate and kinetics; lower maintenance raises CUE.
 - Energy costs of enzyme and transporter production, the active-uptake cost, uptake Km and the uptake moisture slope stay negligible everywhere, including for the warming responses.
 
+## 38. Maintenance x enzyme turnover grid (2026-10-19)
+
+**Setup (`maint_x_enzloss/`; `analysis/grid2d_sweep.py`):** `Maint_E_Rate_Const` 3-8 (step 1) x `Enz_loss_rate` 0.02-0.06 (step 0.01), three climates, MMRT and Arrhenius, 2 seeds, one pulse, 20x20, current minimal baseline otherwise (360 runs, about 4 min on the Mac). Figures `grid2d.png` (outcomes) and `grid2d_warming.png` (warming responses); means in `grid2d_means.csv`.
+
+**Selected cells, MMRT** (ambient / +5 / +10 C):
+
+| Maintenance, turnover | % degraded | Day 50 % | CUE | Endogenous respiration (% of respiration) |
+|---|---|---|---|---|
+| 8, 0.04 (current) | 99 / 97 / 97 | 224 / 168 / 150 | 0.25 / 0.28 / 0.28 | 16 / 26 / 27 |
+| 4, 0.04 | 100 / 100 / 100 | 193 / 149 / 132 | 0.39 / 0.41 / 0.41 | 30 / 37 / 39 |
+| 5, 0.04 | 100 / 100 / 100 | 199 / 154 / 136 | 0.36 / 0.38 / 0.38 | 28 / 36 / 36 |
+| 5, 0.05 | 98 / 98 / 97 | 256 / 186 / 165 | 0.34 / 0.32 / 0.32 | 0 / 26 / 28 |
+| 6, 0.05 | 94 / 95 / 92 | 273 / 195 / 172 | 0.31 / 0.27 / 0.28 | 0 / 21 / 25 |
+| 8, 0.05 | 75 / 90 / 69 | 308 / 220 / 190 | 0.28 / 0.19 / 0.22 | 0 / 7 / 20 |
+| any, 0.02-0.03 | 100 | 95-173 | 0.32-0.45 | 31-41 |
+| 3-8, 0.06 | 35-100 | 184-366 | 0.19-0.40 | 0-26 |
+
+- **Enzyme turnover sets the pace and whether the substrate is finished within the year;** maintenance shifts it within each turnover row and sets CUE. At 0.02-0.03 every combination finishes early (day 50 % by day 95-173) and then starves for the rest of the year (endogenous respiration 31-41 % of respiration). At 0.06 decomposition stalls at high maintenance (ambient 35 % degraded at maintenance 8).
+- **CUE rises as maintenance falls** at turnover >= 0.04 (ambient 0.25 at maintenance 8 to 0.43 at 3, turnover 0.04); at 0.02 CUE is about 0.4 whatever the maintenance.
+- **Endogenous respiration tracks substrate exhaustion within the year:** where the substrate runs out before day 365 the community starves and respires biomass; at turnover 0.05 the ambient run does not run out within the year (endogenous respiration about 0) while the warm runs do (20-28 %).
+- **A warm-limb decline appears only under MMRT and only for slower decomposition:** at turnover 0.05-0.06 and maintenance >= 6, +10 C degrades less than +5 C (e.g. 0.05 / 8: 75 / 90 / 69 %); under Arrhenius degradation increases monotonically with warming everywhere in the grid (0.05 / 8: 84 / 90 / 94 %).
+- Arrhenius matches MMRT closely at ambient and is faster and more complete under warming at the high-turnover / high-maintenance corner (0.06 / 8 at +10 C: 78 vs 41 % degraded).
+
