@@ -1207,3 +1207,19 @@ Warming almost never lowers degradation (<= 1 % of points lose more than 5 point
 - **A warm-limb decline appears only under MMRT and only for slower decomposition:** at turnover 0.05-0.06 and maintenance >= 6, +10 C degrades less than +5 C (e.g. 0.05 / 8: 75 / 90 / 69 %); under Arrhenius degradation increases monotonically with warming everywhere in the grid (0.05 / 8: 84 / 90 / 94 %).
 - Arrhenius matches MMRT closely at ambient and is faster and more complete under warming at the high-turnover / high-maintenance corner (0.06 / 8 at +10 C: 78 vs 41 % degraded).
 
+**38b. Finer grid: maintenance 4-5 x turnover 0.040 / 0.045 / 0.050** (daily runs; figures `maint4-5_turnover040-050_mmrt.png` / `_arr.png`; MMRT, ambient / +5 / +10 C):
+
+| Maintenance, turnover | Day 50 % | Day 95 % | % degraded | CUE | Endogenous respiration (% of respiration) |
+|---|---|---|---|---|---|
+| 4, 0.040 | 193 / 149 / 132 | 263 / 201 / 181 | 100 / 100 / 100 | 0.39 / 0.41 / 0.41 | 30 / 37 / 39 |
+| 4, 0.045 | 216 / 164 / 145 | 299 / 229 / 201 | 100 / 100 / 100 | 0.38 / 0.39 / 0.39 | 20 / 34 / 36 |
+| 4, 0.050 | 244 / 179 / 159 | 329 / 263 / 233 | 99.7 / 99.3 / 98.9 | 0.37 / 0.36 / 0.36 | 1 / 30 / 33 |
+| 5, 0.040 | 199 / 154 / 136 | 276 / 211 / 188 | 99.9 / 99.8 / 99.8 | 0.36 / 0.38 / 0.38 | 28 / 36 / 36 |
+| 5, 0.045 | 224 / 169 / 150 | 309 / 242 / 213 | 99.8 / 99.2 / 99.2 | 0.34 / 0.35 / 0.35 | 19 / 31 / 33 |
+| 5, 0.050 | 256 / 187 / 165 | 347 / 285 / 255 | 98.4 / 97.9 / 96.8 | 0.34 / 0.32 / 0.32 | 0 / 26 / 28 |
+| 8, 0.040 (current) | 224 / 168 / 150 | 321 / 259 / 230 | 98.9 / 96.8 / 96.9 | 0.25 / 0.28 / 0.28 | 16 / 26 / 27 |
+
+- Turnover sets the timing: each +0.005 delays day 50 % by about 25-30 days at ambient and 13-16 days at +10 C; maintenance 4 -> 5 adds about 5-12 days and lowers CUE by 0.02-0.04. All six settings have higher CUE than the current baseline (0.32-0.41 vs 0.25-0.28) and degrade 97-100 %.
+- Only turnover 0.050 keeps ambient decomposition running to the end of the year (ambient endogenous respiration about 0-1 %, the warm runs 26-33 %); at 0.040-0.045 the ambient substrate runs out by day 263-309 and the community then starves (endogenous respiration 19-30 %).
+- Arrhenius: the same pattern, about 5-10 days faster at ambient and 15-60 days faster at +10 C, CUE 0.33-0.42.
+
