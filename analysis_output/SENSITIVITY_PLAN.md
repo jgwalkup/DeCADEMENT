@@ -19,7 +19,7 @@ decisions that frame it. Tick items off here as they are done.
 | Rebalancing energy (2026-10-19) | C respired in stoichiometric rebalancing yields energy (`R_stoich` 1, independent of `R_endo`) |
 | Nutrient inputs (2026-10-19) | `Input_NH4` 0.05, `Input_PO4` 0.005 (minimal km25 folders): no N or P limitation |
 | HSP cost (2026-10-19) | `HSP_prod_E_cost` 600: HSP pays off above about 10 C, -7 to -14 % biomass at 5-7.5 C |
-| Energy-limitation metric (2026-10-19) | Endogenous-respiration C while > 5 % substrate is left (or its share of respiration); a count of days with any cell in deficit grows with grid size |
+| Energy-limitation metric (2026-10-19) | Whole-year endogenous-respiration C and its share of respiration, substrate left when energy limitation starts, substrate left at day 365 (section 35). Not a count of days with any cell in deficit (grows with grid size), and not only the > 5 %-substrate window (misleads between kinetics) |
 
 Calibration targets carried forward (minimal and full model): about 80 % or more of the substrate degraded with a steady
 decline (not front-loaded); ambient close to, or barely, energy-limited; +5 C tipping into energy limitation; organisms
@@ -40,8 +40,9 @@ able to grow somewhat in the dry season.
     cost in any climate); HSP_prod_E_cost 600 gives about 9 C, Tref 283 K with a rescaled rate constant about 12.5 C.
     Choose the lever, then re-baseline (1.1).
   - 2026-10-19: done (sections 29-33): N limitation removed, HSP_prod_E_cost 600 chosen.
-- [ ] **1.3 MMRT vs Arrhenius at the final set.** Gradient and real climate; re-match `Vmax0` / `Uptake_Vmax0` in the
+- [x] **1.3 MMRT vs Arrhenius at the final set.** Gradient and real climate; re-match `Vmax0` / `Uptake_Vmax0` in the
   15-20 C range if needed (the current match was made at maintenance 2.5).
+  - 2026-10-19: done (section 35). The 12.5-20 C match holds; Vmax0 / Uptake_Vmax0 unchanged.
 - [ ] **1.4 Morris screening.** Three climates analysed separately, plus the warming response (+5 C minus ambient, and
   +10 C minus ambient, from the same parameter points). Outputs: % degraded at day 365, day 50 % and 95 % degraded,
   annual CUE, energy-limited days and minimum E:C while > 5 % substrate is left, drought kills, maximum and mean biomass.

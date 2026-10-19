@@ -1103,3 +1103,22 @@ Mean biomass C over the year, HSP vs control (%):
 - Every amount-based output is grid-size invariant (differences within seed noise), so 20x20 with 2 seeds and one pulse is adequate for the Morris screening.
 - The count of days with endogenous respiration counts a day if any cell is in deficit, so it grows with grid size (ambient 21 -> 39 -> 48) while the amount respired does not. Use the endogenous-respiration C, or its share of respiration, as the energy-limitation metric from here on (ambient about 1.5 %, +5 / +10 C about 20 %). The day counts in sections 30-33 are 20x20 values and comparable with each other only.
 
+## 35. Step 1.3: MMRT vs Arrhenius at the current baseline (2026-10-19)
+
+**Setup (`kinetics_1p3/`; `analysis/kinetics_gradient.py`, `analysis/plot_kinetics_gradient.py`, new `analysis/plot_kinetics_climate.py`):** current minimal baseline (section 33), `Vmax0` 5e7 and `Uptake_Vmax0` 4.2e7 (unchanged since section 20), 20x20, one pulse, 2 seeds; constant temperature 0-40 C (wet) and the real climate, MMRT (`Kinetics_Model` 1) vs Arrhenius (0).
+
+**Constant-temperature gradient.** The kinetic match is unchanged (it depends only on the kinetic parameters): enzyme and transporter Vmax cross between 10 and 22.5 C. Outcomes still overlap in the 12.5-20 C window: day 50 % degraded 206.5 / 181.5 / 160 / 142 (Arrhenius) vs 209.5 / 178 / 157.5 / 145.5 (MMRT) at 12.5 / 15 / 17.5 / 20 C. Outside it they diverge as before: Arrhenius is faster in the cold (Vmax 2x MMRT at 0 C, 1.3x at 5 C; 33 vs 4 % degraded at 0 C, 78 vs 20 % at 5 C) and keeps rising above 25 C while MMRT turns over (day 50 % 92 vs 154 at 30 C; MMRT 57 % degraded at 40 C). CUE: Arrhenius 0.33-0.36 at every temperature; MMRT peaks at 0.34 at 15-17.5 C and falls to 0.26 at 30 C and 0.15-0.17 at 0 and 40 C.
+
+**Real climate** (ambient / +5 / +10 C):
+
+| Kinetics | % degraded, day 365 | Day 50 % / 95 % | CUE | Endogenous respiration, whole year (share of respiration) | Day energy limitation starts (substrate left) | Substrate left, day 365 |
+|---|---|---|---|---|---|---|
+| MMRT | 98.9 / 96.8 / 96.9 | 224, 321 / 168, 259 / 150, 230 | 0.252 / 0.278 / 0.283 | 29 (16 %) / 48 (25 %) / 51 (27 %) | 309 (8 %) / 222 (13 %) / 200 (12 %) | 1.1 / 3.2 / 3.1 % |
+| Arrhenius | 98.4 / 98.3 / 99.5 | 213, 310 / 162, 232 / 127, 178 | 0.247 / 0.293 / 0.327 | 36 (20 %) / 52 (27 %) / 64 (33 %) | 283 (14 %) / 216 (10 %) / 179 (4 %) | 1.6 / 1.7 / 0.5 % |
+
+(Day energy limitation starts: first day on which endogenous respiration exceeds 0.1 % of biomass C per day.)
+
+- At ambient Arrhenius runs about 10 days ahead (faster in the cool part of the year); under warming the gap grows (+10 C: 23 days to 50 %, 52 days to 95 %) because MMRT rates turn over above about 25 C. Matching ambient would need a lower Arrhenius Vmax0 and would break the 15-20 C match; Vmax0 / Uptake_Vmax0 are left as they are.
+- **Energy limitation in this single-pulse model is end-of-substrate starvation under both kinetics:** it begins when 8-14 % of the substrate is left (4 % for Arrhenius at +10 C) and, over the whole year, Arrhenius has more endogenous respiration than MMRT. Warming moves the onset earlier (ambient about day 280-310, +10 C about day 180-200). Under MMRT in the warm runs the community collapses with about 3 % of the substrate unconsumed (MMRT +10 C revives briefly after day 290 when it cools).
+- The metric used in sections 30-34 (endogenous respiration while > 5 % substrate is left) therefore mostly measures whether the collapse comes before the last 5 % is used, and it misleads between kinetics (Arrhenius +10 C: 0.006 vs MMRT 37, although Arrhenius respires more over the year). For the Morris outputs, use whole-year endogenous respiration (and its share of respiration), the substrate left at the onset of energy limitation, and the substrate left at day 365.
+
