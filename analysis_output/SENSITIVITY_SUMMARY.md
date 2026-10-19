@@ -975,3 +975,27 @@ Mean biomass C over the year, HSP vs control (%):
 
 - HSP_prod_E_cost 600 leaves ambient as before (12 limited days, min E:C 64) and deepens the warm-run energy limitation (+5: 20 days, min E:C 3; +10: 19 days, min E:C 2), restoring the +5 C tipping that the osmolyte cost cut (section 27) had weakened. CUE falls by 0.02 at ambient and by less than 0.01 in the warm runs.
 - The Tref option breaks the calibration: CUE 0.21-0.25, ambient limited for about 60 days, warm runs limited for 155-170 days with degradation 87-93 %. It would need maintenance re-tuned.
+
+## 29. N limitation check (2026-10-19)
+
+**NH4 inputs are on.** `Input_NH4` 0.02 (N per grid cell per day) and `Input_PO4` 0.002 are added to the monomer pools every day before uptake (`grid.py` `uptake()`); NH4 and PO4 leach at `Leaching` 0.1 x exp(0.5 (Psi - wp_fc)) per day. `Init_NH4` is 0. The substrate in the `crich` folders is IdealSub C:N:P 200:5:0.5 (C:N 40).
+
+**N limitation does occur.** Bacterial minimum N share is `Nfrac_b - Nrange` = 0.16 - 0.04 = 0.12 of C+N+P (biomass N:C about 0.138). When a cell falls below it, rebalancing (`mortality()`) cuts C to the minimum ratio and respires the excess, which counts against CUE. Days at the N floor while > 5 % substrate is left (current defaults, 2 seeds):
+- Real climate: ambient 0; +5 C 45 (from about day 160); +10 C 67 (from about day 125).
+- Constant temperature (wet, one pulse): 0 at 0-10 C and 35-40 C; 31-75 days at 12.5-30 C, starting at day 110-235.
+- This is the step down in CUE (0.39 -> 0.26) at 12.5-30 C in `hsp_cold_cost/hsp_cue_timeseries.png`: N demand of peak growth exceeds the organic N arriving with C (C:N 40) plus 0.02 NH4, and the NH4 pool is drawn down to about the daily input. Part of the warm-scenario response in the current runs is therefore N limitation.
+
+**More N removes the floor but exposes an uptake artefact** (`nh4/`: Input_NH4 0.05 / 0.1 / 0.2, and IdealSub 200:10:1 with Input_NH4 0 and 0.02):
+
+| Case | Days at N floor (amb / +5 / +10) | Max biomass N:C | CUE | Energy-limited days | Min E:C | Day 95 % degraded |
+|---|---|---|---|---|---|---|
+| C:N 40, NH4 0.02 (current) | 0 / 45 / 67 | 0.29 / 0.22 / 0.20 | 0.287 / 0.303 / 0.296 | 12.5 / 13 / 6.5 | 69 / 11 / 16 | 304 / 234 / 208 |
+| C:N 40, NH4 0.05 | 0 / 0 / 0 | 0.34 | 0.263 / 0.288 / 0.300 | 10 / 32.5 / 21 | 80 / 0.07 / 0.2 | 329 / 252 / 220 |
+| C:N 40, NH4 0.1 | 0 / 0 / 0 | 0.35 | 0.190 / 0.254 / 0.271 | 278 / 146 / 123 | 0 / 0 / 0 | not reached / not reached / 332 |
+| C:N 20, NH4 0 | 0 / 5 / 10.5 | 0.19 / 0.30 / 0.32 | 0.294 / 0.279 / 0.289 | 1.5 / 28 / 28 | 178 / 0.9 / 0.2 | 326 / 265 / 237 |
+| C:N 20, NH4 0.02 | 0 / 0 / 0 | 0.33 | 0.267 / 0.293 / 0.302 | 14.5 / 29.5 / 20.5 | 75 / 0.1 / 0.04 | 322 / 251 / 223 |
+
+- NH4 uptake is not regulated by N demand: cells take up NH4 until their C share reaches its minimum (Cfrac_b - Crange = 0.735, biomass N:C about 0.34), rebalancing then returns the excess N to the NH4 pool, and it is taken up again. Every unit of monomer mass taken up, NH4 included, is charged `Active_Uptake_E_cost` and the transporter-production energy cost, so this cycle drains energy. At 0.1-0.2 NH4 the communities collapse; on the gradient the cost falls hardest where growth is slow (10 C: 64 % degraded at NH4 0.1, 5 % at 0.2).
+- Luxury N uptake already happens with the current inputs during slow growth (biomass N:C 0.26-0.33 at ambient and at 10 C).
+- Removing the floor by either route makes the warm runs more energy-limited (min E:C about 0) and 15-25 days slower to 95 % degraded, and removes the CUE step on the gradient (CUE at 15-25 C 0.33-0.35 with NH4 0.05, vs 0.30-0.33).
+- Not fixed yet; options are in OPEN_ISSUES.md. The energy calibration (sections 24-28) will need re-checking after the fix.

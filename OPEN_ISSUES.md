@@ -5,7 +5,14 @@ file as items are resolved (the git log has the details of each change).
 
 ## Decided, to implement next
 
-(none at the moment)
+- **N limitation and unregulated mineral uptake** (found 2026-10-19; SENSITIVITY_SUMMARY section 29). With the C-rich
+  substrate (C:N 40) and `Input_NH4` 0.02, the warm runs hit the minimum N quota during peak growth (rebalancing respires
+  C; CUE drops). Raising N supply removes that, but NH4 uptake is not regulated by N demand: cells hoard N up to the C-share
+  minimum, rebalancing returns the excess to NH4, and every unit taken up is charged the active-transport and
+  transporter-production energy costs, so the cycle drains energy (collapse at `Input_NH4` >= 0.1). The intent is that N
+  never limits. Options: (1) cap NH4 (and PO4) uptake at each cell's need (deficit to its optimal ratio plus the day's
+  growth), then raise `Input_NH4` until N never limits; (2) exempt mineral uptake from the transport energy costs;
+  (3) parameters only (lower substrate C:N or more NH4), which leaves the hoarding cycle in place. Decision pending.
 
 ## Deferred (revisit later)
 
