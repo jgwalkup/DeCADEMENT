@@ -18,8 +18,8 @@ decisions that frame it. Tick items off here as they are done.
 | Mineral uptake (2026-10-19) | NH4 and PO4 enter by passive diffusion, no transport energy costs (`Mineral_Uptake_Passive` 1) |
 | Rebalancing energy (2026-10-19) | C respired in stoichiometric rebalancing yields energy (`R_stoich` 1, independent of `R_endo`) |
 | Nutrient inputs (2026-10-19) | `Input_NH4` 0.05, `Input_PO4` 0.005 (minimal km25 folders): no N or P limitation |
-| HSP cost (2026-10-19) | `HSP_prod_E_cost` 600: HSP pays off above about 10 C, -7 to -14 % biomass at 5-7.5 C |
-| Maintenance and enzyme turnover (2026-10-19) | `Maint_E_Rate_Const` 4 (was 8), `Enz_loss_rate` 0.05 (was 0.04) in the minimal km25 folders: steady ambient decomposition through the year, CUE 0.36-0.37, warm runs finish the substrate and then become energy-limited (SENSITIVITY_SUMMARY 38-38b) |
+| HSP cost (2026-10-19) | `HSP_prod_E_cost` 600: HSP pays off above about 10 C, -7 to -14 % biomass at 5-7.5 C (at maintenance 8). Kept at 600 after the maintenance change: crossover about 12.5 C, -15 to -17 % biomass at 2.5-7.5 C (section 39) |
+| Maintenance and enzyme turnover (2026-10-19) | `Maint_E_Rate_Const` 4 (was 8), `Enz_loss_rate` 0.05 (was 0.04) in the minimal km25 folders: steady ambient decomposition through the year, CUE 0.36-0.37, warm runs finish the substrate and then become energy-limited (SENSITIVITY_SUMMARY 38-38b). Confirmed over 5 pulses x 5 seeds (section 39); minimal baseline final |
 | Negligible parameters (2026-10-19) | Kept at their baseline values as defaults (Morris, sections 36-37): `Enz_Prod_E_cost` 600, `Active_Uptake_E_cost` 10, `Uptake_Prod_E_cost` 600, `Uptake_C_cost` 0.0375, `Uptake_Vmax_Km` 0.25, `Uptake_psi_slope` 0.1; HSP and osmolyte production rates and osmolyte parameters unchanged |
 | Energy-limitation metric (2026-10-19) | Whole-year endogenous-respiration C and its share of respiration, substrate left when energy limitation starts, substrate left at day 365 (section 35). Not a count of days with any cell in deficit (grows with grid size), and not only the > 5 %-substrate window (misleads between kinetics) |
 
