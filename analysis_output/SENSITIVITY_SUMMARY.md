@@ -1084,3 +1084,22 @@ Mean biomass C over the year, HSP vs control (%):
 - No nutrient limitation remains: biomass P:C stays at about 0.019 (floor about 0.012) and N:C at about 0.20 (floor 0.138); on the constant-temperature gradient at 15-25 C the P floor is no longer reached (P:C 0.019; it was 0.012-0.013 with PO4 0.002) and the rebalancing credit is about 0.
 - Baseline targets: ambient close to energy-limited (22.5 endogenous-respiration days late in the season, min E:C 49), +5 and +10 C energy-limited (33-40 days, min E:C about 0.2), 96.8-98.9 % degraded, CUE 0.25-0.28.
 
+## 34. Step 1.1: re-baseline, 5 pulses, R_endo on/off, grid size (2026-10-19)
+
+**Setup (`baseline_1p1/`; `analysis/climate_endo_run.py`):** current minimal baseline (section 33), MMRT, real climate (pulse p uses climate year p), 20x20, 5 pulses x 5 seeds, R_endo 0 and 1 (R_stoich 1 in both); grid-size check at 50x50 (2 seeds) and 100x100 (1 seed), one pulse, R_endo 1. Run time here: 25 s per 5-pulse run at 20x20; 50x50 and 100x100 one-pulse runs about 20 and 35 s.
+
+**Pulses and seeds (20x20, R_endo 1; ambient / +5 / +10 C).** Every pulse reproduces the first within seed noise: % degraded 98.8-98.9 / 96.8-96.9 / 96.6-96.9; day 95 % 319-321 / 255-258 / 229-236; CUE 0.247-0.250 / 0.277-0.279 / 0.281-0.285; pulses start at the same biomass (1.01-1.02). Across-seed SD: degradation <= 0.16 points, day 95 % <= 3.5 days, CUE <= 0.006.
+
+**R_endo off vs on** (pulse means): degradation within 0.2 points; day 95 % within 1-5 days; CUE higher with R_endo off (0.264 / 0.300 / 0.300 vs 0.249 / 0.278 / 0.284), because with R_endo off energy shortfalls are floored away instead of paid by respiring biomass; min E:C 44 / 0 / 0 (off) vs 46 / 0.1 / 0.2 (on).
+
+**Grid size** (pulse 1, R_endo 1):
+
+| Side | % degraded | Day 50 % / 95 % | CUE | Max biomass | Drought kills per cell | Endogenous respiration C (share of respiration) | Days with any cell in deficit |
+|---|---|---|---|---|---|---|---|
+| 20 | 98.87 / 96.76 / 96.93 | 223, 319 / 167, 258 / 150, 229 | 0.249 / 0.279 / 0.283 | 41.3 / 50.6 / 53.4 | 0.70 / 0.78 / 0.80 | 1.7 (1.2 %) / 34.6 (20.3 %) / 35.9 (21.1 %) | 21 / 40 / 32 |
+| 50 | 98.87 / 96.78 / 96.90 | 223, 320 / 167, 258 / 150, 230 | 0.247 / 0.277 / 0.284 | 40.5 / 50.4 / 53.2 | 0.70 / 0.78 / 0.79 | 2.3 (1.6 %) / 35.0 (20.5 %) / 36.7 (21.5 %) | 39 / 47 / 34 |
+| 100 | 98.87 / 96.77 / 96.85 | 223, 320 / 167, 258 / 150, 231 | 0.249 / 0.279 / 0.284 | 40.9 / 50.2 / 52.8 | 0.70 / 0.80 / 0.80 | 2.2 (1.5 %) / 34.4 (20.2 %) / 37.7 (21.9 %) | 48 / 46 / 36 |
+
+- Every amount-based output is grid-size invariant (differences within seed noise), so 20x20 with 2 seeds and one pulse is adequate for the Morris screening.
+- The count of days with endogenous respiration counts a day if any cell is in deficit, so it grows with grid size (ambient 21 -> 39 -> 48) while the amount respired does not. Use the endogenous-respiration C, or its share of respiration, as the energy-limitation metric from here on (ambient about 1.5 %, +5 / +10 C about 20 %). The day counts in sections 30-33 are 20x20 values and comparable with each other only.
+

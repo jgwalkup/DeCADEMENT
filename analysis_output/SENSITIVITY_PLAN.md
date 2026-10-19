@@ -19,7 +19,7 @@ decisions that frame it. Tick items off here as they are done.
 | Rebalancing energy (2026-10-19) | C respired in stoichiometric rebalancing yields energy (`R_stoich` 1, independent of `R_endo`) |
 | Nutrient inputs (2026-10-19) | `Input_NH4` 0.05, `Input_PO4` 0.005 (minimal km25 folders): no N or P limitation |
 | HSP cost (2026-10-19) | `HSP_prod_E_cost` 600: HSP pays off above about 10 C, -7 to -14 % biomass at 5-7.5 C |
-| Energy-limitation metric (2026-10-19) | Days with endogenous respiration while > 5 % substrate is left |
+| Energy-limitation metric (2026-10-19) | Endogenous-respiration C while > 5 % substrate is left (or its share of respiration); a count of days with any cell in deficit grows with grid size |
 
 Calibration targets carried forward (minimal and full model): about 80 % or more of the substrate degraded with a steady
 decline (not front-loaded); ambient close to, or barely, energy-limited; +5 C tipping into energy limitation; organisms
@@ -27,9 +27,11 @@ able to grow somewhat in the dry season.
 
 ## Phase 1: close out the minimal model (bacterial, `input_minimal_e1500_crich_km25_in`)
 
-- [ ] **1.1 Re-baseline the final set.** 5 seeds, three climates, 5 pulses, R_endo on and off; degradation curve, CUE,
+- [x] **1.1 Re-baseline the final set.** 5 seeds, three climates, 5 pulses, R_endo on and off; degradation curve, CUE,
   energy-limited days, minimum E:C, kills, biomass. Grid-size check on the baseline: 20x20 vs 50x50, plus one 100x100.
   Decide the replication (seeds) and grid size used for the Morris runs from this.
+  - 2026-10-19: done (section 34). Pulses reproducible, seed SD small, outputs grid-size invariant: Morris at 20x20,
+    one pulse, 2 seeds.
 - [x] **1.2 HSP cold cost.** HSP vs control (HSP production off) on a constant-temperature gradient (0-40 C, wet Psi),
   MMRT. Target: a modest penalty at low temperature (earlier window: 5-10 % lower biomass) with a benefit at warm
   temperatures. If the cold penalty is missing, tune HSP production or cost (`HSP_Consti_Prod`, `HSP_prod_E_cost`) or
