@@ -1284,3 +1284,31 @@ Warming almost never lowers degradation (<= 1 % of points lose more than 5 point
 - **Drought kills:** death_rate_bac and beta, as before; the drought factors otherwise matter little.
 - **Warming:** median day 50 % advances by 33 days (+5 C) and 49 (MMRT) / 63 (Arrhenius) days (+10 C); 32-41 % of points gain > 5 points of degradation at +10 C, <= 4 % lose more than 5; +10 C degrades less than +5 C by > 5 points at 4.7 % of points under MMRT and 0.3 % under Arrhenius. Median CUE change -0.006 to -0.016; median endogenous-respiration share +1 to +4 points. Sigma exceeds |mu| for almost every factor's warming effect. HSP_turnover again has a consistent direction (MMRT: mu -5 / -8 points of degradation at +10 / +5 C, day 50 % +20 / +14 days): faster HSP turnover reduces the warming gain.
 - **The baseline sits close to the decomposition threshold.** 30 % of design points stall at ambient (< 25 % degraded). Stalling is set mostly by Constit_Prod and Enz_loss_rate: 63 % of points stall at the lowest Constit_Prod level (0.0003) and none at the highest; 4-8 % stall at turnover 0.035-0.044 and 54-56 % at 0.056-0.07. The baseline (Constit_Prod 0.00045, turnover 0.05) lies between those turnover levels, so a modest increase in turnover or decrease in constitutive production would stall ambient decomposition.
+
+## 41. Phase 2.1-2.2: port to the full model, single-taxon check (2026-10-19)
+
+**Translation (`analysis/build_full_input_port.py` -> `input_full_port_bac/`, from `input_e1500_enz2_km25_osmorange2_bac/`):**
+- Energy yields (decided 2026-10-19): litter monomer E_resp x 1.245, so the litter-C-weighted maximum energy per unit C taken up equals that of IdealSub (1109 -> 1373); E_ferm and E_value unchanged. Mon_DeadMic / Mon_DeadEnz / FermProd set to the minimal values (700 / 350 / 690), so R_endo and R_stoich keep the minimal yield.
+- Minimal baseline values: maintenance 4, enzyme turnover 0.05, Vmax_Km 6, HSP cost 600, osmolyte cost 150, NH4 0.05, PO4 0.005, Vmax0 5e7, Uptake_Vmax0 4.2e7 (min = max).
+- Enzyme production per taxon: NormalizeProd 1 and per-gene rates = minimal totals / Enz_per_taxon_max (Constit 1.125e-5, Enz_Prod 2e-4), so every taxon's total production equals the minimal taxon's.
+
+**Single-taxon check (`analysis/full_single_taxon.py`; one generalist taxon with 40 of the 50 enzyme genes, 20x20, one pulse, 3 seeds; results `full_port_single_taxon/`, figure `full_single_taxon_port.png`).** The runner reproduces the minimal baseline on the minimal input (99.7 % degraded, day 50 % 244, CUE 0.37). Ambient climate, MMRT:
+
+| Setting | % litter degraded | Day 50 % | Day 95 % | CUE | Endogenous resp. (% of resp.) | Realised energy per uptake C |
+|---|---|---|---|---|---|---|
+| Minimal baseline (reference) | 99.7 | 244 | 329 | 0.37 | 1 | 1252 |
+| Port (minimal production totals) | 9 | - | - | 0.39 | 36 | 1130 |
+| Port, litter scaled to 200 C | 6 | - | - | 0.41 | 43 | 1179 |
+| Port, e1500 yields (no x1.245) | 7 | - | - | 0.39 | 41 | 911 |
+| Production x3.5 | 85 | 168 | - | 0.35 | 23 | 1087 |
+| Production x4.5 | 91 | 131 | 323 | 0.33 | 28 | 1065 |
+| Production x5.5 | 95 | 109 | 305 | 0.29 | 26 | 1036 |
+| Production x7 | 98 | 89 | 185 | 0.26 | 24 | 1029 |
+| Production x4.5, litter E_resp x1.45 | 93 | 126 | 319 | 0.32 | 27 | 1217 |
+| Vmax_Km 2.5 / 0.86 (production x1) | 32 / 59 | - / 250 | - | 0.37 / 0.36 | 30 / 26 | 1039 / 943 |
+
+(Seed SD of % degraded 1-8 points at production x3.5-7; the gene draw sets which substrates the taxon covers.) +5 C and +10 C, and Arrhenius, give the same picture at the ported production (6-17 % degraded).
+
+- **With the minimal production totals the full-model taxon barely decomposes** (9 % of the litter), biomass plateaus at about 10 C per cell and collapses in the dry season. Cause: enzyme specificity. In the first-order regime decay = (enzyme acting on the substrate) x S / Vmax_Km, independent of Vmax. The minimal taxon's single enzyme acts on all 200 C of IdealSub; a full-model taxon spreads the same production over 40 genes on 12 substrates (about 3.3 genes per substrate), so each unit of enzyme sees about 1/12 of the litter. Decay capacity per unit production is about 200 / (344.6 / 12) = 7 times lower.
+- **Raising production 3.5-7x restores decomposition, but with a different time course:** the labile pools (starch, proteins, chitin, OrgP) fall below 5 % by day 94-157 at x7 and day 141-265 at x4.5, day 50 % comes at day 89-168 instead of 244, and 2-15 % of the litter (mostly cellulose and lignin) is still left when decay stops (day 237 at x7, 286 at x4.5), as the community starves in the dry season (endogenous respiration about 100 % of respiration from then on, 23-28 % over the year). CUE falls as production rises (0.35 at x3.5 to 0.26 at x7). Daily CUE drops from 0.6 to about 0.3 within the first 100 days in every full-model run (cause not yet isolated).
+- **Realised energy yield is below the minimal model's** (1030-1130 vs 1252 per unit C taken up) despite the static match: necromass uptake (15-19 % of uptake at higher production) and the N-rich monomers route little C to energy. Litter E_resp x1.45 instead of x1.245 restores the realised yield (1200-1245).

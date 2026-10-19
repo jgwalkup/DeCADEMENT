@@ -68,12 +68,12 @@ able to grow somewhat in the dry season.
 
 ## Phase 2: port to the full model (no fungi)
 
-- [ ] **2.1 Translate the parameters.** Enzyme production is per gene (optionally normalized by gene count,
+- [x] **2.1 Translate the parameters** (2026-10-19, section 41: `analysis/build_full_input_port.py` -> `input_full_port_bac/`; litter E_resp x1.245, necromass rows at the minimal values, NormalizeProd 1 with the minimal production totals). Original plan: Enzyme production is per gene (optionally normalized by gene count,
   `NormalizeProd`), so match each taxon's total production, not the per-gene value. Carry over maintenance 8,
   `Vmax_Km` 6, `Uptake_Vmax_Km` 0.25, osmolyte cost 150, beta 1, psi slopes 0.1, R_endo 1, and the Arrhenius
   `Vmax0` / `Uptake_Vmax0` (matched on the main substrate only; check across the 12 substrates, which have their own Ea).
   Build the input folder with a script, as for the earlier full-model folders.
-- [ ] **2.2 Single-taxon check.** A minimal-equivalent taxon on the full substrate set: does it reproduce the minimal
+- [ ] **2.2 Single-taxon check** (first pass 2026-10-19, section 41: at the minimal production totals the taxon degrades 9 % of the litter; enzyme specificity cuts decay capacity per unit production about 7x; production x3.5-7 restores 85-98 % with a fast labile phase and a cellulose/lignin tail; open: production factor, realised energy yield (x1.45), early CUE drop). A minimal-equivalent taxon on the full substrate set: does it reproduce the minimal
   behaviour?
 - [ ] **2.3 Community calibration** (100 taxa, small grid, `fb` 0). Targets as above. Main levers: centre and width of
   the production ranges, `taxa_per_box`.
