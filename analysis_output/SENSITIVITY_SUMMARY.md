@@ -1070,3 +1070,17 @@ Mean biomass C over the year, HSP vs control (%):
 - HSP stays essential at every climate; osmolytes still cost slightly more than they save at beta 1 (as in section 27).
 - P is close to limiting in the warm runs (biomass P:C minimum 0.013 vs a floor of about 0.012) and limits briefly on the wet constant-temperature gradient. `Input_PO4` 0.002 gives an N:P input ratio of 25 (substrate 10).
 
+## 33. Defaults set: HSP_prod_E_cost 600, Input_PO4 0.005 (2026-10-19)
+
+**Decision:** `HSP_prod_E_cost` 300 -> 600 (modest HSP cold cost: crossover about 10 C, -7 to -14 % biomass at 5-7.5 C; section 32) and `Input_PO4` 0.002 -> 0.005 (N:P input 10, as in the substrate) in the eight minimal km25 input folders. With `Input_NH4` 0.05, passive mineral uptake, `R_stoich` 1 and `R_endo` 1, this is the current minimal baseline.
+
+**Check** (real climate first year, 2 seeds; ambient / +5 / +10 C; the PO4 0.002 column is the same run with the old P input):
+
+| Input_PO4 | Min biomass P:C | Rebalancing energy credit | CUE | Endogenous-respiration days | Min E:C | Day 95 % degraded | % degraded, day 365 |
+|---|---|---|---|---|---|---|---|
+| 0.002 | 0.017 / 0.014 / 0.014 | 0 / 0.8 / 4.7 | 0.249 / 0.280 / 0.284 | 21 / 38 / 32 | 40 / 0.05 / 0.2 | 321 / 257 / 231 | 98.8 / 96.9 / 96.9 |
+| 0.005 | 0.019 / 0.019 / 0.019 | 0 / 0 / 0 | 0.252 / 0.278 / 0.283 | 22.5 / 40 / 33 | 49 / 0.16 / 0.22 | 321 / 259 / 230 | 98.9 / 96.8 / 96.9 |
+
+- No nutrient limitation remains: biomass P:C stays at about 0.019 (floor about 0.012) and N:C at about 0.20 (floor 0.138); on the constant-temperature gradient at 15-25 C the P floor is no longer reached (P:C 0.019; it was 0.012-0.013 with PO4 0.002) and the rebalancing credit is about 0.
+- Baseline targets: ambient close to energy-limited (22.5 endogenous-respiration days late in the season, min E:C 49), +5 and +10 C energy-limited (33-40 days, min E:C about 0.2), 96.8-98.9 % degraded, CUE 0.25-0.28.
+

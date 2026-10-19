@@ -55,7 +55,7 @@ Init_NH4,0.0
 Init_PO4,0.0
 Init_FermProd,0.0
 Input_NH4,0.05
-Input_PO4,0.002
+Input_PO4,0.005
 Input_FermProd,0.0
 death_rate_bac,0.001
 death_rate_fun,0.001
@@ -92,7 +92,7 @@ Enz_Prod_E_cost,600.0
 Osmo_prod_E_cost,150.0
 Enz_loss_rate,0.04
 Osmo_prod_N_cost,0.3
-HSP_prod_E_cost,300.0
+HSP_prod_E_cost,600.0
 HSP_prod_C_cost,1.0
 HSP_prod_N_cost,0.3
 HSP_prod_P_cost,0.0

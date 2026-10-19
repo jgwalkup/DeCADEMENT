@@ -15,6 +15,11 @@ decisions that frame it. Tick items off here as they are done.
 | Sensitivity design | Morris elementary effects (catches interactions and parameters not considered yet); a few one-at-a-time curves only where a shape is needed |
 | Fungi | Skipped: bacterial minimal model, and the full model run without fungi (`fb` 0). Fungal distribution is a future project |
 | CUE | Emergent CUE 0.26-0.35 is accepted; higher CUE is a secondary benchmark when choosing between otherwise equivalent parameter sets |
+| Mineral uptake (2026-10-19) | NH4 and PO4 enter by passive diffusion, no transport energy costs (`Mineral_Uptake_Passive` 1) |
+| Rebalancing energy (2026-10-19) | C respired in stoichiometric rebalancing yields energy (`R_stoich` 1, independent of `R_endo`) |
+| Nutrient inputs (2026-10-19) | `Input_NH4` 0.05, `Input_PO4` 0.005 (minimal km25 folders): no N or P limitation |
+| HSP cost (2026-10-19) | `HSP_prod_E_cost` 600: HSP pays off above about 10 C, -7 to -14 % biomass at 5-7.5 C |
+| Energy-limitation metric (2026-10-19) | Days with endogenous respiration while > 5 % substrate is left |
 
 Calibration targets carried forward (minimal and full model): about 80 % or more of the substrate degraded with a steady
 decline (not front-loaded); ambient close to, or barely, energy-limited; +5 C tipping into energy limitation; organisms
@@ -25,13 +30,14 @@ able to grow somewhat in the dry season.
 - [ ] **1.1 Re-baseline the final set.** 5 seeds, three climates, 5 pulses, R_endo on and off; degradation curve, CUE,
   energy-limited days, minimum E:C, kills, biomass. Grid-size check on the baseline: 20x20 vs 50x50, plus one 100x100.
   Decide the replication (seeds) and grid size used for the Morris runs from this.
-- [ ] **1.2 HSP cold cost.** HSP vs control (HSP production off) on a constant-temperature gradient (0-40 C, wet Psi),
+- [x] **1.2 HSP cold cost.** HSP vs control (HSP production off) on a constant-temperature gradient (0-40 C, wet Psi),
   MMRT. Target: a modest penalty at low temperature (earlier window: 5-10 % lower biomass) with a benefit at warm
   temperatures. If the cold penalty is missing, tune HSP production or cost (`HSP_Consti_Prod`, `HSP_prod_E_cost`) or
   the Ea slope; keep `Maint_E_Rate_Tref` and the maintenance rate fixed, as they set the energy-limitation calibration.
   - 2026-10-19: lever screen done (`SENSITIVITY_SUMMARY.md` section 28). The current crossover is about 5 C (no cold
     cost in any climate); HSP_prod_E_cost 600 gives about 9 C, Tref 283 K with a rescaled rate constant about 12.5 C.
     Choose the lever, then re-baseline (1.1).
+  - 2026-10-19: done (sections 29-33): N limitation removed, HSP_prod_E_cost 600 chosen.
 - [ ] **1.3 MMRT vs Arrhenius at the final set.** Gradient and real climate; re-match `Vmax0` / `Uptake_Vmax0` in the
   15-20 C range if needed (the current match was made at maintenance 2.5).
 - [ ] **1.4 Morris screening.** Three climates analysed separately, plus the warming response (+5 C minus ambient, and
