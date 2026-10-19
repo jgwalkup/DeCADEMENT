@@ -90,13 +90,13 @@ Active_Uptake_E_cost,10.0
 Uptake_Prod_E_cost,600.0
 Enz_Prod_E_cost,600.0
 Osmo_prod_E_cost,150.0
-Enz_loss_rate,0.04
+Enz_loss_rate,0.05
 Osmo_prod_N_cost,0.3
 HSP_prod_E_cost,600.0
 HSP_prod_C_cost,1.0
 HSP_prod_N_cost,0.3
 HSP_prod_P_cost,0.0
-Maint_E_Rate_Const,8.0
+Maint_E_Rate_Const,4.0
 Maint_E_Rate_Tref,273.0
 Maint_E_HSP_Ea_Slope,-90000.0
 Maint_E_HSP_Ea_Intercept,45000.0
