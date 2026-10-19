@@ -1223,3 +1223,31 @@ Warming almost never lowers degradation (<= 1 % of points lose more than 5 point
 - Only turnover 0.050 keeps ambient decomposition running to the end of the year (ambient endogenous respiration about 0-1 %, the warm runs 26-33 %); at 0.040-0.045 the ambient substrate runs out by day 263-309 and the community then starves (endogenous respiration 19-30 %).
 - Arrhenius: the same pattern, about 5-10 days faster at ambient and 15-60 days faster at +10 C, CUE 0.33-0.42.
 
+
+## 39. New minimal baseline check: Maint_E_Rate_Const 4, Enz_loss_rate 0.05 (2026-10-19)
+
+**Setup (`baseline_m4_t005/`):** the eight minimal km25 folders now use `Maint_E_Rate_Const` 4 and `Enz_loss_rate` 0.05 (commit 9f1f781). (a) Five consecutive pulses, five seeds, R_endo off and on, three climates, MMRT, 20x20 (`climate_endo_run.py`; per-pulse table `p5_per_pulse.csv`). (b) HSP cold cost: constant-temperature gradient 0-40 C, MMRT, wet Psi, one pulse, 2 seeds, R_endo on, HSP on (cost 600) vs HSP production off (`kinetics_gradient.py`). Figures: `baseline_m4_t005_timeseries.png` (new vs previous baseline, first pulse), `hsp_cold_cost_m4_t005.png` (new vs previous gradient), `hsp_cue_timeseries_m4_t005.png`.
+
+**(a) Baseline, R_endo on, mean of 5 pulses x 5 seeds** (ambient / +5 / +10 C):
+
+| Setting | % degraded | Day 50 % | Day 95 % | CUE | Endogenous respiration (% of respiration) |
+|---|---|---|---|---|---|
+| New: maintenance 4, turnover 0.05 | 99.7 / 99.3 / 99.0 | 243 / 179 / 159 | 328 / 261 / 232 | 0.37 / 0.36 / 0.36 | 1 / 30 / 32 |
+| Previous: maintenance 8, turnover 0.04 | 98.8 / 96.8 / 96.8 | 223 / 167 / 150 | 320 / 257 / 232 | 0.25 / 0.28 / 0.28 | 16 / 26 / 27 |
+
+- Matches the one-pulse 38b prediction (244 / 179 / 159; CUE 0.37 / 0.36 / 0.36). Pulses 1-5 differ by < 1 day in day 50 % and < 0.003 in CUE; the community resets to about 1.01-1.02 biomass C per cell at each pulse. Seed SD: <= 0.07 % degraded, <= 1.8 days, <= 0.005 CUE.
+- R_endo off vs on: identical degradation and timing; CUE 0.37-0.38 with R_endo off, and 0.36 under warming with it on (the starvation phase after the substrate is gone costs biomass C).
+- Biomass peaks higher (63-67 C per cell vs 41-54) and declines more slowly after the substrate runs out (lower maintenance). Daily CUE stays at 0.41-0.44 through mid-year (previous 0.33-0.37).
+- Warming still accelerates decomposition at +10 C under MMRT (no warm-limb decline at this setting); energy limitation remains end-of-substrate starvation in the warm runs (substrate runs out around day 230-260), while ambient decomposition runs to the end of the year.
+
+**(b) HSP cold cost (cost 600), HSP vs control:**
+
+| T (C) | 0 | 2.5 | 5 | 7.5 | 10 | 12.5 | 15 | 20 | 25 | 30 | 35 |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| Mean biomass vs control, new (%) | -14 | -17 | -17 | -15 | -9 | 0 | +3 | +14 | +27 | +53 | +790 |
+| Mean biomass vs control, previous (%) | -15 | | -14 | -7 | +2 | +7 | +11 | +25 | +54 | +650 | |
+| CUE HSP / control, new | 0.26 / 0.35 | 0.31 / 0.38 | 0.36 / 0.40 | 0.40 / 0.42 | 0.41 / 0.42 | 0.41 / 0.41 | 0.41 / 0.41 | 0.41 / 0.39 | 0.40 / 0.33 | 0.37 / 0.22 | 0.31 / 0.10 |
+
+- The crossover moved from about 10 C to about 12.5 C, and the cold penalty is larger (-15 to -17 % biomass at 2.5-7.5 C vs -7 to -14 %). With lower maintenance, the maintenance saving from HSP (lower Ea) is smaller relative to the fixed HSP production cost. The cold penalty slows degradation (7.5 C: 44 vs 52 % degraded; 10 C: day 50 % 284 vs 276).
+- Controls now survive to about 30 C (96 % degraded) and collapse at 35 C (19 %); previously they collapsed at 30 C. HSP runs degrade 99.6 % at 35 C and 71 % at 40 C.
+- The ambient climate range (about 5-31 C) spans the crossover, so HSP is a net cost in winter and a net benefit in summer, as intended; the cost is now somewhat steeper than the "modest" target. Lowering `HSP_prod_E_cost` to about 450 would probably restore a crossover near 10 C (not run).
