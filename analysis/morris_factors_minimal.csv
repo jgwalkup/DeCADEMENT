@@ -1,10 +1,9 @@
 factor,rows,baseline,low,high,scale,group,note
-Maint_E_Rate_Const,Maint_E_Rate_Const,8,2.5,12,log,energy,"maintenance rate at Tref (273 K); wide range covering the earlier 2.5"
+Maint_E_Rate_Const,Maint_E_Rate_Const,8,2.5,10,log,energy,"maintenance rate at Tref (273 K); range 2.5-10 covering the earlier 2.5"
 Maint_E_HSP_Ea_Intercept,Maint_E_HSP_Ea_Intercept,45000,35000,55000,linear,energy,"maintenance Ea without HSP (J/mol)"
 Maint_E_HSP_Ea_Slope,Maint_E_HSP_Ea_Slope,-90000,-120000,-60000,linear,energy,"HSP effect on maintenance Ea"
 Maint_E_HSP_Ea_n,Maint_E_HSP_Ea_n,0.2,0.1,0.4,log,energy,"HSP share at half of the Ea effect"
 E_resp_IdealSub,monomer_energy:Mon_IdealSub:E_resp,1500,1000,2000,linear,energy,"energy per C respired from the substrate monomer"
-Ferm_Cond,Ferm_Cond,0.1,0.05,0.2,log,energy,"fermented share of energy C; also shapes the energy-demand curve"
 HSP_Consti_Prod,HSP_Consti_Prod_min+HSP_Consti_Prod_max,0.0015,0.00075,0.003,log,hsp,"constitutive HSP production"
 HSP_Induci_Prod,HSP_Induci_Prod_min+HSP_Induci_Prod_max,0.05,0.025,0.1,log,hsp,"inducible HSP production"
 HSP_prod_E_cost,HSP_prod_E_cost,600,300,1200,log,hsp,"energy per unit HSP C"

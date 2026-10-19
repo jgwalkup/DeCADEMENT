@@ -9,7 +9,7 @@
 # 3. When all tasks are done, analyse (seconds):
 #      python analysis/morris_minimal.py analyze morris_out
 #
-# Sizing: r=10 trajectories x 28 points x 3 climates x 2 kinetics x 2 seeds = 3,360 runs of about 10 s of one core
+# Sizing: r=10 trajectories x 27 points x 3 climates x 2 kinetics x 2 seeds = 3,240 runs of about 10 s of one core
 # (20x20 grid, one 365-day pulse) = about 9-10 CPU-hours; with 32 tasks x 4 CPUs that is about 5 min of wall time per
 # task plus start-up.
 #SBATCH --job-name=morris_min
