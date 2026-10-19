@@ -82,7 +82,18 @@ def run_one(src_input, changes, side, days, seed, temp=None, climate=None, pulse
     tmp = tempfile.mkdtemp()
     work = os.path.join(tmp, "in")
     shutil.copytree(src_input, work)
-    set_params(os.path.join(work, "parameters.csv"), changes)
+    # keys "monomer_energy:<row>:<column>" change monomer_energy.csv (e.g. monomer_energy:Mon_IdealSub:E_resp); the rest
+    # are parameters.csv rows
+    me = {k: v for k, v in changes.items() if k.startswith("monomer_energy:")}
+    set_params(os.path.join(work, "parameters.csv"), {k: v for k, v in changes.items() if k not in me})
+    if me:
+        mp = os.path.join(work, "monomer_energy.csv")
+        mdf = pd.read_csv(mp, index_col=0)
+        for k, v in me.items():
+            _, row, col = k.split(":")
+            mdf[col] = mdf[col].astype(float)
+            mdf.loc[row, col] = float(v)
+        mdf.to_csv(mp)
     set_runtime(os.path.join(work, "runtime.txt"),
                 dict(x=side, y=side, gridsize=side * side, pulse=pulses, end_time=days, **(runtime or {})))
     if climate is not None:  # substitute a climate file (daily Temp / Psi); applied before any flat-temperature override
