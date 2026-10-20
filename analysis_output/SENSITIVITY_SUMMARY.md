@@ -1345,3 +1345,22 @@ Warming almost never lowers degradation (<= 1 % of points lose more than 5 point
 - **More energy per unit C deepens the N limitation:** with a higher litter E_resp less of the C taken up is respired for energy and more goes to biomass, which needs N; at x3 rebalancing takes 30 % of the C uptake, which is why annual CUE stayed at 0.32 in 41b. With NH4 0.2 the x3 run reaches CUE 0.39 and day 95 % 225.
 - Enzyme N is a minor sink (0.7-1.2 N per cell in the enzyme pool on days 100-150 vs 9-12 in biomass).
 - Daily CUE still declines on days 125-200 with NH4 0.2 (0.39 -> 0.15) without rebalancing, as the dry season and the end of the labile substrates set in; endogenous respiration rises (28 -> 33 %), partly because less energy is credited from rebalancing (R_stoich).
+
+**41d. Enzyme production x NH4 input** (litter E_resp x1.245; production x2.5 / 3 / 3.5 / 4.5 x `Input_NH4` 0.05 / 0.1 / 0.2 / 0.3; ambient climate, MMRT, 3 seeds; figure `enzyme_x_nh4.png`, table `enzyme_x_nh4_summary.csv`). Selected cells:
+
+| Production, NH4 | % degraded | Day 50 % | Day 95 % | CUE | Rebalancing C (% of uptake) | Endogenous resp. (% of resp.) |
+|---|---|---|---|---|---|---|
+| x2.5, 0.05 | 66 | 257 | - | 0.33 | 0 | 15 |
+| x3, 0.05 | 78 | 201 | - | 0.36 | 0 | 20 |
+| x3.5, 0.05 | 85 | 168 | - | 0.35 | 2.0 | 23 |
+| x3.5, 0.1 | 83 | 168 | - | 0.35 | 0 | 27 |
+| x4.5, 0.05 | 91 | 131 | 323 | 0.33 | 9.6 | 28 |
+| x4.5, 0.1 | 91 | 130 | 313 | 0.37 | 0.03 | 34 |
+| x4.5, 0.3 | 89 | 132 | 323 | 0.35 | 2.8 | 31 |
+| x4.5, NH4 0.05, former moisture slopes (enzyme 0.25, uptake 0.5) | 82 | 134 | - | 0.34 | 7.5 | 29 |
+| x4.5, NH4 0.2, former moisture slopes | 80 | 135 | - | 0.37 | 0.5 | 34 |
+
+- **N limitation appears only at production >= 3.5** (rebalancing 0 at x2.5-3 even with NH4 0.05). NH4 0.1 removes it at x4.5 (rebalancing 0.03 % of uptake) and gives CUE 0.37, equal to the minimal baseline; more NH4 does not help further.
+- **Lowering enzyme production does not raise CUE:** CUE is 0.33-0.37 everywhere in the grid; lower production slows and truncates decomposition (x2.5: 63-66 % degraded, day 50 % 257-267, seed SD 12-13 points) and lowers endogenous respiration (15 % vs 28-34 %), because less of the year is spent after the labile pools are gone.
+- **At NH4 0.2-0.3 P becomes limiting:** unregulated NH4 uptake raises biomass N:C to about 0.34-0.35, which lowers the P share of biomass to the rebalancing threshold (P:C about 0.014 by day 125 at NH4 0.3, PO4 drawn down to 0.003), so rebalancing returns (1.0-2.8 % of uptake). This is the N hoarding noted in OPEN_ISSUES.
+- **The former, stronger moisture slopes do not relieve the N limitation** (rebalancing 9.6 -> 7.5 % at NH4 0.05): the NH4 pool is exhausted by day 30-50 and N:C reaches the threshold by day 100-125, mostly before the driest period (Psi below about -3 MPa from about day 150). They mainly cut late-season decomposition (91 -> 80-82 %, day 95 % not reached).
