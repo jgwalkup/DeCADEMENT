@@ -1463,3 +1463,25 @@ Pulse 5 (pulse 1 within 1 point of degradation, 3 days, 0.01 CUE), ambient / +10
 - Lower enzyme production delays decomposition (mean day 50 % 107 -> 229 at ambient) but does not stretch it over the year: in every setting decay stops around days 200-250, so slower runs end less complete. CUE falls slightly (0.363 -> 0.338) and no rebalancing occurs (<= 0.02 % of uptake).
 - What stops decay is the dry season. At x2.5 (ambient), half of the cellulose is still there on day 200, but water potential is about -5 MPa from about day 190 to 290: drought kills rise (56-85 cells per day on days 200-250), uptake halves, endogenous respiration takes over, biomass falls from 78 to 20 C per cell by day 300 and the enzyme pool from 1.9 to 0.1; after rewetting (about day 295) the community is too small to resume decay before the year ends.
 - The spread between community draws grows as production falls (seed SD 4 -> 23 points, worst seed 92 -> 45 % degraded): lower production moves part of the trait space below the decomposition threshold, as in the second Morris pass.
+
+## 46. Phase 2.3: end-of-year survival and taxon-level CUE (2026-10-20)
+
+**Runner additions (`full_single_taxon.py`):** per taxon and pulse (OUT_DIR/taxa/): occupied cell-days, cells alive on the last day, C taken up and C retained (uptake minus C respired for energy, enzyme C, endogenous respiration and rebalancing loss) and their ratio, over the pulse and its last 60 days; daily counts of taxa and cells with positive CUE, drought kills and starved cells. Summary adds cells / biomass / taxa alive on the last day, drought kills and starvation deaths over the pulse.
+
+**Setup:** 100-taxon community, enzyme production x4.5, NH4 0.15, PO4 0.01; one pulse; ambient and +5 C; MMRT, 20x20, 3 seeds; single changes aimed at survival. "Net CUE" = C retained / C taken up summed over the year and over all taxa (unlike the reported annual CUE, which weights daily CUE by uptake with days of net loss set to 0, it counts the C lost by starving cells). Figure `community_survival.png`, table `community_survival_summary.csv`. Ambient / +5 C:
+
+| Setting | % degraded | Day 95 % | Annual CUE | Net CUE | Taxa alive, day 365 | Living cells, day 365 | Biomass C, day 365 | Drought kills / starved (thousand cells) |
+|---|---|---|---|---|---|---|---|---|
+| Base | 96 / 97 | 240 / 223 | 0.36 / 0.37 | 0.11 / 0.09 | 35 / 4 | 3,980 / 50 | 1.5 / 0.01 | 15.3 / 12.8 ; 13.1 / 18.0 |
+| beta 0.5 | 96 / 97 | 240 / 223 | 0.36 / 0.37 | 0.09 / 0.07 | 33 / 3 | 4,217 / 49 | 1.6 / 0.01 | 11.1 / 15.7 ; 9.4 / 20.9 |
+| death_rate_bac 0.0005 | 96 / 97 | 238 / 222 | 0.36 / 0.36 | 0.06 / 0.05 | 33 / 3 | 4,184 / 51 | 1.5 / 0.01 | 8.3 / 17.1 ; 7.0 / 22.1 |
+| Osmolyte production x2 | 96 / 97 | 242 / 224 | 0.36 / 0.36 | 0.11 / 0.08 | 34 / 4 | 3,803 / 46 | 1.4 / 0.01 | 14.5 / 13.0 ; 12.5 / 18.1 |
+| Enz_loss_rate 0.04 | 99 / 99 | 171 / 151 | 0.37 / 0.37 | 0.11 / 0.08 | 30 / 10 | 2,252 / 157 | 0.7 / 0.04 | 15.8 / 14.9 ; 13.0 / 18.7 |
+| Maint_E_Rate_Const 3 | 98 / 98 | 213 / 178 | 0.38 / 0.38 | 0.14 / 0.11 | 82 / 18 | 12,054 / 1,407 | 7.2 / 0.43 | 16.6 / 5.6 ; 15.8 / 15.9 |
+| Labile Km x2 | 94 / 94 | 296 / 242 | 0.36 / 0.36 | 0.13 / 0.10 | 46 / 14 | 6,374 / 654 | 5.0 / 0.19 | 14.6 / 10.5 ; 13.1 / 16.8 |
+| Enzyme production x4 | 92 / 94 | 296 / 290 | 0.36 / 0.36 | 0.12 / 0.10 | 41 / 9 | 5,266 / 167 | 2.7 / 0.04 | 14.9 / 11.0 ; 13.1 / 17.1 |
+
+- **No taxon has a positive CUE late in the year in any setting:** the number of taxa with positive CUE on a given day falls from about 95 (day 150) to 0 by day 214-272; after that the C taken up is near 0 (0.01-0.14 per cell per day on day 300) and every taxon loses C. Taxon CUE over the whole year is 0.08-0.15 (mean 0.11 at ambient) once the starvation losses are counted.
+- **Starvation, not drought, sets end-of-year survival:** weaker drought mortality (beta 0.5, half the basal death rate) cuts drought kills by 28-46 % but the spared cells starve instead (starvation deaths +23-34 %), with no gain in survival and a lower net CUE. More osmolytes change nothing.
+- **Lower maintenance is the strongest single lever:** at Maint_E_Rate_Const 3 starvation deaths fall from 12.8 to 5.6 thousand at ambient, 82 taxa and 12,000 cells survive to day 365 (base: 35 and 4,000), and annual and net CUE rise (0.38, 0.14). At +5 C, 18 taxa survive (base 4). Slower labile decay and lower enzyme production help less (41-46 taxa at ambient); a slower enzyme turnover speeds decomposition and lowers survival.
+- **Positive CUE at the end of a run needs C supply late in the year.** With a single litter pulse the community has consumed or locked away the substrate by the dry season (2-8 % of the litter left, mostly cellulose and lignin) and nothing is added afterwards. `sub_mon_inputs.csv` holds daily substrate and monomer input rates (litter inputs about 0.94 C per grid cell per day, close to the annual litter pulse) and `initialization.py` builds them (`SubInput`, `MonInput`), but `Grid` never adds them (the organic input lines in `uptake()` are commented out).

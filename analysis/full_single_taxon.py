@@ -21,6 +21,11 @@ community is re-placed from each taxon's occupied cell-days over the pulse (Grid
 The summary then has one row per pulse, with the number of taxa that occupied any cell during the pulse, the effective
 number of taxa (exp of the Shannon index of the cell-day shares) and the largest taxon's share.
 
+Per taxon and pulse (OUT_DIR/taxa/): occupied cell-days, cells alive on the last day, C taken up and retained (C
+uptake minus respiration for energy, enzyme C, endogenous respiration and rebalancing loss) and their ratio (taxon CUE),
+over the pulse and over its last 60 days. Daily series also count the taxa and cells with positive CUE, drought kills
+and starved cells.
+
 Daily series: litter remaining (% of initial litter C, all substrates except DeadMic and DeadEnz), each substrate's C
 (per grid cell), biomass, CUE (model), C uptake, energy production, endogenous respiration C, respiration, and the C
 taken up per monomer (from the monomer pools before and after uptake; FermProd excluded). Summary: % litter degraded,
@@ -130,17 +135,27 @@ def _job(args):
         T = int(rt.loc["n_taxa", 1])
         stub = _RepopStub(pd.unique(eco.Microbes.index), days * pulses + 2)
         rows = []
-        reb = {"C": 0.0}
+        reb = {"C": 0.0, "arr": None}
         _orig_update_cue = eco._update_cue
 
         def _update_cue(rebalance_C_loss=None):            # record the C respired by stoichiometric rebalancing
             reb["C"] = 0.0 if rebalance_C_loss is None else float(np.sum(rebalance_C_loss))
+            reb["arr"] = rebalance_C_loss
             return _orig_update_cue(rebalance_C_loss)
         eco._update_cue = _update_cue
         is_nh4, is_po4 = mon_idx == "NH4", mon_idx == "PO4"
+        tax_names = list(pd.unique(np.asarray(eco.Microbes.index)))
+        tax_rows = []                                       # per taxon and pulse
+        acc = None
+
+        def _new_acc():
+            return {k: np.zeros(T) for k in ("upt", "ret", "upt_late", "ret_late", "cell_days")}
         for i in range(days * pulses):
             pl = i // days
-            reb["C"] = 0.0
+            doy0 = i - pl * days                            # 0-based day of the pulse
+            if doy0 == 0:
+                acc = _new_acc()
+            reb["C"], reb["arr"] = 0.0, None
             eco.degradation(pl, i)
             m_before = by(mon_idx, eco.Monomers, org)
             eco.uptake(pl, i)
@@ -151,6 +166,19 @@ def _job(args):
             C = np.asarray(eco.Microbes["C"])
             alive = C > 0
             taxa_alive = int(pd.unique(np.asarray(eco.Microbes.index)[alive]).size)
+            # taxon-level CUE: C retained (after enzyme, energy, endogenous and rebalancing losses) / C taken up, per taxon
+            ret_c = np.asarray(eco._cue_C_retained, dtype=float).copy()
+            if reb["arr"] is not None:
+                ret_c -= np.asarray(reb["arr"], dtype=float)
+            upt_c = np.asarray(eco._cue_C_uptake, dtype=float)
+            upt_t, ret_t = upt_c.reshape(G, T).sum(axis=0), ret_c.reshape(G, T).sum(axis=0)
+            pos_t = (upt_t > 0) & (ret_t > 0)
+            acc["upt"] += upt_t
+            acc["ret"] += ret_t
+            acc["cell_days"] += alive.reshape(G, T).sum(axis=0)
+            if doy0 >= days - 60:
+                acc["upt_late"] += upt_t
+                acc["ret_late"] += ret_t
             sc = by(sub_idx, eco.Substrates, subs)
             # uptake() first adds the decay products of this step to the monomer pools, then removes the uptake
             mr = eco.Monomers.index
@@ -165,7 +193,10 @@ def _job(args):
                        R_endo_C=float(np.sum(getattr(eco, "Taxon_R_endo_C", 0.0))) / G,
                        respiration=float(np.asarray(eco.Taxon_Resp).sum()) / G,
                        enzyme_pool=float(np.asarray(eco.Enzymes).sum()) / G,
-                       killed=int(eco.Kill), Temp=float(eco.temp[i]), Psi=float(eco.psi[i]),
+                       killed=int(eco.Kill), starved=int(getattr(eco, "Starved", 0)),
+                       dead_C=float(getattr(eco, "Dead_C", np.nan)) / G,
+                       taxa_pos_cue=int(pos_t.sum()), cells_pos_cue=int(((upt_c > 0) & (ret_c > 0)).sum()),
+                       Temp=float(eco.temp[i]), Psi=float(eco.psi[i]),
                        rebalance_C=reb["C"] / G,
                        R_stoich_E=float(np.sum(getattr(eco, "Taxon_R_stoich_E", 0.0))) / G,
                        N_uptake=float(np.asarray(eco.Taxon_Uptake_N).sum()) / G,
@@ -180,6 +211,15 @@ def _job(args):
             row.update({f"U_{m}": v for m, v in upt.items()})
             rows.append(row)
             stub.Taxon_count_repop.iloc[:, i + 1] = alive.reshape(G, T).sum(axis=0)
+            if doy0 == days - 1:
+                cells_end = alive.reshape(G, T).sum(axis=0)
+                for k_, tn in enumerate(tax_names):
+                    tax_rows.append(dict(pulse=pl + 1, taxon=tn, cell_days=acc["cell_days"][k_], cells_end=int(cells_end[k_]),
+                                         C_uptake=acc["upt"][k_], C_retained=acc["ret"][k_],
+                                         CUE=acc["ret"][k_] / acc["upt"][k_] if acc["upt"][k_] > 0 else np.nan,
+                                         C_uptake_last60=acc["upt_late"][k_], C_retained_last60=acc["ret_late"][k_],
+                                         CUE_last60=(acc["ret_late"][k_] / acc["upt_late"][k_]
+                                                     if acc["upt_late"][k_] > 0 else np.nan)))
             if (i + 1) % days == 0 and pl < pulses - 1:   # new pulse: substrates, monomers, enzymes reset; community
                 eco.repopulation(stub, i, True)            # re-placed from each taxon's cell-days over the pulse
         cell_days = stub.Taxon_count_repop.to_numpy()[:, 1:days * pulses + 1].reshape(T, pulses, days).sum(axis=2)
@@ -194,7 +234,10 @@ def _job(args):
     s = sall
     for k, v in (("label", label), ("climate", summs[0]["climate"]), ("kinetics", summs[0]["kinetics"]), ("seed", seed)):
         s.insert(0, k, v)
-    return summs, s
+    tx = pd.DataFrame(tax_rows)
+    for k, v in (("label", label), ("climate", summs[0]["climate"]), ("kinetics", summs[0]["kinetics"]), ("seed", seed)):
+        tx.insert(0, k, v)
+    return summs, s, tx
 
 
 def _summary(s, pl, cd, label, climate, kin, seed, org, lit, e_max):
@@ -216,6 +259,11 @@ def _summary(s, pl, cd, label, climate, kin, seed, org, lit, e_max):
                 rebalance_share_of_uptake_pct=100 * s.rebalance_C.sum() / s.C_uptake.sum() if s.C_uptake.sum() > 0 else 0.0,
                 E_max_per_uptake_C=float(eyield), biomass_max=float(s.biomass_C.max()),
                 taxa_alive_end=int(s.taxa_alive.iloc[-1]), taxa_alive_min=int(s.taxa_alive.min()),
+                cells_alive_end=int(s.alive_cells.iloc[-1]), biomass_end=float(s.biomass_C.iloc[-1]),
+                taxa_pos_cue_end=int(s.taxa_pos_cue.iloc[-30:].mean()) if "taxa_pos_cue" in s else np.nan,
+                CUE_last60=float(np.average(s.CUE.iloc[-60:].fillna(0), weights=s.C_uptake.clip(lower=0).iloc[-60:]))
+                if s.C_uptake.clip(lower=0).iloc[-60:].sum() > 0 else 0.0,
+                drought_kills=int(s.killed.sum()), starved=int(s.starved.sum()) if "starved" in s else np.nan,
                 **{f"uptake_share_{m}": float(U[f"U_{m}"] / U.sum()) for m in org},
                 **{f"left_{x}": float(100 * s[f"S_{x}"].iloc[-1] / max(s[f"S_{x}"].iloc[0], 1e-12)) for x in lit})
     return summ
@@ -272,12 +320,14 @@ def main():
                          a.litter_C, _parse(a.km_factor), a.pulses))
     print(f"{len(jobs)} runs -> {a.out_dir} [{a.label}]", flush=True)
     with Pool(a.procs) as pool:
-        for n, (summs, s) in enumerate(pool.imap_unordered(_job, jobs), 1):
+        for n, (summs, s, tx) in enumerate(pool.imap_unordered(_job, jobs), 1):
             prev = pd.read_csv(sp) if os.path.exists(sp) else None   # rewritten whole: columns differ between inputs
             _atomic_csv(pd.concat([prev, pd.DataFrame(summs)] if prev is not None else [pd.DataFrame(summs)]), sp)
             r0 = s.iloc[0]
             os.makedirs(os.path.join(a.out_dir, "ts"), exist_ok=True)
             _atomic_csv(s, os.path.join(a.out_dir, "ts", f"{r0.label}__{r0.climate}__{r0.kinetics}__{r0.seed}.csv.gz"))
+            os.makedirs(os.path.join(a.out_dir, "taxa"), exist_ok=True)
+            _atomic_csv(tx, os.path.join(a.out_dir, "taxa", f"{r0.label}__{r0.climate}__{r0.kinetics}__{r0.seed}.csv"))
             summ = summs[-1]
             print(f"  {n}/{len(jobs)} {summ['climate']} {summ['kinetics']} seed={summ['seed']}: pulse {summ['pulse']} "
                   f"{summ['litter_degraded']:.1f} % degraded, CUE {summ['CUE_annual']:.3f}, "
