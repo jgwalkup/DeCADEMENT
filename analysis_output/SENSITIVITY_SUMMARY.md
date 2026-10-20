@@ -1430,3 +1430,20 @@ Pulse 5 (pulse 1 within 1 point of degradation, 3 days, 0.01 CUE), ambient / +10
 - **Lower enzyme production removes nearly all rebalancing** (0.1-1 %) and raises CUE by about 0.005, but decomposition falls to 87 % with day 95 % at 295-304 and the spread between seeds triples (SD 12 points): at x3.5 some draws of the community fall near the decomposition threshold.
 - **Lower initial density** slows the first months (day 50 % +16-20 days) and halves rebalancing, with 95 % degraded and CUE 0.35-0.36; it also loses taxa faster: 50 taxa still occupy cells in pulse 5 (vs 77-83) and the effective number falls to 40.
 - **Diversity declines in every setting:** taxa occupying cells fall from 100 to 77-83 and the effective number from about 87 to 51-56 by pulse 5, still falling; the largest taxon's share is 2.6-3.7 %, so no taxon dominates yet.
+
+## 44. Phase 2.3: NH4 0.15 + PO4 0.01 (multi-pulse) and run time on a 100x100 grid (2026-10-20)
+
+**NH4 0.15 with PO4 0.01** (as section 43: 100 taxa, 20x20, MMRT, 5 pulses, 3 seeds; ambient and +5 C; the baseline was also run at +5 C; figure `community_nutrients.png` (+5 C, pulses 1 and 5), table `community_multipulse_summary.csv`). Pulse 5, ambient / +5 C:
+
+| Setting | % degraded | Day 50 % | Day 95 % | CUE | Rebalancing C (% of uptake) | Endogenous resp. (%) | Peak biomass C | Effective taxa |
+|---|---|---|---|---|---|---|---|---|
+| Baseline (NH4 0.1, PO4 0.005) | 96 / 97 | 107 / 95 | 240 / 224 | 0.351 / 0.348 | 2.5 / 4.2 | 34 / 35 | 125 / 126 | 54 / 55 |
+| NH4 0.15 | 96 / - | 108 / - | 241 / - | 0.349 / - | 2.1 / - | 34 / - | 123 / - | 54 / - |
+| NH4 0.15, PO4 0.01 | 96 / 97 | 108 / 95 | 239 / 223 | 0.363 / 0.366 | 0.02 / 0.07 | 36 / 38 | 129 / 134 | 54 / 56 |
+
+- Raising both inputs removes the nutrient limitation: rebalancing falls from 2.5-4.6 % of the C taken up to 0.02-0.2 % (the baseline's rebalancing is a peak of about 16 % of daily uptake around day 90, gone with both inputs raised), CUE rises by 0.012-0.018 to 0.363-0.366, and peak biomass by 4-8 C per cell. Decomposition and its timing do not change (within 0.5 point and 1 day), nor does the decline in diversity.
+- Endogenous respiration rises slightly (34-35 -> 36-38 % of respiration): the larger biomass starves after the substrates run out, and rebalancing no longer credits energy (R_stoich).
+- Daily CUE still steps down around days 75-100 without rebalancing, as the labile substrates run out.
+
+**Run time on a 100x100 grid** (`dementpy.py` with `input_full_port_bac/` at 100x100, 100 taxa, taxa_per_box 0.05, one pulse, single-threaded, with a second job on the container's other core; `timing_100x100_150d.txt`): 150 days took 12.1 min, 4.86 s per day (metabolism 46 %, uptake 25 %, reproduction 10 %, output 7.5 %, mortality 6 %, degradation 5 %); the first 20 days alone ran at 4.47 s per day, so the cost per day rises only slightly as biomass grows. Peak memory 3.9 GB (working arrays sized grid x taxa x monomers; the daily output buffers are per-taxon sums and grow little). Output about 80 MB per run of 150 days.
+- Estimate for 5 pulses (1,825 days): about 2.5 h per run on one core here, about 4 GB of memory. Runs are single-threaded, so seeds and climates run in parallel as separate jobs (HPC3: one core and 6-8 GB per array task).
