@@ -21,7 +21,7 @@
 #
 # Optional:
 #   --src-dir    DIR       DEMENTpy source directory      (default: src)
-#   --input-dir  DIR       Input CSVs / runtime.txt dir   (default: input)
+#   --input-dir  DIR       Input CSVs / runtime.txt dir   (default: input_full_port_bac)
 #   --seed       INT       Base random seed                (default: 0)
 #   --conda-env  NAME      Conda environment name          (default: decadementenv)
 #   --partition  NAME      SLURM partition                 (default: standard)
@@ -58,7 +58,13 @@
 #
 # NOTES
 # -----
-#   • Run this script from the project root (same directory as src/, input/, etc.)
+#   • Run this script from the project root (same directory as src/, input_full_port_bac/, etc.)
+#   • Communities must have been assembled from the same input folder (assemble_communities.py
+#     --input-dir input_full_port_bac): the per-taxon trait matrices are stored in the community
+#     directories; everything else (Enz_loss_rate, Enzymes_per_sub, mineral inputs, energy yields,
+#     runtime.txt) is read from --input-dir at run time.
+#   • Each task runs every scenario in sequence: at 100x100 a 5-pulse run takes about 2-3 h per
+#     scenario on one core (4 GB), at 40x40 about 20-30 min (1 GB).
 #   • Each task handles exactly one community; all scenarios for that community
 #     run sequentially within the task.  Wall-time limit must cover all scenarios.
 #   • Array throttle (--max-array) protects scheduler and filesystem from floods.
@@ -71,7 +77,7 @@ set -euo pipefail
 
 # ── Defaults ─────────────────────────────────────────────────────────────────
 SRC_DIR="src"
-INPUT_DIR="input"
+INPUT_DIR="input_full_port_bac"
 COMMUNITY_DIR=""
 OUTPUT_DIR=""
 CLIMATE=""
@@ -279,7 +285,7 @@ ${ACCOUNT_LINE}
 
 # ── Environment ------------------------------------------------------------------
 # HPC3 conda setup
-module load miniconda3
+module load miniconda3/25.11.1
 source "\$(conda info --base)/etc/profile.d/conda.sh"
 conda activate "${CONDA_ENV}"
 
