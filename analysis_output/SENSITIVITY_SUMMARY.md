@@ -1519,3 +1519,16 @@ Pulse 5 (pulse 1 within 1 point of degradation, 3 days, 0.01 CUE), ambient / +10
 
 - Ten seeds confirm the 3-seed means (section 47) and the year-to-year stability (pulse 3 = pulse 1 within 0.2 points); diversity keeps falling (87 -> 62 effective taxa by year 3).
 - **The spread between seeds is the community draw, not the parameter set:** the seed ranking is the same under both settings (seed 1 worst at 63 / 79 %, seed 4 best at 99 / 100 %). The poorly degrading communities strand one or two specific substrates: seed 5 leaves 51-63 % of the hemicellulose, seed 1 about 45 % of cellulose, hemicellulose and lignin, seed 8 lignin (30-46 %) and protein 1 (17-28 %). The seed sets the random enzyme-substrate assignment (`substrate_degradation_enzyme`: one required enzyme per substrate plus random extras, 50 enzymes for 12 substrates) and the gene draws, so a substrate whose required enzyme is carried by few taxa, or shared with other substrates (specificity divides its Vmax), is degraded slowly whatever the production level.
+
+**48b. `Enzymes_per_sub` 2** (same two settings and ten seeds, 3 pulses, run on the Mac; labels `*_enzpersub2` / `*_enpersub2` in `tenseed/`). With `Enzymes_per_sub` 1 each substrate is guaranteed one enzyme in the assignment that drives decay (set 1; the set-2 extras from `Avg_extra_req_enz` are built but not used in `degradation()`), and the random remainder gives 1-9 per substrate; the stranded substrates of section 48 are those with 1-2 (seed 5 hemicellulose 1, seed 1 hemicellulose and lignin 2, seed 8 lignin 2 and protein 1 1). Pulse 1:
+
+| Setting | % degraded (mean; range; seed SD) | Day 50 % | Day 95 % | Annual / net CUE | Taxa alive, day 365 | Starvation deaths |
+|---|---|---|---|---|---|---|
+| x3 / 0.05, 1 per substrate | 87 (63-99; 12.3) | 136 | 299 | 0.370 / 0.133 | 50 | 11,082 |
+| x3 / 0.05, 2 per substrate | 93 (80-99; 6.2) | 120 | 281 | 0.382 / 0.127 | 42 | 12,982 |
+| x4 / 0.055, 1 per substrate | 93 (79-100; 7.4) | 109 | 250 | 0.379 / 0.117 | 25 | 14,292 |
+| x4 / 0.055, 2 per substrate | 97 (91-100; 2.8) | 98 | 204 | 0.393 / 0.112 | 16 | 16,548 |
+
+- The floor of two halves the seed spread (SD 12 -> 6 and 7 -> 3) by lifting the worst communities (seed 1: 63 -> 80 %, seed 5: 73 -> 94 %); the best seeds are unchanged. Cellulose and lignin remain the pools that are stranded when it happens (seeds 0 and 1: 25-33 % of each left at x3).
+- It also speeds decomposition overall (day 50 % 16-17 days earlier) and so lowers survival (taxa alive 50 -> 42 and 25 -> 16): more enzymes acting per substrate is more decay capacity. x3 / 0.05 with two per substrate lands close to x4 / 0.055 with one (93 %, 0.38) but with 42 instead of 25 surviving taxa.
+- Years 2 and 3 repeat year 1 (within 0.2 points); effective taxa fall from 88 to 64-67 by pulse 3 in every setting, as before.
