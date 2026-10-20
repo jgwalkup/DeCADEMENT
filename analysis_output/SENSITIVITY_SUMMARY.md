@@ -1447,3 +1447,19 @@ Pulse 5 (pulse 1 within 1 point of degradation, 3 days, 0.01 CUE), ambient / +10
 
 **Run time on a 100x100 grid** (`dementpy.py` with `input_full_port_bac/` at 100x100, 100 taxa, taxa_per_box 0.05, one pulse, single-threaded, with a second job on the container's other core; `timing_100x100_150d.txt`): 150 days took 12.1 min, 4.86 s per day (metabolism 46 %, uptake 25 %, reproduction 10 %, output 7.5 %, mortality 6 %, degradation 5 %); the first 20 days alone ran at 4.47 s per day, so the cost per day rises only slightly as biomass grows. Peak memory 3.9 GB (working arrays sized grid x taxa x monomers; the daily output buffers are per-taxon sums and grow little). Output about 80 MB per run of 150 days.
 - Estimate for 5 pulses (1,825 days): about 2.5 h per run on one core here, about 4 GB of memory. Runs are single-threaded, so seeds and climates run in parallel as separate jobs (HPC3: one core and 6-8 GB per array task).
+
+## 45. Phase 2.3: lower enzyme production with NH4 0.15 + PO4 0.01 (2026-10-20)
+
+**Setup:** 100-taxon community as in sections 42-44, `Input_NH4` 0.15, `Input_PO4` 0.01, enzyme production x4 / 3.5 / 3 / 2.5 (ranges x/1.25 around each), one pulse, ambient and +5 C, MMRT, 20x20, 3 seeds; x4.5 is pulse 1 of section 44. Figure `community_enzyme_nutrients.png` (each seed shown), table `community_enzyme_nutrients_summary.csv`.
+
+| Enzyme production (ambient / +5 C) | % degraded (min of 3 seeds) | Seed SD | Day 50 % | Day 95 % | CUE | Endogenous resp. (%) | Peak biomass C |
+|---|---|---|---|---|---|---|---|
+| x4.5 | 96 / 97 (92 / 93) | 4 / 4 | 107 / 94 | 240 / 223 | 0.363 / 0.366 | 36 / 38 | 131 / 135 |
+| x4 | 92 / 94 (85 / 87) | 7 / 6 | 119 / 105 | 296 / 290 | 0.357 / 0.360 | 34 / 37 | 122 / 126 |
+| x3.5 | 87 / 88 (76 / 77) | 11 / 11 | 137 / 120 | 304 / 297 | 0.352 / 0.352 | 33 / 35 | 110 / 115 |
+| x3 | 79 / 80 (63 / 64) | 17 / 17 | 162 / 142 | 318 / 309 | 0.345 / 0.345 | 31 / 34 | 96 / 101 |
+| x2.5 | 67 / 69 (45 / 48) | 23 / 22 | 229 / 217 | - | 0.338 / 0.337 | 30 / 33 | 78 / 83 |
+
+- Lower enzyme production delays decomposition (mean day 50 % 107 -> 229 at ambient) but does not stretch it over the year: in every setting decay stops around days 200-250, so slower runs end less complete. CUE falls slightly (0.363 -> 0.338) and no rebalancing occurs (<= 0.02 % of uptake).
+- What stops decay is the dry season. At x2.5 (ambient), half of the cellulose is still there on day 200, but water potential is about -5 MPa from about day 190 to 290: drought kills rise (56-85 cells per day on days 200-250), uptake halves, endogenous respiration takes over, biomass falls from 78 to 20 C per cell by day 300 and the enzyme pool from 1.9 to 0.1; after rewetting (about day 295) the community is too small to resume decay before the year ends.
+- The spread between community draws grows as production falls (seed SD 4 -> 23 points, worst seed 92 -> 45 % degraded): lower production moves part of the trait space below the decomposition threshold, as in the second Morris pass.
