@@ -76,7 +76,7 @@ able to grow somewhat in the dry season.
   Build the input folder with a script, as for the earlier full-model folders.
 - [x] **2.2 Single-taxon check** (done 2026-10-19, sections 41-41f; settings accepted, see the decisions table. First pass, section 41: at the minimal production totals the taxon degrades 9 % of the litter; enzyme specificity cuts decay capacity per unit production about 7x; production x3.5-7 restores 85-98 % with a fast labile phase and a cellulose/lignin tail; open: production factor, realised energy yield (x1.45), early CUE drop). A minimal-equivalent taxon on the full substrate set: does it reproduce the minimal
   behaviour?
-- [ ] **2.3 Community calibration** (100 taxa, small grid, `fb` 0). Targets as above. Main levers: centre and width of
+- [ ] **2.3 Community calibration** (first runs 2026-10-19, section 42: narrow trait ranges x/1.25, 30-40 genes; 97-98 % degraded, CUE 0.33-0.35, N limitation back at NH4 0.1) (100 taxa, small grid, `fb` 0). Targets as above. Main levers: centre and width of
   the production ranges, `taxa_per_box`.
 - [ ] **2.4 Full-model Morris.** Community-level factors (trait-range widths, share of HSP taxa, `n_taxa`,
   `taxa_per_box`) plus the top 4-6 factors from 1.4; gradient and climates; MMRT and Arrhenius.

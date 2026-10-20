@@ -1395,3 +1395,17 @@ Warming almost never lowers degradation (<= 1 % of points lose more than 5 point
 - Slowing the labile pools spreads decomposition over the year: day 50 % moves from 120 to 149 (x2) and 180 (x4) (minimal 244), biomass on day 100 falls from 72 to 43 and 27 C per cell, and endogenous respiration falls from 36 to 30 and 17 % of respiration, because less of the year is spent after the substrates are gone. CUE stays at 0.39-0.40.
 - At x4 and above the labile pools become the tail (proteins, chitin and OrgP 12-17 % left on day 365 at x4) and the year ends with 6-13 % of the litter left; x2 keeps the order labile -> hemicellulose -> cellulose / lignin and finishes 96 %.
 - N limitation is unchanged (rebalancing 4-6 % of uptake): the early NH4 crunch is relieved (minimum NH4 on days 30-150 rises from 0.0007 to 0.019 per cell at x4) but rebalancing still occurs later, while cellulose and hemicellulose (no N) dominate uptake.
+
+## 42. Phase 2.3: first community runs, narrow trait ranges (2026-10-19)
+
+**Setup:** `input_full_port_bac/` rebuilt with community trait ranges (`build_full_input_port.py --trait-width 1.25`, now the default): each taxon draws (Latin hypercube, uniform) Constit_Prod 4.05e-5-6.33e-5 and Enz_Prod 7.2e-4-1.125e-3 per gene (x/1.25 around the accepted port values), Osmo_Consti_Prod 0.004-0.00625, Osmo_Induci_Prod 0.04-0.0625, HSP_Consti_Prod 0.0012-0.001875, HSP_Induci_Prod 0.04-0.0625, and 30-40 of the 50 enzyme genes. 100 taxa, `taxa_per_box` 0.05 (about 5 cells per grid cell at the start), 20x20, one pulse, MMRT, 5 seeds (`full_single_taxon.py --community`, which now also counts the taxa with living cells). Single-taxon reference: the accepted port (3 seeds). Figure `community_first.png`, table `community_first_summary.csv` (`full_port_community/`).
+
+| Ambient / +5 / +10 C | % degraded | Day 50 % | Day 95 % | CUE | Rebalancing C (% of uptake) | Endogenous resp. (% of resp.) | Taxa alive, day 365 |
+|---|---|---|---|---|---|---|---|
+| Community | 97 / 98 / 98 | 94 / 83 / 79 | 201 / 186 / 180 | 0.35 / 0.34 / 0.33 | 7 / 10 / 11 | 35 / 35 / 35 | 25 / 3 / 3 |
+| Single taxon | 91 / 92 / 92 | 130 / 115 / 109 | 313 / 305 / 303 | 0.37 / 0.37 / 0.36 | 0 / 0.5 / 0.9 | 34 / 37 / 37 | - |
+
+- The community decomposes faster and more completely than the single taxon (seed SD 2.5-3 points vs 4-5): it starts with about 5 cells per grid cell instead of 1, and cells of several taxa share a grid cell and cover each other's missing enzyme genes. Biomass peaks earlier and slightly higher (123-128 vs 118-121 C per cell).
+- The faster growth brings N limitation back at NH4 0.1 (rebalancing 7-11 % of the C taken up), so CUE is 0.02-0.03 lower than the single taxon's.
+- All 100 taxa persist until the substrates run out (day 200-280); then starvation and the dry season remove most of them: 25 taxa have living cells on day 365 at ambient, 3 at +5 C and +10 C. This die-off does not by itself remove taxa from multi-pulse runs: `Grid.repopulation` re-seeds every taxon in proportion to its occupied cell-days over the whole pulse, so taxa that were abundant during the growing phase return even if they have no living cells on day 365.
+- Warming advances decomposition (day 50 % 94 -> 79) without changing its completeness; CUE falls by 0.01-0.02 and rebalancing rises.

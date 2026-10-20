@@ -5,7 +5,7 @@
         [--climates CSV ...] [--kinetics 1] [--side 20] [--days 365] [--procs 2]
         [--set NAME=VALUE ...] [--runtime NAME=VALUE ...] [--litter-C TOTAL] [--km-factor SUBSTRATE=F ...]
 
-Defaults give the single-taxon check: runtime n_taxa 1, taxa_per_box 1, fb 0, one pulse; parameters
+Defaults give the single-taxon check (--community keeps the input's taxa settings instead): runtime n_taxa 1, taxa_per_box 1, fb 0, one pulse; parameters
 Enz_per_taxon_min = max = 40 (a generalist with 40 of the 50 enzyme genes), R_endo 1. --set and --runtime override
 any of these (NAME may be a NAME_min / NAME_max stem, or monomer_energy:<row>:<column>). --litter-C scales every litter
 substrate's C, N and P in initial_substrates.csv (and sub_mon_inputs.csv) so the litter C totals TOTAL (composition and
@@ -143,6 +143,7 @@ def _job(args):
             eco.reproduction(i)
             C = np.asarray(eco.Microbes["C"])
             alive = C > 0
+            taxa_alive = int(pd.unique(np.asarray(eco.Microbes.index)[alive]).size)
             sc = by(sub_idx, eco.Substrates, subs)
             # uptake() first adds the decay products of this step to the monomer pools, then removes the uptake
             mr = eco.Monomers.index
@@ -151,7 +152,7 @@ def _job(args):
             dec = {m: float(dec_c[np.asarray(mr)[is_org_m] == m].sum()) / G for m in org}
             upt = {m: max(m_before[m] + dec[m] - m_after[m], 0.0) for m in org}
             row = dict(doy=i + 1, litter_remaining_pct=100 * sum(sc[s] for s in lit) / lit0,
-                       biomass_C=float(C.sum()) / G, alive_cells=int(alive.sum()), CUE=float(eco.CUE_system),
+                       biomass_C=float(C.sum()) / G, alive_cells=int(alive.sum()), taxa_alive=taxa_alive, CUE=float(eco.CUE_system),
                        C_uptake=float(np.asarray(eco.Taxon_Uptake_C).sum()) / G,
                        E_production=float(np.asarray(eco.Taxon_Uptake_E).sum()) / G,
                        R_endo_C=float(np.sum(getattr(eco, "Taxon_R_endo_C", 0.0))) / G,
@@ -189,6 +190,7 @@ def _job(args):
                 endo_share_pct=100 * s.R_endo_C.sum() / s.respiration.sum() if s.respiration.sum() > 0 else 0.0,
                 rebalance_share_of_uptake_pct=100 * s.rebalance_C.sum() / s.C_uptake.sum() if s.C_uptake.sum() > 0 else 0.0,
                 E_max_per_uptake_C=float(eyield), biomass_max=float(s.biomass_C.max()),
+                taxa_alive_end=int(s.taxa_alive.iloc[-1]), taxa_alive_min=int(s.taxa_alive.min()),
                 **{f"uptake_share_{m}": float(U[f"U_{m}"] / U.sum()) for m in org},
                 **{f"left_{x}": float(100 * s[f"S_{x}"].iloc[-1] / max(s[f"S_{x}"].iloc[0], 1e-12)) for x in lit})
     for k, v in (("label", label), ("climate", summ["climate"]), ("kinetics", summ["kinetics"]), ("seed", seed)):
@@ -210,11 +212,13 @@ def main():
     ap.add_argument("--set", nargs="*", default=[])
     ap.add_argument("--runtime", nargs="*", default=[])
     ap.add_argument("--litter-C", type=float, default=None)
+    ap.add_argument("--community", action="store_true",
+                    help="community run: keep the input's taxa settings (n_taxa, taxa_per_box, gene and trait ranges)")
     ap.add_argument("--km-factor", nargs="*", default=[], metavar="SUBSTRATE=FACTOR",
                     help="multiply the enzyme Km of these substrates (all enzymes) by FACTOR")
     a = ap.parse_args()
-    changes = dict(DEFAULT_SET, **_parse(a.set))
-    runtime = dict(DEFAULT_RUNTIME, **_parse(a.runtime))
+    changes = dict({"R_endo": 1} if a.community else DEFAULT_SET, **_parse(a.set))
+    runtime = dict({} if a.community else DEFAULT_RUNTIME, **_parse(a.runtime))
     os.makedirs(a.out_dir, exist_ok=True)
     sp, tp = os.path.join(a.out_dir, "summary.csv"), os.path.join(a.out_dir, "timeseries.csv.gz")
     done = set()
