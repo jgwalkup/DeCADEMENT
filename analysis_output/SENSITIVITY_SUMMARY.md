@@ -1568,3 +1568,16 @@ Pulse 5 (pulse 1 within 1 point of degradation, 3 days, 0.01 CUE), ambient / +10
 - x2 / 0.04 is the slowest setting that still reaches 95 % within the year (day 351) and keeps most taxa (83); x1.5 / 0.04 keeps all 100 and has the highest net CUE (0.19), but degrades 62 % with the widest spread and the crash comes with 46 % of the litter left.
 - Across the eight settings annual (floored) CUE and net CUE move in opposite directions (0.32 -> 0.38 against 0.19 -> 0.13): faster decomposition raises the efficiency during uptake but builds more biomass to starve afterwards.
 - The daily CUE and per-cell uptake curves of all eight settings coincide until about day 150; the settings differ only in the timing of the collapse (day 208-255).
+
+**48h. Enzyme production x2 / turnover 0.035 and x1.5 / 0.035, `Enzymes_per_sub` 2** (ten seeds, one pulse, Mac; figures `substrates_enz2_loss0.035.png`, `substrates_enz2_loss0.035_seeds.png`; `biomass_cue_all_settings.png` now has ten settings):
+
+| Production, turnover | % degraded (range; SD) | Day 50 % | Day 95 % | Net CUE | Taxa alive, day 365 | Starvation deaths | Crash day (litter left) |
+|---|---|---|---|---|---|---|---|
+| x1.5, 0.035 | 72 (42-90; 15) | 217 | - | 0.198 | 100 | 570 | 262 (36 %) |
+| x2, 0.035 | 91 (77-99; 7) | 139 | 321 | 0.147 | 80 | 5,970 | 225 (14 %) |
+| x2, 0.04 | 86 (67-98; 10) | 154 | 351 | 0.153 | 83 | 4,950 | 231 (20 %) |
+| x2.5, 0.045 | 92 (77-99; 7) | 130 | 305 | 0.135 | 59 | 10,030 | 216 (12 %) |
+| x3, 0.05 | 93 (80-99; 6) | 120 | 281 | 0.127 | 42 | 12,980 | 208 (10 %) |
+
+- x2 / 0.035 matches x2.5 / 0.045 on decomposition (91 vs 92 %, same seed spread, same stranded pools) with 80 instead of 59 surviving taxa and a higher net CUE (0.147 vs 0.135); against x3 / 0.05 it is 19 days slower at day 50 %, 40 days at day 95 %, and keeps twice the taxa. Peak biomass 115 C per cell, starvation deaths 6,000 (x3 / 0.05: 127 and 13,000).
+- Production and turnover trade off along one axis: settings with the same production-to-turnover ratio (x2 / 0.035, x2.5 / 0.045, x3 / 0.05, ratio about 57-60) decompose alike, and the lower-production member of each pair keeps more taxa, because a smaller standing enzyme pool costs less C to maintain.
