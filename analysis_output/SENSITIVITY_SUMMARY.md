@@ -1534,3 +1534,16 @@ Pulse 5 (pulse 1 within 1 point of degradation, 3 days, 0.01 CUE), ambient / +10
 - Years 2 and 3 repeat year 1 (within 0.2 points); effective taxa fall from 88 to 64-67 by pulse 3 in every setting, as before.
 
 **48c. Enzyme production x3, turnover 0.055, `Enzymes_per_sub` 2** (ten seeds, 3 pulses, Mac; `tenseed/enz3_loss0.055_enzpersub2`; figures `substrates_enz3_loss0.055*.png`, and `substrates_enz3_loss0.05*.png` for the 0.05 runs). Pulse 1: 90 % degraded (73-99, SD 8), day 50 % 129, day 95 % 320, annual / net CUE 0.375 / 0.130, 49 taxa alive on day 365, 11,900 starvation deaths; pulses 2-3 within 0.3 points. Against turnover 0.05 (93 %, SD 6, day 50 % 120, 42 taxa): about 9 days slower, 3 points less complete, 7 more surviving taxa, a wider seed spread (the same seeds strand the same pools, cellulose and lignin in seeds 0 and 1, hemicellulose in 5, lignin in 9). Year-on-year the per-substrate remainder is constant: the stranded pools are not eroded by repopulation.
+
+**48d. Enzyme production x2 and x2.5 with `Enzymes_per_sub` 2, and what drives the CUE collapse** (ten seeds, 3 pulses, Mac; x2: Constit 1.8e-5-2.8e-5, Enz_Prod 3e-4-5e-4; x2.5: 2.5e-5-3.5e-5, 4e-4-6e-4; turnover 0.05, NH4 0.15, PO4 0.01; figures `substrates_enz2_2.5.png`, `substrates_enz2_seeds.png`, `substrates_enz2.5_seeds.png`, `cue_nutrients_enz2_3.png`). Pulse 1; "crash" = first day after day 100 with 7-day CUE below 0.02:
+
+| Production | % degraded (range; SD) | Day 50 % | Day 95 % | Annual / net CUE | Taxa alive, day 365 | Crash day | Litter left at crash |
+|---|---|---|---|---|---|---|---|
+| x2 | 74 (47-93; 14) | 197 | - | 0.341 / 0.162 | 91 | 245 | 31 % |
+| x2.5 | 88 (69-98; 9) | 141 | 336 | 0.368 / 0.138 | 66 | 222 | 16 % |
+| x3, 0.055 | 90 (73-99; 8) | 129 | 320 | 0.375 / 0.130 | 49 | 213 | 13 % |
+| x3, 0.05 | 93 (80-99; 6) | 120 | 281 | 0.382 / 0.127 | 42 | 208 | 10 % |
+
+- Lower enzyme production delays the crash by at most 5 weeks and leaves more litter behind when it comes (31 % at x2): decomposition and the crash do not converge on the end of the year. Pulses 2-3 repeat pulse 1 in every setting.
+- **The collapse is not N or P limitation.** At the crash, NH4 and PO4 are accumulating (0.4-3.3 N and 0.03-0.25 P per cell and rising through the dry season to 14-21 N and 0.9-1.2 P), biomass N:C is 0.26-0.32 and P:C 0.022-0.026 (thresholds 0.138 and about 0.014), and rebalancing is 0 from day 100 on in every setting.
+- **It is C supply per cell.** Uptake per living cell falls continuously from about 0.10 C per day in the first weeks to 0.03 by day 150 and 0.02 by day 220 (the standing crop grows faster than the decay flux it feeds on), and daily CUE tracks it down from 0.58 to 0.35 by day 150 before the dry season (Psi below -3 MPa from day 190) adds drought kills and a further 30-40 % cut in uptake and decay; the fixed per-cell maintenance then exceeds supply, endogenous respiration takes over and CUE goes to 0 (day 208-245). Lower production lowers the peak biomass (127 -> 83 C per cell) but per-cell uptake is no higher, because the decay flux falls in proportion.
