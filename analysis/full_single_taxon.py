@@ -131,7 +131,12 @@ def _job(args):
             C = np.asarray(eco.Microbes["C"])
             alive = C > 0
             sc = by(sub_idx, eco.Substrates, subs)
-            upt = {m: max(m_before[m] - m_after[m], 0.0) for m in org}
+            # uptake() first adds the decay products of this step to the monomer pools, then removes the uptake
+            mr = eco.Monomers.index
+            is_org_m = (mr != "NH4") & (mr != "PO4") & (mr != "FermProd")
+            dec_c = np.asarray(eco.Monomer_ratios["C"], dtype=float)[is_org_m] * np.asarray(eco.DecayRates, dtype=float)
+            dec = {m: float(dec_c[np.asarray(mr)[is_org_m] == m].sum()) / G for m in org}
+            upt = {m: max(m_before[m] + dec[m] - m_after[m], 0.0) for m in org}
             row = dict(doy=i + 1, litter_remaining_pct=100 * sum(sc[s] for s in lit) / lit0,
                        biomass_C=float(C.sum()) / G, alive_cells=int(alive.sum()), CUE=float(eco.CUE_system),
                        C_uptake=float(np.asarray(eco.Taxon_Uptake_C).sum()) / G,
@@ -210,7 +215,8 @@ def main():
     print(f"{len(jobs)} runs -> {a.out_dir} [{a.label}]", flush=True)
     with Pool(a.procs) as pool:
         for n, (summ, s) in enumerate(pool.imap_unordered(_job, jobs), 1):
-            pd.DataFrame([summ]).to_csv(sp, mode="a", header=not os.path.exists(sp), index=False)
+            prev = pd.read_csv(sp) if os.path.exists(sp) else None   # rewritten whole: columns differ between inputs
+            pd.concat([prev, pd.DataFrame([summ])] if prev is not None else [pd.DataFrame([summ])]).to_csv(sp, index=False)
             old = pd.read_csv(tp) if os.path.exists(tp) else None
             pd.concat([old, s] if old is not None else [s]).to_csv(tp, index=False)
             print(f"  {n}/{len(jobs)} {summ['climate']} {summ['kinetics']} seed={summ['seed']}: "
