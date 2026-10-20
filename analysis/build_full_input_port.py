@@ -3,7 +3,7 @@ Build the full-model input folder from the final minimal parameter set (Phase 2.
 
 Usage:
     python analysis/build_full_input_port.py [--src input_e1500_enz2_km25_osmorange2_bac] [--dst input_full_port_bac]
-        [--litter-scale 1.245] [--force]
+        [--litter-scale 1.245] [--enzyme-factor 4.5] [--force]
 
 Starts from the latest bacterial full-model folder (fb 0) and applies:
 
@@ -17,12 +17,17 @@ Energy yields (monomer_energy.csv)
 
 Parameters (parameters.csv), as in the final minimal baseline (SENSITIVITY_SUMMARY sections 29-40)
   - Maint_E_Rate_Const 4, Enz_loss_rate 0.05, Vmax_Km 6 (Uptake_Vmax_Km 0.25 unchanged), HSP_prod_E_cost 600,
-    Osmo_prod_E_cost 150, Input_NH4 0.05, Input_PO4 0.005 (beta 1, psi slopes 0.1, R_endo / R_stoich /
-    Mineral_Uptake_Passive 1 are already set in the source folder).
+    Osmo_prod_E_cost 150, Input_PO4 0.005 (beta 1, psi slopes 0.1, R_endo / R_stoich / Mineral_Uptake_Passive 1 are
+    already set in the source folder).
+  - Input_NH4 0.1 (minimal: 0.05): the full-model taxon grows faster and runs out of NH4 at 0.05 (section 41c-41d).
   - Enzyme production normalised per taxon: NormalizeProd 1, so each taxon's total production is the per-gene rate x
-    Enz_per_taxon_max whatever its number of enzyme genes. Constit_Prod and Enz_Prod are set to the minimal totals
-    (0.00045 and 0.008) / Enz_per_taxon_max (40): 1.125e-5 and 2e-4 for every taxon (min = max). The trait ranges for
-    the community are set in step 2.3.
+    Enz_per_taxon_max whatever its number of enzyme genes. Constit_Prod and Enz_Prod are set to enzyme-factor (default
+    4.5) x the minimal totals (0.00045 and 0.008) / Enz_per_taxon_max (40): 5.0625e-5 and 9e-4 for every taxon
+    (min = max). The factor makes up for enzyme specificity: each full-model enzyme acts on one substrate, so a taxon's
+    decay capacity per unit production is about 7x lower than the minimal taxon's (section 41). The trait ranges for the
+    community are set in step 2.3.
+  - Single-taxon check at these settings (section 41d; ambient, MMRT): 91 % of the litter degraded, day 50 % 130,
+    day 95 % 313, CUE 0.37, endogenous respiration 34 % of respiration.
   - Arrhenius pre-exponential constants as in the minimal (matched to MMRT at 12.5-20 C on the main substrate):
     Vmax0 5e7, Uptake_Vmax0 4.2e7 (min = max; the source drew 1e7-1e8 per enzyme x substrate).
   - Not changed: osmolyte production ranges (community trait variation), HSP production, uptake gene costs, initial
@@ -44,7 +49,7 @@ LITTER = ["Mon_Cellulose", "Mon_Hemicellulose", "Mon_Starch", "Mon_Chitin", "Mon
 NECRO = {"FermProd": (690, 2, 0.5), "Mon_DeadMic": (700, 100, 0.4), "Mon_DeadEnz": (350, 5, 0.4)}
 MINIMAL_TOTAL = {"Constit_Prod": 0.00045, "Enz_Prod": 0.008}
 PARAMS = {"Maint_E_Rate_Const": 4.0, "Enz_loss_rate": 0.05, "Vmax_Km": 6.0, "HSP_prod_E_cost": 600.0,
-          "Osmo_prod_E_cost": 150.0, "Input_NH4": 0.05, "Input_PO4": 0.005, "NormalizeProd": 1,
+          "Osmo_prod_E_cost": 150.0, "Input_NH4": 0.1, "Input_PO4": 0.005, "NormalizeProd": 1,
           "Vmax0": 5e7, "Uptake_Vmax0": 4.2e7}
 FERM_COND = 0.1
 
@@ -69,6 +74,7 @@ def main():
     ap.add_argument("--src", default=os.path.join(HERE, "..", "input_e1500_enz2_km25_osmorange2_bac"))
     ap.add_argument("--dst", default=os.path.join(HERE, "..", "input_full_port_bac"))
     ap.add_argument("--litter-scale", type=float, default=1.245)
+    ap.add_argument("--enzyme-factor", type=float, default=4.5)
     ap.add_argument("--force", action="store_true")
     a = ap.parse_args()
     src, dst = os.path.abspath(a.src), os.path.abspath(a.dst)
@@ -95,12 +101,12 @@ def main():
     n_max = float(par["Enz_per_taxon_max"])
     changes = dict(PARAMS)
     for k, tot in MINIMAL_TOTAL.items():
-        changes[k] = float(f"{tot / n_max:.6g}")
+        changes[k] = float(f"{a.enzyme_factor * tot / n_max:.6g}")
     set_params(p_par, changes)
 
     with open(os.path.join(dst, "README.md"), "w") as fh:
         fh.write(f"# {os.path.basename(dst)}\n\nBuilt by `analysis/build_full_input_port.py` from "
-                 f"`{os.path.basename(src)}/` (litter scale {a.litter_scale}). See the script docstring for every "
+                 f"`{os.path.basename(src)}/` (litter scale {a.litter_scale}, enzyme factor {a.enzyme_factor}). See the script docstring for every "
                  f"change.\n\nLitter-C-weighted maximum energy per unit C taken up: {before:.0f} (source) -> "
                  f"{after:.0f} (minimal IdealSub: 1373).\n")
     print(f"built {dst}; litter-weighted energy per uptake C {before:.0f} -> {after:.0f}; "

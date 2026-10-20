@@ -17,10 +17,10 @@ Uptake_C_cost_max,0.02441
 NormalizeUptake,0
 Enz_per_taxon_min,0
 Enz_per_taxon_max,40
-Enz_Prod_min,0.0002
-Enz_Prod_max,0.0002
-Constit_Prod_min,1.125e-05
-Constit_Prod_max,1.125e-05
+Enz_Prod_min,0.0009
+Enz_Prod_max,0.0009
+Constit_Prod_min,5.0625e-05
+Constit_Prod_max,5.0625e-05
 NormalizeProd,1.0
 Osmo_per_taxon_min,1
 Osmo_per_taxon_max,1
@@ -54,7 +54,7 @@ Monomer_Substrate_Ratio,0.0001
 Init_NH4,0
 Init_PO4,0
 Init_FermProd,0
-Input_NH4,0.05
+Input_NH4,0.1
 Input_PO4,0.005
 Input_FermProd,0
 death_rate_bac,0.001
