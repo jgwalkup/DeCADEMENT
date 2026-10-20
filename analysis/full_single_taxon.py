@@ -3,13 +3,16 @@
 
     python analysis/full_single_taxon.py OUT_DIR --label NAME [--input input_full_port_bac] [--seeds 0 1 2]
         [--climates CSV ...] [--kinetics 1] [--side 20] [--days 365] [--procs 2]
-        [--set NAME=VALUE ...] [--runtime NAME=VALUE ...] [--litter-C TOTAL]
+        [--set NAME=VALUE ...] [--runtime NAME=VALUE ...] [--litter-C TOTAL] [--km-factor SUBSTRATE=F ...]
 
 Defaults give the single-taxon check: runtime n_taxa 1, taxa_per_box 1, fb 0, one pulse; parameters
 Enz_per_taxon_min = max = 40 (a generalist with 40 of the 50 enzyme genes), R_endo 1. --set and --runtime override
 any of these (NAME may be a NAME_min / NAME_max stem, or monomer_energy:<row>:<column>). --litter-C scales every litter
 substrate's C, N and P in initial_substrates.csv (and sub_mon_inputs.csv) so the litter C totals TOTAL (composition and
-stoichiometry kept). Appends to OUT_DIR/timeseries.csv.gz and OUT_DIR/summary.csv (rows labelled NAME; existing rows with
+stoichiometry kept). --km-factor multiplies the half-saturation constant of the named substrates for every enzyme
+(Km = Vmax_Km x factor x Vmax under MMRT, Km0 x factor under Arrhenius), set on the initialised data before the Grid is
+built (no change to the model code); in the first-order regime (substrate well below Km) it divides that substrate's
+decay rate by the factor. Appends to OUT_DIR/timeseries.csv.gz and OUT_DIR/summary.csv (rows labelled NAME; existing rows with
 the same label, climate, kinetics and seed are skipped).
 
 Daily series: litter remaining (% of initial litter C, all substrates except DeadMic and DeadEnz), each substrate's C
@@ -78,7 +81,7 @@ def _prepare(src, work, changes, runtime, side, days, climate, litter_C):
 
 
 def _job(args):
-    label, src, changes, runtime, side, days, climate, kin, seed, litter_C = args
+    label, src, changes, runtime, side, days, climate, kin, seed, litter_C, km_factor = args
     from initialization import initialize_data
     from grid import Grid
     tmp = tempfile.mkdtemp()
@@ -90,6 +93,16 @@ def _job(args):
         np.random.seed(seed)
         rt = pd.read_csv("runtime.txt", header=None, index_col=0, sep="\t").drop("output_format").astype(float)
         data = initialize_data(rt)
+        if km_factor:   # substrate-specific Km multipliers (test lever): Km = Vmax_Km x factor x Vmax (MMRT; Km0 x factor)
+            from utility import expand
+            Gs = int(rt.loc["gridsize", 1])
+            km0 = data["Km0"].iloc[:len(data["Substrate_index"])]
+            fac = pd.DataFrame(1.0, index=km0.index, columns=km0.columns)
+            for sname, f in km_factor.items():
+                fac.loc[sname] = float(f)
+            old_f = data["Km_factor"]
+            data["Km_factor"] = (expand(fac, Gs) if old_f is None else old_f * expand(fac, Gs).values).astype("float32")
+            data["Km0"] = (data["Km0"] * expand(fac, Gs).values).astype("float32")
         eco = Grid(rt, data)
         G = side * side
         subs = list(data["Substrate_index"])
@@ -197,6 +210,8 @@ def main():
     ap.add_argument("--set", nargs="*", default=[])
     ap.add_argument("--runtime", nargs="*", default=[])
     ap.add_argument("--litter-C", type=float, default=None)
+    ap.add_argument("--km-factor", nargs="*", default=[], metavar="SUBSTRATE=FACTOR",
+                    help="multiply the enzyme Km of these substrates (all enzymes) by FACTOR")
     a = ap.parse_args()
     changes = dict(DEFAULT_SET, **_parse(a.set))
     runtime = dict(DEFAULT_RUNTIME, **_parse(a.runtime))
@@ -211,7 +226,7 @@ def main():
         cn = os.path.basename(c).replace(".csv", "").replace("climate_", "")
         if (a.label, cn, "MMRT" if k == 1 else "Arrhenius", sd) not in done:
             jobs.append((a.label, os.path.abspath(a.input), changes, runtime, a.side, a.days, os.path.abspath(c), k, sd,
-                         a.litter_C))
+                         a.litter_C, _parse(a.km_factor)))
     print(f"{len(jobs)} runs -> {a.out_dir} [{a.label}]", flush=True)
     with Pool(a.procs) as pool:
         for n, (summ, s) in enumerate(pool.imap_unordered(_job, jobs), 1):

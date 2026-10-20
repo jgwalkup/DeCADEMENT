@@ -1380,3 +1380,18 @@ Warming almost never lowers degradation (<= 1 % of points lose more than 5 point
 - Uptake follows decomposition: cellulose 34 % of the C taken up, hemicellulose 20-22 %, lignin 11-12 %, necromass (DeadMic + DeadEnz) 15-21 %, the other monomers 15-17 %. Starch, protein 1, chitin, OrgP and protein 3 are gone by about day 150-200; cellulose and lignin decay together (the model ties cellulose decay to the lignin content, LCI) and form the tail, with hemicellulose and protein 2.
 - Doubling the cellulose yield finishes most of the tail (cellulose left 13 -> 4 %, day 95 % 313 -> 253) and raises CUE to 0.40 and lowers the seed SD of % degraded from 5 to about 1 point; adding lignin x2 gives little more (lignin's uptake share is a third of cellulose's). Lignin x2 alone: +2 points of degradation.
 - The extra energy brings N limitation back in part (rebalancing 2-5 % of uptake at cellulose x1.5-2, with NH4 0.1), and endogenous respiration stays at 36-37 %: the starvation after the substrates run out is not changed by the yields.
+
+**41f. Slower decay of the labile substrates** (test lever, not a model input yet: `full_single_taxon.py --km-factor` multiplies the enzyme Km of the named substrates, set on the initialised data before the Grid is built; in the first-order regime it divides their decay rate by the factor. Labile = starch, proteins 1-3, chitin, OrgP1-2. Enzyme production x4.5, NH4 0.1, cellulose E_resp x2 unless stated; ambient climate, MMRT, 3 seeds; figure `substrates_labile.png`, table `labile_km_summary.csv`):
+
+| Labile Km | % degraded | Day 50 % | Day 95 % | CUE | Rebalancing C (% of uptake) | Endogenous resp. (% of resp.) | Starch / cellulose half-life (days) |
+|---|---|---|---|---|---|---|---|
+| x1 | 97 | 120 | 253 | 0.40 | 4.1 | 36 | 76 / 131 |
+| x2 | 96 | 149 | 303 | 0.40 | 4.1 | 30 | 115 / 156 |
+| x4 | 94 | 180 | - | 0.39 | 5.1 | 17 | 171 / 181 |
+| x8 | 87 | 210 | - | 0.39 | 5.7 | 11 | 265 / 202 |
+| x4, hemicellulose x2 | 88 | 214 | - | 0.40 | 3.6 | 12 | 189 / 199 |
+| x4, cellulose E_resp x1 (port) | 84 | 207 | - | 0.35 | 0.6 | 20 | 192 / 205 |
+
+- Slowing the labile pools spreads decomposition over the year: day 50 % moves from 120 to 149 (x2) and 180 (x4) (minimal 244), biomass on day 100 falls from 72 to 43 and 27 C per cell, and endogenous respiration falls from 36 to 30 and 17 % of respiration, because less of the year is spent after the substrates are gone. CUE stays at 0.39-0.40.
+- At x4 and above the labile pools become the tail (proteins, chitin and OrgP 12-17 % left on day 365 at x4) and the year ends with 6-13 % of the litter left; x2 keeps the order labile -> hemicellulose -> cellulose / lignin and finishes 96 %.
+- N limitation is unchanged (rebalancing 4-6 % of uptake): the early NH4 crunch is relieved (minimum NH4 on days 30-150 rises from 0.0007 to 0.019 per cell at x4) but rebalancing still occurs later, while cellulose and hemicellulose (no N) dominate uptake.
