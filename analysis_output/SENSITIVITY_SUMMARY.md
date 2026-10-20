@@ -1551,3 +1551,20 @@ Pulse 5 (pulse 1 within 1 point of degradation, 3 days, 0.01 CUE), ambient / +10
 **48e. Enzyme production x2.5, turnover 0.045, `Enzymes_per_sub` 2** (ten seeds, one pulse, Mac): 92 % degraded (77-99; SD 7), day 50 % 130, day 95 % 305, annual / net CUE 0.376 / 0.135, 59 taxa alive on day 365, 10,000 starvation deaths, crash day 216 with 12 % of the litter left. It sits between x2.5 / 0.05 (88 %, 66 taxa) and x3 / 0.055 (90 %, 49 taxa): slightly more complete than either, with a spread close to x3 / 0.05's. Same stranded pools in the same seeds (cellulose and lignin in 0 and 1, hemicellulose in 5, lignin in 9).
 
 **48f. Enzyme production x2, turnover 0.045, `Enzymes_per_sub` 2** (ten seeds, one pulse, Mac): 81 % degraded (57-96; SD 12), day 50 % 170, day 95 % 355, annual CUE 0.350, 88 taxa alive on day 365, 3,900 starvation deaths, crash day 238 with 25 % of the litter left. Figures across the six settings run with `Enzymes_per_sub` 2: `substrates_all_settings.png`, `biomass_cue_all_settings.png` (litter, biomass, daily and cumulative CUE, uptake per cell, taxa alive), per-seed `substrates_enz2_loss0.045_seeds.png` and `substrates_enz2.5_loss0.045_seeds.png`. Daily CUE follows one curve in all six settings until about day 150 (0.58 -> 0.35, tracking uptake per cell), after which the settings separate only in when the drop to 0 comes (day 208-245); the cumulative CUE is 0.34-0.38 everywhere.
+
+**48g. Enzyme production x1.5 and x2 with turnover 0.04, `Enzymes_per_sub` 2** (ten seeds, one pulse, Mac; figures `substrates_all_settings.png` and `biomass_cue_all_settings.png` now cover eight settings; per-seed `substrates_enz1.5_loss0.04_seeds.png`, `substrates_enz2_loss0.04_seeds.png`). Net CUE = C retained / C taken up over the year and all taxa, unfloored (the community's annual C balance; adopted 2026-10-20 as the CUE to report):
+
+| Production, turnover | % degraded (range; SD) | Day 50 % | Day 95 % | Annual (floored) / net CUE | Taxa alive, day 365 | Starvation deaths | Crash day (litter left) |
+|---|---|---|---|---|---|---|---|
+| x1.5, 0.04 | 62 (32-85; 16) | 255 | - | 0.316 / 0.194 | 100 | 450 | 255 (46 %) |
+| x2, 0.04 | 86 (67-98; 10) | 154 | 351 | 0.359 / 0.153 | 83 | 4,950 | 231 (20 %) |
+| x2, 0.045 | 81 (57-96; 12) | 170 | 355 | 0.350 / 0.156 | 88 | 3,930 | 238 (25 %) |
+| x2, 0.05 | 74 (47-93; 14) | 197 | - | 0.341 / 0.162 | 91 | 2,830 | 245 (31 %) |
+| x2.5, 0.045 | 92 (77-99; 7) | 130 | 305 | 0.376 / 0.135 | 59 | 10,030 | 216 (12 %) |
+| x2.5, 0.05 | 88 (69-98; 9) | 141 | 336 | 0.368 / 0.138 | 66 | 8,510 | 222 (16 %) |
+| x3, 0.055 | 90 (73-99; 8) | 129 | 320 | 0.375 / 0.130 | 49 | 11,870 | 213 (13 %) |
+| x3, 0.05 | 93 (80-99; 6) | 120 | 281 | 0.382 / 0.127 | 42 | 12,980 | 208 (10 %) |
+
+- x2 / 0.04 is the slowest setting that still reaches 95 % within the year (day 351) and keeps most taxa (83); x1.5 / 0.04 keeps all 100 and has the highest net CUE (0.19), but degrades 62 % with the widest spread and the crash comes with 46 % of the litter left.
+- Across the eight settings annual (floored) CUE and net CUE move in opposite directions (0.32 -> 0.38 against 0.19 -> 0.13): faster decomposition raises the efficiency during uptake but builds more biomass to starve afterwards.
+- The daily CUE and per-cell uptake curves of all eight settings coincide until about day 150; the settings differ only in the timing of the collapse (day 208-255).
