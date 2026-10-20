@@ -12,8 +12,14 @@ substrate's C, N and P in initial_substrates.csv (and sub_mon_inputs.csv) so the
 stoichiometry kept). --km-factor multiplies the half-saturation constant of the named substrates for every enzyme
 (Km = Vmax_Km x factor x Vmax under MMRT, Km0 x factor under Arrhenius), set on the initialised data before the Grid is
 built (no change to the model code); in the first-order regime (substrate well below Km) it divides that substrate's
-decay rate by the factor. Appends to OUT_DIR/timeseries.csv.gz and OUT_DIR/summary.csv (rows labelled NAME; existing rows with
+decay rate by the factor. Appends to OUT_DIR/summary.csv and writes one daily series per run to OUT_DIR/ts/ (read them with
+load_timeseries(OUT_DIR)); summary rows are labelled NAME; existing rows with
 the same label, climate, kinetics and seed are skipped).
+
+--pulses N runs N consecutive pulses of DAYS days; between pulses substrates, monomers and enzymes are reset and the
+community is re-placed from each taxon's occupied cell-days over the pulse (Grid.repopulation, as in dementpy.py).
+The summary then has one row per pulse, with the number of taxa that occupied any cell during the pulse, the effective
+number of taxa (exp of the Shannon index of the cell-day shares) and the largest taxon's share.
 
 Daily series: litter remaining (% of initial litter C, all substrates except DeadMic and DeadEnz), each substrate's C
 (per grid cell), biomass, CUE (model), C uptake, energy production, endogenous respiration C, respiration, and the C
@@ -52,7 +58,7 @@ def _parse(items):
     return out
 
 
-def _prepare(src, work, changes, runtime, side, days, climate, litter_C):
+def _prepare(src, work, changes, runtime, side, days, climate, litter_C, pulses=1):
     shutil.copytree(src, work)
     me = {k: v for k, v in changes.items() if k.startswith("monomer_energy:")}
     set_params(os.path.join(work, "parameters.csv"), {k: float(v) for k, v in changes.items() if k not in me})
@@ -75,18 +81,18 @@ def _prepare(src, work, changes, runtime, side, days, climate, litter_C):
         si.loc[[i for i in si.index if i not in NECRO]] *= f
         si.to_csv(ip)
     set_runtime(os.path.join(work, "runtime.txt"),
-                dict(x=side, y=side, gridsize=side * side, pulse=1, end_time=days, **runtime))
+                dict(x=side, y=side, gridsize=side * side, pulse=pulses, end_time=days, **runtime))
     if climate:
         shutil.copy(climate, os.path.join(work, "climate.csv"))
 
 
 def _job(args):
-    label, src, changes, runtime, side, days, climate, kin, seed, litter_C, km_factor = args
+    label, src, changes, runtime, side, days, climate, kin, seed, litter_C, km_factor, pulses = args
     from initialization import initialize_data
     from grid import Grid
     tmp = tempfile.mkdtemp()
     work = os.path.join(tmp, "in")
-    _prepare(src, work, changes, dict(runtime, Kinetics_Model=kin), side, days, climate, litter_C)
+    _prepare(src, work, changes, dict(runtime, Kinetics_Model=kin), side, days, climate, litter_C, pulses)
     cwd = os.getcwd()
     os.chdir(work)
     try:
@@ -122,7 +128,7 @@ def _job(args):
         route = me.E_value ** ((2 / np.log10(me.E_ferm)) ** fc)
         e_max = (route * ((1 - fc) * me.E_resp + fc * me.E_ferm)).to_dict()
         T = int(rt.loc["n_taxa", 1])
-        stub = _RepopStub(pd.unique(eco.Microbes.index), days + 2)
+        stub = _RepopStub(pd.unique(eco.Microbes.index), days * pulses + 2)
         rows = []
         reb = {"C": 0.0}
         _orig_update_cue = eco._update_cue
@@ -132,11 +138,12 @@ def _job(args):
             return _orig_update_cue(rebalance_C_loss)
         eco._update_cue = _update_cue
         is_nh4, is_po4 = mon_idx == "NH4", mon_idx == "PO4"
-        for i in range(days):
+        for i in range(days * pulses):
+            pl = i // days
             reb["C"] = 0.0
-            eco.degradation(0, i)
+            eco.degradation(pl, i)
             m_before = by(mon_idx, eco.Monomers, org)
-            eco.uptake(0, i)
+            eco.uptake(pl, i)
             m_after = by(mon_idx, eco.Monomers, org)
             eco.metabolism(i)
             eco.mortality(i)
@@ -151,7 +158,7 @@ def _job(args):
             dec_c = np.asarray(eco.Monomer_ratios["C"], dtype=float)[is_org_m] * np.asarray(eco.DecayRates, dtype=float)
             dec = {m: float(dec_c[np.asarray(mr)[is_org_m] == m].sum()) / G for m in org}
             upt = {m: max(m_before[m] + dec[m] - m_after[m], 0.0) for m in org}
-            row = dict(doy=i + 1, litter_remaining_pct=100 * sum(sc[s] for s in lit) / lit0,
+            row = dict(pulse=pl + 1, doy=i - pl * days + 1, litter_remaining_pct=100 * sum(sc[s] for s in lit) / lit0,
                        biomass_C=float(C.sum()) / G, alive_cells=int(alive.sum()), taxa_alive=taxa_alive, CUE=float(eco.CUE_system),
                        C_uptake=float(np.asarray(eco.Taxon_Uptake_C).sum()) / G,
                        E_production=float(np.asarray(eco.Taxon_Uptake_E).sum()) / G,
@@ -173,16 +180,34 @@ def _job(args):
             row.update({f"U_{m}": v for m, v in upt.items()})
             rows.append(row)
             stub.Taxon_count_repop.iloc[:, i + 1] = alive.reshape(G, T).sum(axis=0)
+            if (i + 1) % days == 0 and pl < pulses - 1:   # new pulse: substrates, monomers, enzymes reset; community
+                eco.repopulation(stub, i, True)            # re-placed from each taxon's cell-days over the pulse
+        cell_days = stub.Taxon_count_repop.to_numpy()[:, 1:days * pulses + 1].reshape(T, pulses, days).sum(axis=2)
     finally:
         os.chdir(cwd)
         shutil.rmtree(tmp, ignore_errors=True)
-    s = pd.DataFrame(rows)
+    sall = pd.DataFrame(rows)
+    summs = []
+    for pl in range(pulses):
+        s = sall[sall.pulse == pl + 1].reset_index(drop=True)
+        summs.append(_summary(s, pl, cell_days[:, pl], label, climate, kin, seed, org, lit, e_max))
+    s = sall
+    for k, v in (("label", label), ("climate", summs[0]["climate"]), ("kinetics", summs[0]["kinetics"]), ("seed", seed)):
+        s.insert(0, k, v)
+    return summs, s
+
+
+def _summary(s, pl, cd, label, climate, kin, seed, org, lit, e_max):
     deg = 100 - s.litter_remaining_pct.to_numpy()
     w = s.C_uptake.clip(lower=0).to_numpy()
     U = s[[f"U_{m}" for m in org]].sum()
     eyield = sum(U[f"U_{m}"] * e_max[m] for m in org) / U.sum() if U.sum() > 0 else np.nan
+    share = cd / cd.sum() if cd.sum() > 0 else cd
+    nz = share[share > 0]
     summ = dict(label=label, climate=os.path.basename(climate or "climate.csv").replace(".csv", "").replace("climate_", ""),
-                kinetics="MMRT" if kin == 1 else "Arrhenius", seed=seed,
+                kinetics="MMRT" if kin == 1 else "Arrhenius", seed=seed, pulse=pl + 1,
+                taxa_occupied=int((cd > 0).sum()), taxa_effective=float(np.exp(-(nz * np.log(nz)).sum())) if nz.size else 0.0,
+                top_taxon_share=float(share.max()) if share.size else np.nan,
                 litter_degraded=float(deg[-1]),
                 day_50pct=float(np.argmax(deg >= 50) + 1) if (deg >= 50).any() else 366.0,
                 day_95pct=float(np.argmax(deg >= 95) + 1) if (deg >= 95).any() else 366.0,
@@ -193,9 +218,22 @@ def _job(args):
                 taxa_alive_end=int(s.taxa_alive.iloc[-1]), taxa_alive_min=int(s.taxa_alive.min()),
                 **{f"uptake_share_{m}": float(U[f"U_{m}"] / U.sum()) for m in org},
                 **{f"left_{x}": float(100 * s[f"S_{x}"].iloc[-1] / max(s[f"S_{x}"].iloc[0], 1e-12)) for x in lit})
-    for k, v in (("label", label), ("climate", summ["climate"]), ("kinetics", summ["kinetics"]), ("seed", seed)):
-        s.insert(0, k, v)
-    return summ, s
+    return summ
+
+
+def _atomic_csv(df, path):
+    tmp = path + ".tmp" + (".gz" if path.endswith(".gz") else "")
+    df.to_csv(tmp, index=False)
+    os.replace(tmp, path)
+
+
+def load_timeseries(out_dir):
+    """All daily series of a run directory (OUT_DIR/ts/*.csv.gz, or the older single OUT_DIR/timeseries.csv.gz)."""
+    import glob
+    files = sorted(glob.glob(os.path.join(out_dir, "ts", "*.csv.gz")))
+    if files:
+        return pd.concat([pd.read_csv(f) for f in files], ignore_index=True)
+    return pd.read_csv(os.path.join(out_dir, "timeseries.csv.gz"))
 
 
 def main():
@@ -208,6 +246,7 @@ def main():
     ap.add_argument("--kinetics", type=int, nargs="+", default=[1])
     ap.add_argument("--side", type=int, default=20)
     ap.add_argument("--days", type=int, default=365)
+    ap.add_argument("--pulses", type=int, default=1)
     ap.add_argument("--procs", type=int, default=2)
     ap.add_argument("--set", nargs="*", default=[])
     ap.add_argument("--runtime", nargs="*", default=[])
@@ -220,7 +259,7 @@ def main():
     changes = dict({"R_endo": 1} if a.community else DEFAULT_SET, **_parse(a.set))
     runtime = dict({} if a.community else DEFAULT_RUNTIME, **_parse(a.runtime))
     os.makedirs(a.out_dir, exist_ok=True)
-    sp, tp = os.path.join(a.out_dir, "summary.csv"), os.path.join(a.out_dir, "timeseries.csv.gz")
+    sp = os.path.join(a.out_dir, "summary.csv")
     done = set()
     if os.path.exists(sp):
         prev = pd.read_csv(sp)
@@ -230,17 +269,19 @@ def main():
         cn = os.path.basename(c).replace(".csv", "").replace("climate_", "")
         if (a.label, cn, "MMRT" if k == 1 else "Arrhenius", sd) not in done:
             jobs.append((a.label, os.path.abspath(a.input), changes, runtime, a.side, a.days, os.path.abspath(c), k, sd,
-                         a.litter_C, _parse(a.km_factor)))
+                         a.litter_C, _parse(a.km_factor), a.pulses))
     print(f"{len(jobs)} runs -> {a.out_dir} [{a.label}]", flush=True)
     with Pool(a.procs) as pool:
-        for n, (summ, s) in enumerate(pool.imap_unordered(_job, jobs), 1):
+        for n, (summs, s) in enumerate(pool.imap_unordered(_job, jobs), 1):
             prev = pd.read_csv(sp) if os.path.exists(sp) else None   # rewritten whole: columns differ between inputs
-            pd.concat([prev, pd.DataFrame([summ])] if prev is not None else [pd.DataFrame([summ])]).to_csv(sp, index=False)
-            old = pd.read_csv(tp) if os.path.exists(tp) else None
-            pd.concat([old, s] if old is not None else [s]).to_csv(tp, index=False)
-            print(f"  {n}/{len(jobs)} {summ['climate']} {summ['kinetics']} seed={summ['seed']}: "
+            _atomic_csv(pd.concat([prev, pd.DataFrame(summs)] if prev is not None else [pd.DataFrame(summs)]), sp)
+            r0 = s.iloc[0]
+            os.makedirs(os.path.join(a.out_dir, "ts"), exist_ok=True)
+            _atomic_csv(s, os.path.join(a.out_dir, "ts", f"{r0.label}__{r0.climate}__{r0.kinetics}__{r0.seed}.csv.gz"))
+            summ = summs[-1]
+            print(f"  {n}/{len(jobs)} {summ['climate']} {summ['kinetics']} seed={summ['seed']}: pulse {summ['pulse']} "
                   f"{summ['litter_degraded']:.1f} % degraded, CUE {summ['CUE_annual']:.3f}, "
-                  f"E/uptake C {summ['E_max_per_uptake_C']:.0f}", flush=True)
+                  f"taxa occupied {summ['taxa_occupied']}", flush=True)
 
 
 if __name__ == "__main__":

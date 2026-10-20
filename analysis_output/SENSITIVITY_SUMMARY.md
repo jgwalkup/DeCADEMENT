@@ -1409,3 +1409,24 @@ Warming almost never lowers degradation (<= 1 % of points lose more than 5 point
 - The faster growth brings N limitation back at NH4 0.1 (rebalancing 7-11 % of the C taken up), so CUE is 0.02-0.03 lower than the single taxon's.
 - All 100 taxa persist until the substrates run out (day 200-280); then starvation and the dry season remove most of them: 25 taxa have living cells on day 365 at ambient, 3 at +5 C and +10 C. This die-off does not by itself remove taxa from multi-pulse runs: `Grid.repopulation` re-seeds every taxon in proportion to its occupied cell-days over the whole pulse, so taxa that were abundant during the growing phase return even if they have no living cells on day 365.
 - Warming advances decomposition (day 50 % 94 -> 79) without changing its completeness; CUE falls by 0.01-0.02 and rebalancing rises.
+
+## 43. Phase 2.3: multi-pulse community tests (2026-10-19)
+
+**Setup:** `full_single_taxon.py --community --pulses 5` (new option: between pulses substrates, monomers and enzymes are reset and `Grid.repopulation` re-places the community from each taxon's occupied cell-days over the pulse; per-pulse summary with the taxa occupying cells during the pulse, the effective number of taxa (exp of the Shannon index of cell-day shares) and the largest taxon's share). `input_full_port_bac/` as in section 42, 100 taxa, 20x20, MMRT, ambient and +10 C, 3 seeds, 5 pulses. Tested one at a time: `Input_NH4` 0.15 (baseline 0.1); enzyme production x3.5 instead of x4.5 (ranges Constit 3.15e-5-4.92e-5, Enz_Prod 5.6e-4-8.75e-4 per gene); `taxa_per_box` 0.01 (baseline 0.05, about 1 instead of 5 cells per grid cell at the start). Figure `community_multipulse.png`, table `community_multipulse_summary.csv` (`full_port_community/`). (The daily series of these runs were lost when the session's processes were stopped mid-write; the runner now writes one series file per run to OUT_DIR/ts/ with atomic writes.)
+
+Pulse 5 (pulse 1 within 1 point of degradation, 3 days, 0.01 CUE), ambient / +10 C:
+
+| Setting | % degraded | Day 50 % | Day 95 % | CUE | Rebalancing C (% of uptake) | Endogenous resp. (%) | Taxa occupied | Effective taxa |
+|---|---|---|---|---|---|---|---|---|
+| Baseline | 96 / 97 | 107 / 90 | 240 / 220 | 0.35 / 0.34 | 2.5 / 4.7 | 34 / 36 | 79 / 83 | 54 / 56 |
+| NH4 0.15 | 96 / 96 | 108 / 91 | 241 / 219 | 0.35 / 0.34 | 2.1 / 3.7 | 34 / 36 | 80 / 81 | 54 / 55 |
+| Enzyme x3.5 | 87 / 87 | 138 / 116 | 304 / 295 | 0.36 / 0.35 | 0.1 / 0.7 | 32 / 35 | 77 / 79 | 51 / 51 |
+| taxa_per_box 0.01 | 95 / 95 | 126 / 106 | 259 / 231 | 0.36 / 0.35 | 1.5 / 3.5 | 33 / 35 | 50 / 51 | 41 / 40 |
+
+(Seed SD of % degraded: baseline 3.5-3.7, NH4 0.15 4.3-4.8, enzyme x3.5 12-13, taxa_per_box 0.01 5-6 points.)
+
+- **Decomposition, CUE and rebalancing are stable from pulse to pulse** in every setting (changes of <= 1 point, 3 days and 0.007 CUE from pulse 1 to 5), so the re-seeded community reproduces the first year's function.
+- **NH4 0.15 shifts the limitation from N to P rather than removing it:** around the rebalancing peak (day 82-107) the baseline has NH4 at about 0 and PO4 0.003-0.005, while with NH4 0.15 NH4 stays at 0.04-0.05 and PO4 is drawn to about 0 (biomass N:C 0.22-0.23 vs 0.18). Rebalancing falls only from 2.9 / 5.2 to 2.5 / 4.1 % (pulse 1) and CUE does not change.
+- **Lower enzyme production removes nearly all rebalancing** (0.1-1 %) and raises CUE by about 0.005, but decomposition falls to 87 % with day 95 % at 295-304 and the spread between seeds triples (SD 12 points): at x3.5 some draws of the community fall near the decomposition threshold.
+- **Lower initial density** slows the first months (day 50 % +16-20 days) and halves rebalancing, with 95 % degraded and CUE 0.35-0.36; it also loses taxa faster: 50 taxa still occupy cells in pulse 5 (vs 77-83) and the effective number falls to 40.
+- **Diversity declines in every setting:** taxa occupying cells fall from 100 to 77-83 and the effective number from about 87 to 51-56 by pulse 5, still falling; the largest taxon's share is 2.6-3.7 %, so no taxon dominates yet.

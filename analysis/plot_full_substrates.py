@@ -15,6 +15,11 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
 import numpy as np  # noqa: E402
 import pandas as pd  # noqa: E402
+import os  # noqa: E402
+import sys  # noqa: E402
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from full_single_taxon import load_timeseries  # noqa: E402
 
 COLORS = {"Cellulose": "#1c5cab", "Hemicellulose": "#6fa8e8", "Starch": "#b7d4f5", "Lignin": "#5c4033",
           "Chitin": "#e08a1e", "Protein1": "#2e8b57", "Protein2": "#5fb37f", "Protein3": "#9ed4b0",
@@ -34,7 +39,7 @@ def main():
         lab, rest = spec.split("=", 1)
         d, rl = rest.rsplit(":", 1)
         if d not in cache:
-            cache[d] = pd.read_csv(f"{d}/timeseries.csv.gz")
+            cache[d] = load_timeseries(d)
         t = cache[d]
         g = t[(t.label == rl) & (t.climate == a.climate) & (t.kinetics == a.kinetics)].groupby("doy").mean(
             numeric_only=True)
