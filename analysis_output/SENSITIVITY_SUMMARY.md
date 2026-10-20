@@ -1597,3 +1597,16 @@ Pulse 5 (pulse 1 within 1 point of degradation, 3 days, 0.01 CUE), ambient / +10
 - Moving down the ratio-60 line (x3 / 0.05 -> x2 / 0.035 -> x1.5 / 0.025) keeps raising survival (42 -> 80 -> 96 taxa) and net CUE (0.127 -> 0.147 -> 0.181), lowering peak biomass (127 -> 115 -> 101) and starvation deaths (13,000 -> 6,000 -> 1,500), for 5 points of degradation and 40 days of delay at day 50 %. The crash still comes at day 208-244 in all three.
 
 **48j. Enzyme production x1.5, turnover 0.02 (ratio 75), `Enzymes_per_sub` 2** (ten seeds, one pulse, Mac; figures `substrates_ratio_line.png` (x1.5 / 0.02, x1.5 / 0.025, x2 / 0.035, x3 / 0.05), `substrates_enz1.5_loss0.02_seeds.png`; `biomass_cue_all_settings.png` now thirteen settings): 94 % degraded (85-99; SD 4.9, the narrowest of the series), day 50 % 143, day 95 % 306, net CUE 0.169, 94 taxa alive on day 365, 2,300 starvation deaths, peak biomass 115, crash day 233 with 13 % of the litter left. Against x2 / 0.035: 3 points more complete, the same day 50 %, 15 days earlier at day 95 %, 14 more surviving taxa, net CUE 0.169 vs 0.147. The higher ratio (75) gives a larger long-run enzyme pool and the slow turnover delays its build-up, so decomposition starts like x1.5 / 0.025 and finishes like x3 / 0.05, while the low production keeps the enzyme C cost, and so the starvation, low. The crash is unchanged in kind (day 233).
+
+**48k. x1.5 / 0.02 over five pulses** (ten seeds, Mac, label `enz1.5_loss0.02_eps2_oulse5`; figure `enz1.5_loss0.02_pulses.png`):
+
+| Pulse | % degraded (SD) | Day 50 % | Day 95 % | Net CUE | Peak biomass | Taxa occupying cells | Taxa alive, day 365 | Effective taxa | Starvation deaths |
+|---|---|---|---|---|---|---|---|---|---|
+| 1 | 94.4 (4.9) | 143 | 306 | 0.169 | 115 | 100 | 94 | 87 | 2,310 |
+| 2 | 94.3 (5.0) | 144 | 308 | 0.170 | 114 | 100 | 91 | 73 | 1,570 |
+| 3 | 94.2 (5.3) | 144 | 310 | 0.169 | 114 | 97 | 86 | 63 | 1,190 |
+| 4 | 94.1 (5.4) | 144 | 309 | 0.168 | 114 | 90 | 78 | 57 | 980 |
+| 5 | 94.2 (5.3) | 144 | 310 | 0.167 | 114 | 79 | 72 | 53 | 860 |
+
+- Function is constant across the five years: degradation, timing, CUE, biomass and the per-substrate remainder (cellulose 8.4-8.8 %, lignin 9.6-10.2 %) change by less than their seed-to-seed spread, and each seed holds its own level (the two weak seeds stay at 84-86 %, the strong ones at 98-99 %).
+- The community thins while function holds: taxa occupying any cell fall from 100 to 79 and the effective number from 87 to 53 by pulse 5, still declining; 36 taxa per seed are below 0.1 % of cell-days in pulse 5, and about 5 per seed gain more than a point of share. Starvation deaths fall from 2,300 to 860 as the rare taxa drop out. No taxon dominates (largest share 2.7 %).
