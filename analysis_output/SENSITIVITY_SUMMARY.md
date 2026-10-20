@@ -1506,3 +1506,16 @@ Pulse 5 (pulse 1 within 1 point of degradation, 3 days, 0.01 CUE), ambient / +10
 - Lower enzyme activity trades decomposition for survival: from x4 to x2 (turnover 0.05) degradation falls from 92 to 52 % and day 50 % moves from 119 to 265, while starvation deaths fall from 11,000 to 1,300 cells and 92 instead of 41 taxa have living cells on day 365. Annual CUE falls (0.357 -> 0.326), net CUE rises (0.122 -> 0.142) because less biomass is lost in the starvation phase. Rebalancing is 0 throughout.
 - The spread between community draws grows as enzyme activity falls (seed SD 7 -> 24 points; at x2 one community degrades 28 % and another 76 %), so at lower settings the outcome depends strongly on which taxa are drawn.
 - (A second, stray copy of the run script was running in the same output folder and added duplicate and +5 C rows; only the ambient runs, one row each, are used here.)
+
+## 48. Ten-seed check of two community settings (run on the Mac, 2026-10-20)
+
+**Setup:** `full_single_taxon.py --community`, 100 taxa, 20x20, ambient, MMRT, seeds 0-9, NH4 0.15, PO4 0.01, maintenance 4; enzyme production x3 with turnover 0.05 (3 pulses) and x4 with turnover 0.055 (1 pulse). Results in `full_port_community/tenseed/`.
+
+| Setting, pulse | % degraded (mean; range) | Day 50 % | Day 95 % | Annual / net CUE | Taxa alive, day 365 | Starvation deaths | Effective taxa |
+|---|---|---|---|---|---|---|---|
+| x3 / 0.05, pulse 1 | 87 (63-99) | 136 | 299 | 0.370 / 0.133 | 50 | 11,082 | 87 |
+| x3 / 0.05, pulse 3 | 87 (63-99) | 138 | 301 | 0.371 / 0.132 | 44 | 7,840 | 62 |
+| x4 / 0.055, pulse 1 | 93 (79-100) | 109 | 250 | 0.379 / 0.117 | 25 | 14,292 | 88 |
+
+- Ten seeds confirm the 3-seed means (section 47) and the year-to-year stability (pulse 3 = pulse 1 within 0.2 points); diversity keeps falling (87 -> 62 effective taxa by year 3).
+- **The spread between seeds is the community draw, not the parameter set:** the seed ranking is the same under both settings (seed 1 worst at 63 / 79 %, seed 4 best at 99 / 100 %). The poorly degrading communities strand one or two specific substrates: seed 5 leaves 51-63 % of the hemicellulose, seed 1 about 45 % of cellulose, hemicellulose and lignin, seed 8 lignin (30-46 %) and protein 1 (17-28 %). The seed sets the random enzyme-substrate assignment (`substrate_degradation_enzyme`: one required enzyme per substrate plus random extras, 50 enzymes for 12 substrates) and the gene draws, so a substrate whose required enzyme is carried by few taxa, or shared with other substrates (specificity divides its Vmax), is degraded slowly whatever the production level.
