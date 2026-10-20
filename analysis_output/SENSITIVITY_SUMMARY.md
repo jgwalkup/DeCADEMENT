@@ -1485,3 +1485,24 @@ Pulse 5 (pulse 1 within 1 point of degradation, 3 days, 0.01 CUE), ambient / +10
 - **Starvation, not drought, sets end-of-year survival:** weaker drought mortality (beta 0.5, half the basal death rate) cuts drought kills by 28-46 % but the spared cells starve instead (starvation deaths +23-34 %), with no gain in survival and a lower net CUE. More osmolytes change nothing.
 - **Lower maintenance is the strongest single lever:** at Maint_E_Rate_Const 3 starvation deaths fall from 12.8 to 5.6 thousand at ambient, 82 taxa and 12,000 cells survive to day 365 (base: 35 and 4,000), and annual and net CUE rise (0.38, 0.14). At +5 C, 18 taxa survive (base 4). Slower labile decay and lower enzyme production help less (41-46 taxa at ambient); a slower enzyme turnover speeds decomposition and lowers survival.
 - **Positive CUE at the end of a run needs C supply late in the year.** With a single litter pulse the community has consumed or locked away the substrate by the dry season (2-8 % of the litter left, mostly cellulose and lignin) and nothing is added afterwards. `sub_mon_inputs.csv` holds daily substrate and monomer input rates (litter inputs about 0.94 C per grid cell per day, close to the annual litter pulse) and `initialization.py` builds them (`SubInput`, `MonInput`), but `Grid` never adds them (the organic input lines in `uptake()` are commented out).
+
+## 47. Phase 2.3: enzyme production x enzyme turnover in the community (2026-10-20)
+
+**Setup:** 100-taxon community, NH4 0.15, PO4 0.01, maintenance 4 (inputs and maintenance unchanged); enzyme production x2 / x3 / x4 (ranges x/1.25 around each) x `Enz_loss_rate` 0.05 / 0.055 / 0.06; ambient climate, one pulse, MMRT, 20x20, 3 seeds. Net CUE as in section 46. Figure `enzyme_x_turnover.png`, table `enzyme_x_turnover_summary.csv`.
+
+| Production, turnover | % degraded (range of seeds) | Day 50 % | Day 95 % | Annual CUE | Net CUE | Taxa alive, day 365 | Living cells, day 365 | Starvation deaths |
+|---|---|---|---|---|---|---|---|---|
+| x4, 0.05 | 92 (85-100) | 119 | 296 | 0.357 | 0.122 | 41 | 5,266 | 11,046 |
+| x4, 0.055 | 89 (79-99) | 127 | 300 | 0.353 | 0.126 | 40 | 5,005 | 10,915 |
+| x4, 0.06 | 85 (72-99) | 138 | 304 | 0.349 | 0.126 | 44 | 4,594 | 10,760 |
+| x3, 0.05 | 79 (63-97) | 162 | 318 | 0.345 | 0.141 | 64 | 6,422 | 8,324 |
+| x3, 0.055 | 73 (53-94) | 183 | - | 0.343 | 0.137 | 69 | 6,177 | 7,729 |
+| x3, 0.06 | 68 (45-91) | 225 | - | 0.340 | 0.133 | 75 | 6,508 | 6,526 |
+| x2, 0.05 | 52 (28-76) | 265 | - | 0.326 | 0.142 | 92 | 9,365 | 1,334 |
+| x2, 0.055 | 46 (22-69) | 312 | - | 0.322 | 0.138 | 86 | 7,815 | 1,749 |
+| x2, 0.06 | 40 (17-62) | 322 | - | 0.319 | 0.133 | 77 | 6,651 | 1,737 |
+
+- Turnover and production act on the same thing (the standing enzyme pool); one step of production (x4 -> x3) does about as much as raising turnover from 0.05 to 0.06 at x3, and turnover's effect grows as production falls.
+- Lower enzyme activity trades decomposition for survival: from x4 to x2 (turnover 0.05) degradation falls from 92 to 52 % and day 50 % moves from 119 to 265, while starvation deaths fall from 11,000 to 1,300 cells and 92 instead of 41 taxa have living cells on day 365. Annual CUE falls (0.357 -> 0.326), net CUE rises (0.122 -> 0.142) because less biomass is lost in the starvation phase. Rebalancing is 0 throughout.
+- The spread between community draws grows as enzyme activity falls (seed SD 7 -> 24 points; at x2 one community degrades 28 % and another 76 %), so at lower settings the outcome depends strongly on which taxa are drawn.
+- (A second, stray copy of the run script was running in the same output folder and added duplicate and +5 C rows; only the ambient runs, one row each, are used here.)
