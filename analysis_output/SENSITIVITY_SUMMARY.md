@@ -1581,3 +1581,17 @@ Pulse 5 (pulse 1 within 1 point of degradation, 3 days, 0.01 CUE), ambient / +10
 
 - x2 / 0.035 matches x2.5 / 0.045 on decomposition (91 vs 92 %, same seed spread, same stranded pools) with 80 instead of 59 surviving taxa and a higher net CUE (0.147 vs 0.135); against x3 / 0.05 it is 19 days slower at day 50 %, 40 days at day 95 %, and keeps twice the taxa. Peak biomass 115 C per cell, starvation deaths 6,000 (x3 / 0.05: 127 and 13,000).
 - Production and turnover trade off along one axis: settings with the same production-to-turnover ratio (x2 / 0.035, x2.5 / 0.045, x3 / 0.05, ratio about 57-60) decompose alike, and the lower-production member of each pair keeps more taxa, because a smaller standing enzyme pool costs less C to maintain.
+
+**48i. Enzyme production x1.5 with turnover 0.025 and 0.03, `Enzymes_per_sub` 2** (ten seeds, one pulse, Mac; figures `substrates_enz1.5.png`, `substrates_enz1.5_loss0.025_seeds.png`, `substrates_enz1.5_loss0.03_seeds.png`; `biomass_cue_all_settings.png` now twelve settings):
+
+| Production, turnover (ratio) | % degraded (range; SD) | Day 50 % | Day 95 % | Net CUE | Taxa alive, day 365 | Starvation deaths | Crash day (litter left) |
+|---|---|---|---|---|---|---|---|
+| x1.5, 0.025 (60) | 88 (73-98; 8) | 161 | 348 | 0.181 | 96 | 1,510 | 244 (20 %) |
+| x1.5, 0.03 (50) | 81 (57-95; 12) | 185 | 361 | 0.192 | 98 | 910 | 253 (28 %) |
+| x1.5, 0.035 (43) | 72 (42-90; 15) | 217 | - | 0.198 | 100 | 570 | 262 (36 %) |
+| x2, 0.035 (57) | 91 (77-99; 7) | 139 | 321 | 0.147 | 80 | 5,970 | 225 (14 %) |
+| x2, 0.04 (50) | 86 (67-98; 10) | 154 | 351 | 0.153 | 83 | 4,950 | 231 (20 %) |
+| x3, 0.05 (60) | 93 (80-99; 6) | 120 | 281 | 0.127 | 42 | 12,980 | 208 (10 %) |
+
+- The production / turnover ratio again sets decomposition: x1.5 / 0.025 (ratio 60) degrades 88 % with the same seed spread as x2 / 0.035 and x3 / 0.05, but 3-5 points less and 20-40 days later, because the ratio fixes the long-run enzyme pool while the lower turnover slows how fast the pool builds up at the start (the pool approaches production / turnover with time constant 1 / turnover: 40 days at 0.025, 20 at 0.05).
+- Moving down the ratio-60 line (x3 / 0.05 -> x2 / 0.035 -> x1.5 / 0.025) keeps raising survival (42 -> 80 -> 96 taxa) and net CUE (0.127 -> 0.147 -> 0.181), lowering peak biomass (127 -> 115 -> 101) and starvation deaths (13,000 -> 6,000 -> 1,500), for 5 points of degradation and 40 days of delay at day 50 %. The crash still comes at day 208-244 in all three.
