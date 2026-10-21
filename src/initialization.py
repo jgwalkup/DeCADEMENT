@@ -339,7 +339,7 @@ def initialize_data(runtime_parameters, climate_file="climate.csv", community_di
         _hsp_consti_df = load_csv("HSPProdConsti", header=0, index_col=0).astype(
             "float32"
         )
-        _hsp_induci_df = load_csv("HSPProdInduce", header=0, index_col=0).astype(
+        _hsp_induci_df = load_csv("HSPProdInduci", header=0, index_col=0).astype(
             "float32"
         )
         microbial_heat_stress_protein_prod_rate = (
