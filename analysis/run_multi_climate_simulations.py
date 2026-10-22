@@ -723,11 +723,16 @@ def main():
             outname    = f"{comm_name}_s{comm_seed}"
             run_label  = f"[{idx+1}/{n}] {comm_name}  (seed={comm_seed})"
 
-            np.random.seed(comm_seed)
-
             for scenario in scenarios:
                 scen_stem  = scenario['stem']
                 clim_path  = scenario['path']
+
+                # Reseed for every scenario, not once per community: all
+                # randomness (placement, mortality, dispersal, ReqEnz) uses
+                # numpy's global generator, so each scenario of a community
+                # then starts from the same random state and the runs stay
+                # identical until their climate inputs differ (paired design).
+                np.random.seed(comm_seed)
 
                 # Output path: flat when single unnamed scenario, else subdir.
                 if scen_stem is None:
