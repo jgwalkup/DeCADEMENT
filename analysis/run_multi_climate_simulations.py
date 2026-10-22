@@ -575,7 +575,7 @@ def check_branch_climates(spinup_path, scenarios, n_days, branch_day):
                 d = int(diff[0])
                 errors.append(
                     f"{name}: {var} differs from the spin-up climate on day {d} "
-                    f"({float(b_v[d]):.7g} vs {float(a_v[d]):.7g}), before the branch day "
+                    f"({float(b_v[d]):.9g} vs {float(a_v[d]):.9g}), before the branch day "
                     f"{branch_day}; {diff.size} day(s) differ in total. "
                     f"Scenarios must match the spin-up climate exactly until "
                     f"the branch.")
