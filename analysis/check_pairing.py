@@ -65,7 +65,9 @@ def main():
     base = root / a.baseline
     if not base.is_dir():
         sys.exit(f"baseline folder {base} not found")
-    scenarios = sorted(p for p in root.iterdir() if p.is_dir() and p.name != a.baseline)
+    # scenario folders; skip the baseline and the spin-up states of branched runs
+    scenarios = sorted(p for p in root.iterdir()
+                       if p.is_dir() and p.name not in (a.baseline, "spinup"))
     n_bad = n_ok = 0
     for run in sorted(p for p in base.iterdir() if p.is_dir()):
         for sc in scenarios:

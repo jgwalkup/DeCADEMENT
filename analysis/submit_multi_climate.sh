@@ -19,6 +19,10 @@
 #   --static-temp T [T …]  One or more constant temperatures (°C)
 #   --static-psi  P [P …]  One or more constant water potentials (must match --static-temp)
 #
+# Branching (when runtime.txt sets branch_pulse > 0):
+#   --spinup-climate FILE  Climate CSV for the shared spin-up (required with branch_pulse)
+#   --reuse-spinup         Load matching saved spin-up states from <output-dir>/spinup/
+#
 # Optional:
 #   --src-dir    DIR       DEMENTpy source directory      (default: src)
 #   --input-dir  DIR       Input CSVs / runtime.txt dir   (default: input_full_port_bac)
@@ -46,6 +50,15 @@
 #       --mem           8G \
 #       --time          12:00:00
 #
+#   # Seasonal heatwaves branched from a 5-year ambient spin-up
+#   # (runtime.txt: pulse 6, branch_pulse 5)
+#   bash submit_multi_climate.sh \
+#       --community-dir  community_pool_port/communities \
+#       --output-dir     /pub/$USER/deca_dement/sim_heatwave \
+#       --climate        input_full_port_bac/climate_data \
+#       --spinup-climate input_full_port_bac/climate_data/climate_ambient_temp.csv \
+#       --time           06:00:00
+#
 #   # Climate directory
 #   bash submit_multi_climate.sh \
 #       --community-dir community_pool/communities \
@@ -65,6 +78,10 @@
 #     runtime.txt) is read from --input-dir at run time.
 #   • Each task runs every scenario in sequence: at 100x100 a 5-pulse run takes about 2-3 h per
 #     scenario on one core (4 GB), at 40x40 about 20-30 min (1 GB).
+#   • With branch_pulse B in runtime.txt each task simulates pulses 1..B once with the spin-up
+#     climate, then pulses B+1..pulse for every scenario from that state, so the wall time is about
+#     (B + n_scenarios x (pulse - B)) pulses instead of n_scenarios x pulse. The spin-up state is
+#     saved to <output-dir>/spinup/ (hundreds of MB per community at 40x40; more at 100x100).
 #   • Each task handles exactly one community; all scenarios for that community
 #     run sequentially within the task.  Wall-time limit must cover all scenarios.
 #   • Array throttle (--max-array) protects scheduler and filesystem from floods.
@@ -81,6 +98,8 @@ INPUT_DIR="input_full_port_bac"
 COMMUNITY_DIR=""
 OUTPUT_DIR=""
 CLIMATE=""
+SPINUP_CLIMATE=""
+REUSE_SPINUP=0
 STATIC_TEMP=""         # space-separated values collected during arg parse
 STATIC_PSI=""
 SEED=0
@@ -109,6 +128,8 @@ while [[ $# -gt 0 ]]; do
         --community-dir) COMMUNITY_DIR="$2"; shift 2; COLLECTING_TEMP=0; COLLECTING_PSI=0 ;;
         --output-dir)    OUTPUT_DIR="$2";    shift 2; COLLECTING_TEMP=0; COLLECTING_PSI=0 ;;
         --climate)       CLIMATE="$2";       shift 2; COLLECTING_TEMP=0; COLLECTING_PSI=0 ;;
+        --spinup-climate) SPINUP_CLIMATE="$2"; shift 2; COLLECTING_TEMP=0; COLLECTING_PSI=0 ;;
+        --reuse-spinup)  REUSE_SPINUP=1;     shift;   COLLECTING_TEMP=0; COLLECTING_PSI=0 ;;
         --seed)          SEED="$2";          shift 2; COLLECTING_TEMP=0; COLLECTING_PSI=0 ;;
         --conda-env)     CONDA_ENV="$2";     shift 2; COLLECTING_TEMP=0; COLLECTING_PSI=0 ;;
         --partition)     PARTITION="$2";     shift 2; COLLECTING_TEMP=0; COLLECTING_PSI=0 ;;
@@ -223,6 +244,14 @@ if [[ -n "${CLIMATE}" ]]; then
     PYTHON_ARGS+=("--climate" "${CLIMATE}")
 fi
 
+if [[ -n "${SPINUP_CLIMATE}" ]]; then
+    PYTHON_ARGS+=("--spinup-climate" "${SPINUP_CLIMATE}")
+fi
+
+if [[ "${REUSE_SPINUP}" -eq 1 ]]; then
+    PYTHON_ARGS+=("--reuse-spinup")
+fi
+
 if [[ -n "${STATIC_TEMP}" ]]; then
     PYTHON_ARGS+=("--static-temp" ${STATIC_TEMP})
     PYTHON_ARGS+=("--static-psi"  ${STATIC_PSI})
@@ -257,6 +286,8 @@ echo "  Conda env     : ${CONDA_ENV}"
 echo "  Log dir       : ${LOG_DIR}"
 if [[ -n "${ACCOUNT}" ]];   then echo "  Account       : ${ACCOUNT}"; fi
 if [[ -n "${CLIMATE}" ]];   then echo "  Climate       : ${CLIMATE}"; fi
+if [[ -n "${SPINUP_CLIMATE}" ]]; then echo "  Spin-up clim. : ${SPINUP_CLIMATE}"; fi
+if [[ "${REUSE_SPINUP}" -eq 1 ]]; then echo "  Reuse spin-up : yes"; fi
 if [[ -n "${STATIC_TEMP}" ]]; then
     echo "  Static temp   : ${STATIC_TEMP}"
     echo "  Static psi    : ${STATIC_PSI}"

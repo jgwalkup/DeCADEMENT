@@ -26,6 +26,36 @@ Static overrides (--static-temp / --static-psi)
   the default.  When --climate is omitted or is a directory, the FM template is
   always climate.csv from --input-dir.
 
+Branching from a shared spin-up (runtime.txt: branch_pulse, --spinup-climate)
+------------------------------------------------------------------------------
+  With 'branch_pulse B' (B > 0) in runtime.txt, each community runs pulses 1..B
+  once with the --spinup-climate file, including the end-of-pulse-B
+  repopulation. The full model state (grid, output buffers and the random
+  state) is then copied, and every climate scenario continues from that copy
+  for pulses B+1..pulse, using the scenario's Temp and Psi. Pulses after the
+  branch = pulse - B, e.g. pulse 6 / branch_pulse 5 gives one branch year.
+  No branch_pulse line (or 0) gives straight runs as before.
+
+    --climate          directory of scenario files (or one file); each is a branch
+    --spinup-climate   one file, inside or outside that directory; if inside, it
+                       also runs as a branch (the control)
+
+  Guard: before any simulation, every climate file must cover pulse x end_time
+  days and every scenario must equal the spin-up climate (Temp and Psi, at the
+  float32 precision the model reads) on all days before the branch; otherwise
+  the run stops and names the file and the first differing day. A branched run
+  therefore reproduces a straight run of the same scenario exactly.
+
+  The spin-up state is saved to <output-dir>/spinup/<community>_s<seed>.pkl
+  (--no-save-spinup to skip; about 360 MB at 40 x 40). --reuse-spinup loads
+  that file instead of simulating, if it was made with the same community,
+  seed, branch_pulse, runtime settings (pulse excepted), spin-up climate,
+  input files and model code — e.g. to add a scenario or a branch year later,
+  or to run scenarios as separate jobs.
+
+  Output for every branch has the usual layout and the full series from day 0
+  (the spin-up years included).
+
 Output directory structure
 --------------------------
   Single CSV, no overrides:
@@ -62,6 +92,15 @@ Usage examples
       --output-dir simulations \\
       --climate climate_scenarios/ --seed 42
 
+  # Branched heatwave runs (runtime.txt: pulse 6, branch_pulse 5)
+  python analysis/run_multi_climate_simulations.py \\
+      --src-dir src --input-dir input_full_port_bac \\
+      --community-dir community_pool_port/communities \\
+      --output-dir sim_heatwave \\
+      --climate input_full_port_bac/climate_data \\
+      --spinup-climate input_full_port_bac/climate_data/climate_ambient_temp.csv \\
+      --seed 0
+
   # Static override — three temperature treatments, shared psi
   python analysis/run_multi_climate_simulations.py \\
       --src-dir src --input-dir input \\
@@ -83,6 +122,9 @@ Options
                     climate generation.  Must be paired with --static-psi.
   --static-psi      One or more constant water-potential values to pair with
                     --static-temp.  Count must match --static-temp.
+  --spinup-climate  Spin-up climate CSV (required when branch_pulse > 0)
+  --reuse-spinup    Load a matching saved spin-up state instead of simulating
+  --no-save-spinup  Do not save the spin-up state
   --seed            Base random seed (default: 0)
   --communities     Comma-separated community folder names to run (default: all)
   --start-from      Resume from this community name (inclusive, sorted order)
@@ -306,37 +348,44 @@ def build_scenarios_from_static(static_temps, static_psis, input_dir,
 
 
 # ---------------------------------------------------------------------------
-# Single simulation run  (identical to run_community_simulations.py)
+# Simulation building blocks
 # ---------------------------------------------------------------------------
 
-def run_simulation(runtime, output_format, community_dir, climate_path,
-                   output_path, outname, src_dir, input_dir, quiet=False):
-    """
-    Run one complete DEMENTpy simulation for a single community.
+PHASES = ["degradation", "uptake", "metabolism", "mortality",
+          "reproduction", "output", "microbes_abundance", "repopulation"]
 
-    Parameters
-    ----------
-    runtime        : DataFrame — numeric runtime parameters
-    output_format  : str — 'csv', 'netcdf', or 'zarr'
-    community_dir  : Path — absolute path to the community directory
-    climate_path   : str — absolute path to the climate CSV
-    output_path    : Path — absolute path to the output directory
-    outname        : str — output file label (used as filename/directory prefix)
-    src_dir        : str — absolute path to DEMENTpy source directory
-    quiet          : bool — suppress per-day print statements
-    """
-    sys.path.insert(0, src_dir)
+
+def _fmt_time(secs):
+    m, s = divmod(secs, 60)
+    return f"{int(m):3d}m {s:05.2f}s"
+
+
+def _print_timing(label, timings, n_days):
+    phase_total = sum(timings.values())
+    print(f"\n  ── Timing: {label} ({n_days} days) ─────────────────────────────")
+    for ph in PHASES:
+        t = timings[ph]
+        if t < 0.001:
+            continue
+        pct = 100.0 * t / phase_total if phase_total > 0 else 0.0
+        print(f"    {ph:22s}  {_fmt_time(t)}  ({pct:5.1f}%)")
+    print(f"    {'TOTAL':22s}  {_fmt_time(phase_total)}")
+    print(f"    {'Per-day average':22s}  {phase_total / n_days * 1000:.1f} ms/day",
+          flush=True)
+
+
+def _import_model(src_dir):
+    if src_dir not in sys.path:
+        sys.path.insert(0, src_dir)
     from initialization import initialize_data
     from grid import Grid
     from output import Output
+    return initialize_data, Grid, Output
 
-    col = runtime.columns[0]
 
-    pulse      = int(runtime.loc['pulse',    col])
-    cycle      = int(runtime.loc['end_time', col])
-    interval   = int(runtime.loc['interval', col])
-    mic_reinit = True
-
+def setup_model(runtime, community_dir, climate_path, src_dir, input_dir):
+    """Initialize a community on the grid; returns (Ecosystem, Output_init)."""
+    initialize_data, Grid, Output = _import_model(src_dir)
     project_root = os.getcwd()
     # chdir to the model input directory (where parameters.csv lives),
     # NOT os.path.dirname(climate_path) — which breaks when climate files
@@ -347,34 +396,25 @@ def run_simulation(runtime, output_format, community_dir, climate_path,
                                community_dir=str(community_dir))
     finally:
         os.chdir(project_root)
-
     Output_init = Output(runtime, data)
-    Ecosystem   = Grid(runtime, data)
+    Ecosystem = Grid(runtime, data)
+    return Ecosystem, Output_init
 
-    # ── Timing accumulators ───────────────────────────────────────────────────
-    PHASES = ["degradation", "uptake", "metabolism", "mortality",
-              "reproduction", "output", "microbes_abundance", "repopulation"]
-    t_total   = {ph: 0.0 for ph in PHASES}
-    run_start = time.perf_counter()
 
-    def _fmt_time(secs):
-        m, s = divmod(secs, 60)
-        return f"{int(m):3d}m {s:05.2f}s"
+def run_pulses(Ecosystem, Output_init, runtime, p_start, p_end, t_total,
+               quiet=False):
+    """
+    Run pulses p_start .. p_end - 1 (0-based), each followed by the
+    end-of-pulse repopulation, exactly as in a straight run. Phase timings are
+    added to t_total.
+    """
+    col = runtime.columns[0]
+    pulse      = int(runtime.loc['pulse',    col])
+    cycle      = int(runtime.loc['end_time', col])
+    interval   = int(runtime.loc['interval', col])
+    mic_reinit = True
 
-    def _print_timing(label, timings, n_days):
-        phase_total = sum(timings.values())
-        print(f"\n  ── Timing: {label} ({n_days} days) ─────────────────────────────")
-        for ph in PHASES:
-            t = timings[ph]
-            if t < 0.001:
-                continue
-            pct = 100.0 * t / phase_total if phase_total > 0 else 0.0
-            print(f"    {ph:22s}  {_fmt_time(t)}  ({pct:5.1f}%)")
-        print(f"    {'TOTAL':22s}  {_fmt_time(phase_total)}")
-        print(f"    {'Per-day average':22s}  {phase_total / n_days * 1000:.1f} ms/day",
-              flush=True)
-
-    for p in range(pulse):
+    for p in range(p_start, p_end):
         t_pulse = {ph: 0.0 for ph in PHASES}
 
         for i in range(p * cycle, (p + 1) * cycle):
@@ -392,7 +432,7 @@ def run_simulation(runtime, output_format, community_dir, climate_path,
             t0 = time.perf_counter()
             try:
                 Ecosystem.metabolism(i)
-            except Exception as e:
+            except Exception:
                 print(f"CRASH in metabolism() on day {i}:", flush=True)
                 traceback.print_exc()
                 raise
@@ -428,13 +468,10 @@ def run_simulation(runtime, output_format, community_dir, climate_path,
             t_total[ph] += t_pulse[ph]
         _print_timing(f"Pulse {p + 1}/{pulse}", t_pulse, cycle)
 
-    # ── Full-run timing summary ───────────────────────────────────────────────
-    _print_timing(f"Full run ({pulse} pulse(s))", t_total, pulse * cycle)
-    print(f"    {'Wall time (incl. init)':22s}  {_fmt_time(time.perf_counter() - run_start)}",
-          flush=True)
 
-    # Save output
+def export_output(Output_init, output_format, output_path, outname):
     t0 = time.perf_counter()
+    project_root = os.getcwd()
     output_path.mkdir(parents=True, exist_ok=True)
     os.chdir(output_path)
     try:
@@ -452,6 +489,238 @@ def run_simulation(runtime, output_format, community_dir, climate_path,
     finally:
         os.chdir(project_root)
     print(f"    {'Export':22s}  {_fmt_time(time.perf_counter() - t0)}", flush=True)
+
+
+# ---------------------------------------------------------------------------
+# Single simulation run  (identical to run_community_simulations.py)
+# ---------------------------------------------------------------------------
+
+def run_simulation(runtime, output_format, community_dir, climate_path,
+                   output_path, outname, src_dir, input_dir, quiet=False):
+    """
+    Run one complete DEMENTpy simulation for a single community.
+
+    Parameters
+    ----------
+    runtime        : DataFrame — numeric runtime parameters
+    output_format  : str — 'csv', 'netcdf', or 'zarr'
+    community_dir  : Path — absolute path to the community directory
+    climate_path   : str — absolute path to the climate CSV
+    output_path    : Path — absolute path to the output directory
+    outname        : str — output file label (used as filename/directory prefix)
+    src_dir        : str — absolute path to DEMENTpy source directory
+    quiet          : bool — suppress per-day print statements
+    """
+    col = runtime.columns[0]
+    pulse = int(runtime.loc['pulse', col])
+    cycle = int(runtime.loc['end_time', col])
+
+    run_start = time.perf_counter()
+    Ecosystem, Output_init = setup_model(runtime, community_dir, climate_path,
+                                         src_dir, input_dir)
+    t_total = {ph: 0.0 for ph in PHASES}
+    run_pulses(Ecosystem, Output_init, runtime, 0, pulse, t_total, quiet)
+
+    _print_timing(f"Full run ({pulse} pulse(s))", t_total, pulse * cycle)
+    print(f"    {'Wall time (incl. init)':22s}  {_fmt_time(time.perf_counter() - run_start)}",
+          flush=True)
+    export_output(Output_init, output_format, output_path, outname)
+
+
+# ---------------------------------------------------------------------------
+# Branched runs: one spin-up, then every climate scenario from its end state
+# ---------------------------------------------------------------------------
+#
+# With branch_pulse B > 0 in runtime.txt, each community is simulated for
+# pulses 1..B once with the --spinup-climate file (including the end-of-pulse-B
+# repopulation). The complete model state (grid, output buffers and numpy's
+# random state) is then copied, and every climate scenario continues from that
+# copy for pulses B+1..pulse, with the scenario's Temp and Psi series replacing
+# the spin-up's. Because the guard below requires every scenario to equal the
+# spin-up climate before the branch day, a branched run reproduces a straight
+# run of the scenario exactly, at a fraction of the cost.
+
+SPINUP_FORMAT = 1
+
+
+def read_climate_series(path):
+    """Temp and Psi as the model reads them (float32), indexed by day."""
+    df = pd.read_csv(path, header=0, index_col=0)
+    return df['Temp'].astype('float32'), df['Psi'].astype('float32')
+
+
+def check_branch_climates(spinup_path, scenarios, n_days, branch_day):
+    """
+    Guard: every climate file must cover n_days, and every scenario must equal
+    the spin-up climate (Temp and Psi, at the float32 precision the model uses)
+    on every day before branch_day. Returns a list of error strings.
+    """
+    errors = []
+    s_temp, s_psi = read_climate_series(spinup_path)
+    if len(s_temp) < n_days:
+        errors.append(f"spin-up climate {Path(spinup_path).name} has {len(s_temp)} "
+                      f"days; the run needs {n_days} (pulse x end_time).")
+    for sc in scenarios:
+        name = Path(sc['path']).name
+        t, p = read_climate_series(sc['path'])
+        if len(t) < n_days:
+            errors.append(f"{name} has {len(t)} days; the run needs {n_days} "
+                          f"(pulse x end_time).")
+            continue
+        for var, a, b in (('Temp', s_temp, t), ('Psi', s_psi, p)):
+            a_v = a.to_numpy()[:branch_day]
+            b_v = b.to_numpy()[:branch_day]
+            diff = np.flatnonzero(a_v != b_v)
+            if diff.size:
+                d = int(diff[0])
+                errors.append(
+                    f"{name}: {var} differs from the spin-up climate on day {d} "
+                    f"({float(b_v[d]):.7g} vs {float(a_v[d]):.7g}), before the branch day "
+                    f"{branch_day}; {diff.size} day(s) differ in total. "
+                    f"Scenarios must match the spin-up climate exactly until "
+                    f"the branch.")
+    return errors
+
+
+def file_digest(path):
+    import hashlib
+    h = hashlib.sha256()
+    with open(path, 'rb') as fh:
+        for block in iter(lambda: fh.read(1 << 20), b''):
+            h.update(block)
+    return h.hexdigest()
+
+
+def inputs_digest(src_dir, input_dir, community_dir):
+    """One digest over the model code, the input folder's files (climate
+    subfolders and runtime.txt excepted) and the community's files."""
+    import hashlib
+    h = hashlib.sha256()
+    files = (sorted(Path(src_dir).glob('*.py'))
+             + sorted(f for f in Path(input_dir).iterdir()
+                      if f.is_file() and f.name != 'runtime.txt')
+             + sorted(f for f in Path(community_dir).iterdir() if f.is_file()))
+    for f in files:
+        h.update(f.name.encode())
+        h.update(file_digest(f).encode())
+    return h.hexdigest()
+
+
+def spinup_metadata(runtime, community_dir, comm_seed, spinup_path, branch_pulse,
+                    src_dir, input_dir):
+    col = runtime.columns[0]
+    return {
+        'format':        SPINUP_FORMAT,
+        'community':     Path(community_dir).name,
+        'seed':          int(comm_seed),
+        'branch_pulse':  int(branch_pulse),
+        'runtime':       {k: float(v) for k, v in runtime[col].items()
+                          if k not in ('pulse',)},
+        'spinup_climate_sha256': file_digest(spinup_path),
+        'inputs_sha256': inputs_digest(src_dir, input_dir, community_dir),
+    }
+
+
+def run_spinup(runtime, community_dir, spinup_path, branch_pulse, comm_seed,
+               src_dir, input_dir, spinup_file, reuse, save, quiet=False):
+    """
+    Return the pickled spin-up state (bytes): (Ecosystem, Output_init,
+    numpy random state) at the end of pulse branch_pulse.
+
+    reuse: load spinup_file if it exists and was made with the same community,
+           seed, branch_pulse, runtime settings (pulse excepted) and spin-up
+           climate; otherwise simulate.
+    save:  write the state to spinup_file after simulating.
+    """
+    import pickle
+    meta = spinup_metadata(runtime, community_dir, comm_seed, spinup_path,
+                           branch_pulse, src_dir, input_dir)
+
+    if reuse and spinup_file.exists():
+        t0 = time.perf_counter()
+        with open(spinup_file, 'rb') as fh:
+            stored_meta = pickle.load(fh)
+            if stored_meta == meta:
+                state = fh.read()
+                print(f"  Spin-up loaded from {spinup_file} "
+                      f"({len(state) / 1e6:.0f} MB, {_fmt_time(time.perf_counter() - t0)})",
+                      flush=True)
+                return state
+        changed = sorted(k for k in meta if stored_meta.get(k) != meta[k])
+        print(f"  Spin-up file {spinup_file.name} does not match this run "
+              f"(differs in: {', '.join(changed)}); simulating the spin-up.",
+              flush=True)
+
+    _import_model(src_dir)          # pickle needs the model classes importable
+    np.random.seed(comm_seed)
+    run_start = time.perf_counter()
+    print(f"  Spin-up: pulses 1-{branch_pulse} with {Path(spinup_path).name}",
+          flush=True)
+    Ecosystem, Output_init = setup_model(runtime, community_dir, spinup_path,
+                                         src_dir, input_dir)
+    t_total = {ph: 0.0 for ph in PHASES}
+    run_pulses(Ecosystem, Output_init, runtime, 0, branch_pulse, t_total, quiet)
+    col = runtime.columns[0]
+    _print_timing(f"Spin-up ({branch_pulse} pulse(s))", t_total,
+                  branch_pulse * int(runtime.loc['end_time', col]))
+    print(f"    {'Wall time (incl. init)':22s}  {_fmt_time(time.perf_counter() - run_start)}",
+          flush=True)
+
+    state = pickle.dumps((Ecosystem, Output_init, np.random.get_state()),
+                         protocol=pickle.HIGHEST_PROTOCOL)
+    if save:
+        spinup_file.parent.mkdir(parents=True, exist_ok=True)
+        tmp = spinup_file.with_suffix('.tmp')
+        with open(tmp, 'wb') as fh:
+            pickle.dump(meta, fh, protocol=pickle.HIGHEST_PROTOCOL)
+            fh.write(state)
+        os.replace(tmp, spinup_file)
+        print(f"  Spin-up state saved to {spinup_file} ({len(state) / 1e6:.0f} MB)",
+              flush=True)
+    return state
+
+
+def run_branch(state, runtime, output_format, climate_path, branch_pulse,
+               output_path, outname, src_dir, quiet=False):
+    """Continue a copy of the spin-up state under climate_path and export."""
+    import pickle
+    _import_model(src_dir)
+    col = runtime.columns[0]
+    pulse = int(runtime.loc['pulse', col])
+    cycle = int(runtime.loc['end_time', col])
+
+    run_start = time.perf_counter()
+    Ecosystem, Output_init, rng_state = pickle.loads(state)
+
+    # Swap in the scenario climate: the grid reads Temp and Psi by day from
+    # these two series, and the output object exports them as
+    # Initialization/Temp.csv and Psi.csv.
+    temp, psi = read_climate_series(climate_path)
+    Ecosystem.temp = temp
+    Ecosystem.psi = psi
+    Output_init.Initialization['Temp'] = temp
+    Output_init.Initialization['Psi'] = psi
+
+    # A reused spin-up may have been made with a different pulse count (the
+    # grid does not depend on it). The output object sizes its per-pulse
+    # tables from pulse when created, so resize them and record this run's
+    # runtime settings.
+    Output_init.Runtime = runtime
+    Output_init.n_pulses = pulse
+    per_pulse = pd.RangeIndex(1, pulse + 1)
+    for name in ('CumRespByPulse', 'CumLeachByPulse', 'MicC_PulseInit'):
+        if hasattr(Output_init, name):
+            setattr(Output_init, name,
+                    getattr(Output_init, name).reindex(per_pulse, fill_value=0.0))
+
+    np.random.set_state(rng_state)
+    t_total = {ph: 0.0 for ph in PHASES}
+    run_pulses(Ecosystem, Output_init, runtime, branch_pulse, pulse, t_total, quiet)
+    n_days = (pulse - branch_pulse) * cycle
+    _print_timing(f"Branch (pulses {branch_pulse + 1}-{pulse})", t_total, n_days)
+    print(f"    {'Wall time (incl. restore)':22s}  {_fmt_time(time.perf_counter() - run_start)}",
+          flush=True)
+    export_output(Output_init, output_format, output_path, outname)
 
 
 # ---------------------------------------------------------------------------
@@ -510,6 +779,25 @@ def main():
                             'inside --input-dir.  If omitted, climate.csv from '
                             '--input-dir is used and a warning is printed.'
                         ))
+
+    # ── Branching (runtime.txt: branch_pulse) ─────────────────────────────────
+    parser.add_argument('--spinup-climate', type=str, default=None,
+                        help=(
+                            'Climate CSV for the shared spin-up (pulses 1 to '
+                            'branch_pulse).  Required when runtime.txt sets '
+                            'branch_pulse > 0; ignored otherwise.  Resolved like '
+                            '--climate (inside --input-dir, then as a path).'
+                        ))
+    parser.add_argument('--reuse-spinup', action='store_true',
+                        help=(
+                            'Load <output-dir>/spinup/<community>_s<seed>.pkl '
+                            'instead of simulating the spin-up, when that file '
+                            'was made with the same community, seed, '
+                            'branch_pulse, runtime settings (pulse excepted), '
+                            'spin-up climate, input files and model code.'
+                        ))
+    parser.add_argument('--no-save-spinup', action='store_true',
+                        help='Do not write the spin-up state to <output-dir>/spinup/.')
 
     # ── Static overrides ──────────────────────────────────────────────────────
     parser.add_argument('--static-temp', type=float, nargs='+', default=None,
@@ -703,12 +991,59 @@ def main():
 
     # ── Load runtime — shared across all communities and scenarios ────────────
     runtime, output_format = load_runtime(input_dir)
+    rcol   = runtime.columns[0]
+    pulse  = int(runtime.loc['pulse', rcol])
+    cycle  = int(runtime.loc['end_time', rcol])
+    branch_pulse = (int(runtime.loc['branch_pulse', rcol])
+                    if 'branch_pulse' in runtime.index else 0)
+
+    # ── Branching set-up and climate guard ────────────────────────────────────
+    spinup_path = None
+    if branch_pulse > 0:
+        if not 0 < branch_pulse < pulse:
+            print(f"ERROR: branch_pulse ({branch_pulse}) must be between 1 and "
+                  f"pulse - 1 ({pulse - 1}).")
+            sys.exit(1)
+        if using_static:
+            print("ERROR: branch_pulse > 0 cannot be combined with "
+                  "--static-temp/--static-psi (static climates differ from the "
+                  "spin-up climate from day 0).")
+            sys.exit(1)
+        if args.spinup_climate is None:
+            print("ERROR: runtime.txt sets branch_pulse > 0; give the spin-up "
+                  "climate file with --spinup-climate.")
+            sys.exit(1)
+        for cand in (os.path.join(input_dir, args.spinup_climate),
+                     os.path.abspath(args.spinup_climate)):
+            if os.path.isfile(cand):
+                spinup_path = cand
+                break
+        else:
+            print(f"ERROR: --spinup-climate '{args.spinup_climate}' not found "
+                  f"(looked in --input-dir and as an absolute/relative path).")
+            sys.exit(1)
+        errors = check_branch_climates(spinup_path, scenarios,
+                                       n_days=pulse * cycle,
+                                       branch_day=branch_pulse * cycle)
+        if errors:
+            print("Climate check for branching failed:")
+            for e in errors:
+                print(f"  ✗  {e}")
+            sys.exit(1)
+        print(f"Climate check for branching: all {len(scenarios)} scenario(s) "
+              f"match {Path(spinup_path).name} on days 0-{branch_pulse * cycle - 1}.")
+    elif args.spinup_climate is not None:
+        print("NOTE: --spinup-climate ignored (runtime.txt has no branch_pulse > 0).")
 
     # ── Startup summary ───────────────────────────────────────────────────────
     n = len(comm_dirs)
     scenario_names = [s['stem'] or '(single)' for s in scenarios]
     print(f"Communities : {n}")
     print(f"Scenarios   : {len(scenarios)}  {scenario_names}")
+    if branch_pulse > 0:
+        print(f"Branching   : spin-up pulses 1-{branch_pulse} with "
+              f"{Path(spinup_path).name}; scenarios run pulses "
+              f"{branch_pulse + 1}-{pulse} from its end state")
     print(f"Base seed   : {args.seed}")
     print(f"Output dir  : {output_dir}")
     print()
@@ -722,6 +1057,31 @@ def main():
             comm_seed  = (args.seed + idx) % (2**32)
             outname    = f"{comm_name}_s{comm_seed}"
             run_label  = f"[{idx+1}/{n}] {comm_name}  (seed={comm_seed})"
+
+            state = None
+            if branch_pulse > 0:
+                print(f"{run_label}  [spin-up]", flush=True)
+                try:
+                    state = run_spinup(
+                        runtime      = runtime.copy(),
+                        community_dir= cdir,
+                        spinup_path  = spinup_path,
+                        branch_pulse = branch_pulse,
+                        comm_seed    = comm_seed,
+                        src_dir      = src_dir,
+                        input_dir    = input_dir,
+                        spinup_file  = output_dir / 'spinup' / f"{outname}.pkl",
+                        reuse        = args.reuse_spinup,
+                        save         = not args.no_save_spinup,
+                        quiet        = args.quiet,
+                    )
+                except Exception as e:
+                    print(f"  !! SPIN-UP FAILED: {e}", flush=True)
+                    traceback.print_exc()
+                    for scenario in scenarios:
+                        failed.append((comm_name, scenario['stem'] or 'run',
+                                       f"spin-up failed: {e}"))
+                    continue
 
             for scenario in scenarios:
                 scen_stem  = scenario['stem']
@@ -745,17 +1105,30 @@ def main():
                 print(f"{label}", flush=True)
 
                 try:
-                    run_simulation(
-                        runtime       = runtime.copy(),
-                        output_format = output_format,
-                        community_dir = cdir,
-                        climate_path  = clim_path,
-                        output_path   = out_path,
-                        outname       = outname,
-                        src_dir       = src_dir,
-                        input_dir     = input_dir,
-                        quiet         = args.quiet,
-                    )
+                    if state is not None:
+                        run_branch(
+                            state         = state,
+                            runtime       = runtime.copy(),
+                            output_format = output_format,
+                            climate_path  = clim_path,
+                            branch_pulse  = branch_pulse,
+                            output_path   = out_path,
+                            outname       = outname,
+                            src_dir       = src_dir,
+                            quiet         = args.quiet,
+                        )
+                    else:
+                        run_simulation(
+                            runtime       = runtime.copy(),
+                            output_format = output_format,
+                            community_dir = cdir,
+                            climate_path  = clim_path,
+                            output_path   = out_path,
+                            outname       = outname,
+                            src_dir       = src_dir,
+                            input_dir     = input_dir,
+                            quiet         = args.quiet,
+                        )
                     print(f"  -> saved to {out_path / outname}", flush=True)
 
                 except Exception as e:
