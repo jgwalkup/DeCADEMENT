@@ -1,0 +1,8 @@
+numpy
+pandas
+scipy
+xarray
+matplotlib
+# Output backends (optional, depending on output_format in runtime.txt)
+netCDF4      # for output_format = netcdf
+zarr         # for output_format = zarr
