@@ -22,6 +22,7 @@
 # Branching (when runtime.txt sets branch_pulse > 0):
 #   --spinup-climate FILE  Climate CSV for the shared spin-up (required with branch_pulse)
 #   --reuse-spinup         Load matching saved spin-up states from <output-dir>/spinup/
+#   --no-save-spinup       Do not write spin-up states to <output-dir>/spinup/
 #
 # Optional:
 #   --src-dir    DIR       DEMENTpy source directory      (default: src)
@@ -81,7 +82,13 @@
 #   • With branch_pulse B in runtime.txt each task simulates pulses 1..B once with the spin-up
 #     climate, then pulses B+1..pulse for every scenario from that state, so the wall time is about
 #     (B + n_scenarios x (pulse - B)) pulses instead of n_scenarios x pulse. The spin-up state is
-#     saved to <output-dir>/spinup/ (hundreds of MB per community at 40x40; more at 100x100).
+#     saved to <output-dir>/spinup/ (about 0.5 GB per community at 40x40 after 5 pulses, several
+#     times that at 100x100; --no-save-spinup skips it). Measured on a Mac at 40x40, 6 pulses with
+#     branch_pulse 5 and 3 scenarios: about 13 min per community (straight: about 28 min).
+#     A branched task holds the model plus a serialized copy of its state in memory: at 100x100
+#     allow about 16G.
+#   • Seeds are --seed + the community's position in the sorted pool, so a task's seed (and its
+#     output) is the same as in a run over the whole pool.
 #   • Each task handles exactly one community; all scenarios for that community
 #     run sequentially within the task.  Wall-time limit must cover all scenarios.
 #   • Array throttle (--max-array) protects scheduler and filesystem from floods.
@@ -100,6 +107,7 @@ OUTPUT_DIR=""
 CLIMATE=""
 SPINUP_CLIMATE=""
 REUSE_SPINUP=0
+NO_SAVE_SPINUP=0
 STATIC_TEMP=""         # space-separated values collected during arg parse
 STATIC_PSI=""
 SEED=0
@@ -130,6 +138,7 @@ while [[ $# -gt 0 ]]; do
         --climate)       CLIMATE="$2";       shift 2; COLLECTING_TEMP=0; COLLECTING_PSI=0 ;;
         --spinup-climate) SPINUP_CLIMATE="$2"; shift 2; COLLECTING_TEMP=0; COLLECTING_PSI=0 ;;
         --reuse-spinup)  REUSE_SPINUP=1;     shift;   COLLECTING_TEMP=0; COLLECTING_PSI=0 ;;
+        --no-save-spinup) NO_SAVE_SPINUP=1;  shift;   COLLECTING_TEMP=0; COLLECTING_PSI=0 ;;
         --seed)          SEED="$2";          shift 2; COLLECTING_TEMP=0; COLLECTING_PSI=0 ;;
         --conda-env)     CONDA_ENV="$2";     shift 2; COLLECTING_TEMP=0; COLLECTING_PSI=0 ;;
         --partition)     PARTITION="$2";     shift 2; COLLECTING_TEMP=0; COLLECTING_PSI=0 ;;
@@ -252,6 +261,10 @@ if [[ "${REUSE_SPINUP}" -eq 1 ]]; then
     PYTHON_ARGS+=("--reuse-spinup")
 fi
 
+if [[ "${NO_SAVE_SPINUP}" -eq 1 ]]; then
+    PYTHON_ARGS+=("--no-save-spinup")
+fi
+
 if [[ -n "${STATIC_TEMP}" ]]; then
     PYTHON_ARGS+=("--static-temp" ${STATIC_TEMP})
     PYTHON_ARGS+=("--static-psi"  ${STATIC_PSI})
@@ -288,6 +301,7 @@ if [[ -n "${ACCOUNT}" ]];   then echo "  Account       : ${ACCOUNT}"; fi
 if [[ -n "${CLIMATE}" ]];   then echo "  Climate       : ${CLIMATE}"; fi
 if [[ -n "${SPINUP_CLIMATE}" ]]; then echo "  Spin-up clim. : ${SPINUP_CLIMATE}"; fi
 if [[ "${REUSE_SPINUP}" -eq 1 ]]; then echo "  Reuse spin-up : yes"; fi
+if [[ "${NO_SAVE_SPINUP}" -eq 1 ]]; then echo "  Save spin-up  : no"; fi
 if [[ -n "${STATIC_TEMP}" ]]; then
     echo "  Static temp   : ${STATIC_TEMP}"
     echo "  Static psi    : ${STATIC_PSI}"

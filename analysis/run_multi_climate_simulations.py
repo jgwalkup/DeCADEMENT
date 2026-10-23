@@ -816,7 +816,8 @@ def main():
 
     # ── Community selection ───────────────────────────────────────────────────
     parser.add_argument('--seed', type=int, default=0,
-                        help='Base random seed; each community gets seed + index')
+                        help='Base random seed; each community gets seed + its '
+                             '0-based position in the sorted community pool')
     parser.add_argument('--communities', type=str, default=None,
                         help='Comma-separated community folder names to run '
                              '(default: all)')
@@ -1052,9 +1053,14 @@ def main():
     failed = []
 
     try:
+        # Seed by position in the full sorted pool, not in the selected subset,
+        # so --range / --communities / --start-from (e.g. one community per
+        # SLURM array task) give the same seed as a run over the whole pool.
+        pool_position = {d.name: k for k, d in
+                         enumerate(get_community_dirs(community_dir))}
         for idx, cdir in enumerate(comm_dirs):
             comm_name  = cdir.name
-            comm_seed  = (args.seed + idx) % (2**32)
+            comm_seed  = (args.seed + pool_position[comm_name]) % (2**32)
             outname    = f"{comm_name}_s{comm_seed}"
             run_label  = f"[{idx+1}/{n}] {comm_name}  (seed={comm_seed})"
 
