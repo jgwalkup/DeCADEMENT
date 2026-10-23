@@ -14,3 +14,12 @@ __pycache__/
 *.bak*
 src/*.diff
 _to_delete/
+
+# simulation outputs and superseded inputs
+sim_*/
+input_full_port_bac/climate_data_rounded_originals/
+
+# simulation outputs, community pools and superseded inputs
+sim_*/
+community_pool*/
+input_full_port_bac/climate_data_rounded_originals/
