@@ -10,6 +10,8 @@ OUTPUT_DIR is the --output-dir of run_multi_climate_simulations.py (one subfolde
   - the first day on which the model output differs (SubstratesSeries, MicrobesSeries, RespSeries).
 
 Series columns are the initial state followed by one column per day, so column k is the state after day k - 1.
+For split branched output (branch_output.json in the run folders) the scenario folders hold only the days from the
+branch on; the spin-up days are shared by construction, so only the branch days are compared.
 A paired run's output matches the baseline exactly until its climate differs. Output that differs before the
 climate does means the runs did not start from the same random state, and paired comparisons between them are
 not valid.
@@ -49,9 +51,13 @@ def first_output_diff(a_run, b_run):
         a = pd.read_csv(pa, index_col=0).sort_index()
         b = pd.read_csv(pb, index_col=0).sort_index()
         a, b = a.align(b, fill_value=0.0)
+        a = a[sorted(a.columns, key=int)]
+        b = b[a.columns]
         d = np.flatnonzero((a.to_numpy() != b.to_numpy()).any(axis=0))
         if d.size:
-            day = int(d[0]) - 1
+            # column labels are absolute output days (label k = after day k-1),
+            # also in split branched output, which starts at the branch day
+            day = int(a.columns[d[0]]) - 1
             first = day if first is None else min(first, day)
     return first
 

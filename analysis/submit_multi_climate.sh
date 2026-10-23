@@ -23,6 +23,8 @@
 #   --spinup-climate FILE  Climate CSV for the shared spin-up (required with branch_pulse)
 #   --reuse-spinup         Load matching saved spin-up states from <output-dir>/spinup/
 #   --no-save-spinup       Do not write spin-up states to <output-dir>/spinup/
+#   --full-branch-output   Write full series in every scenario folder (default: spin-up days
+#                          once per community in <output-dir>/spinup/<community>_s<seed>/)
 #
 # Optional:
 #   --src-dir    DIR       DEMENTpy source directory      (default: src)
@@ -87,6 +89,10 @@
 #     branch_pulse 5 and 3 scenarios: about 13 min per community (straight: about 28 min).
 #     A branched task holds the model plus a serialized copy of its state in memory: at 100x100
 #     allow about 16G.
+#   • Branched output (csv) is split: <output-dir>/spinup/<community>_s<seed>/ holds the days before
+#     the branch and the complete Initialization folder once; each scenario folder holds the branch
+#     days only (about 150 MB per community at 40x40 with 3 scenarios, instead of about 340 MB).
+#     Read full series with analysis/branch_output.py: read_table(run_dir, 'MicrobesSeries').
 #   • Seeds are --seed + the community's position in the sorted pool, so a task's seed (and its
 #     output) is the same as in a run over the whole pool.
 #   • Each task handles exactly one community; all scenarios for that community
@@ -108,6 +114,7 @@ CLIMATE=""
 SPINUP_CLIMATE=""
 REUSE_SPINUP=0
 NO_SAVE_SPINUP=0
+FULL_BRANCH_OUTPUT=0
 STATIC_TEMP=""         # space-separated values collected during arg parse
 STATIC_PSI=""
 SEED=0
@@ -139,6 +146,7 @@ while [[ $# -gt 0 ]]; do
         --spinup-climate) SPINUP_CLIMATE="$2"; shift 2; COLLECTING_TEMP=0; COLLECTING_PSI=0 ;;
         --reuse-spinup)  REUSE_SPINUP=1;     shift;   COLLECTING_TEMP=0; COLLECTING_PSI=0 ;;
         --no-save-spinup) NO_SAVE_SPINUP=1;  shift;   COLLECTING_TEMP=0; COLLECTING_PSI=0 ;;
+        --full-branch-output) FULL_BRANCH_OUTPUT=1; shift; COLLECTING_TEMP=0; COLLECTING_PSI=0 ;;
         --seed)          SEED="$2";          shift 2; COLLECTING_TEMP=0; COLLECTING_PSI=0 ;;
         --conda-env)     CONDA_ENV="$2";     shift 2; COLLECTING_TEMP=0; COLLECTING_PSI=0 ;;
         --partition)     PARTITION="$2";     shift 2; COLLECTING_TEMP=0; COLLECTING_PSI=0 ;;
@@ -263,6 +271,10 @@ fi
 
 if [[ "${NO_SAVE_SPINUP}" -eq 1 ]]; then
     PYTHON_ARGS+=("--no-save-spinup")
+fi
+
+if [[ "${FULL_BRANCH_OUTPUT}" -eq 1 ]]; then
+    PYTHON_ARGS+=("--full-branch-output")
 fi
 
 if [[ -n "${STATIC_TEMP}" ]]; then

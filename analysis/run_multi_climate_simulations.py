@@ -680,9 +680,36 @@ def run_spinup(runtime, community_dir, spinup_path, branch_pulse, comm_seed,
     return state
 
 
+def export_spinup_output(state, output_format, branch_pulse, cycle,
+                         spinup_run_dir, src_dir):
+    """
+    Write the spin-up's output once per community (split branched output):
+    day-indexed tables up to the branch and the complete Initialization folder,
+    to <output-dir>/spinup/<community>_s<seed>/. Skipped if already complete.
+    """
+    import pickle
+    from branch_output import split_run_output
+    done = spinup_run_dir / 'SPINUP_OUTPUT_COMPLETE'
+    if done.exists():
+        print(f"  Spin-up output already in {spinup_run_dir}", flush=True)
+        return
+    _import_model(src_dir)
+    Ecosystem, Output_init, _ = pickle.loads(state)
+    export_output(Output_init, output_format, spinup_run_dir.parent,
+                  spinup_run_dir.name)
+    split_run_output(spinup_run_dir, 'spinup', branch_pulse * cycle)
+    done.write_text('spin-up output complete\n')
+    print(f"  Spin-up output (days 0-{branch_pulse * cycle - 1}) written to "
+          f"{spinup_run_dir}", flush=True)
+
+
 def run_branch(state, runtime, output_format, climate_path, branch_pulse,
-               output_path, outname, src_dir, quiet=False):
-    """Continue a copy of the spin-up state under climate_path and export."""
+               output_path, outname, src_dir, quiet=False, spinup_run_dir=None):
+    """
+    Continue a copy of the spin-up state under climate_path and export. With
+    spinup_run_dir (split output), the day-indexed tables keep only the days
+    from the branch on and Initialization only Temp.csv and Psi.csv.
+    """
     import pickle
     _import_model(src_dir)
     col = runtime.columns[0]
@@ -721,6 +748,12 @@ def run_branch(state, runtime, output_format, climate_path, branch_pulse,
     print(f"    {'Wall time (incl. restore)':22s}  {_fmt_time(time.perf_counter() - run_start)}",
           flush=True)
     export_output(Output_init, output_format, output_path, outname)
+    if spinup_run_dir is not None:
+        from branch_output import split_run_output, write_marker
+        run_dir = output_path / outname
+        trimmed = split_run_output(run_dir, 'branch', branch_pulse * cycle)
+        write_marker(run_dir, spinup_run_dir, branch_pulse * cycle,
+                     pulse * cycle, trimmed)
 
 
 # ---------------------------------------------------------------------------
@@ -795,6 +828,14 @@ def main():
                             'was made with the same community, seed, '
                             'branch_pulse, runtime settings (pulse excepted), '
                             'spin-up climate, input files and model code.'
+                        ))
+    parser.add_argument('--full-branch-output', action='store_true',
+                        help=(
+                            'Branched runs: write the full series (spin-up '
+                            'years included) and the complete Initialization '
+                            'folder in every scenario folder, instead of '
+                            'writing the spin-up part once to '
+                            '<output-dir>/spinup/<community>_s<seed>/.'
                         ))
     parser.add_argument('--no-save-spinup', action='store_true',
                         help='Do not write the spin-up state to <output-dir>/spinup/.')
@@ -1036,6 +1077,14 @@ def main():
     elif args.spinup_climate is not None:
         print("NOTE: --spinup-climate ignored (runtime.txt has no branch_pulse > 0).")
 
+    # Split output for branched runs: spin-up days once per community, branch
+    # days per scenario (csv output only).
+    split_output = branch_pulse > 0 and not args.full_branch_output
+    if split_output and output_format != 'csv':
+        print(f"NOTE: split branched output needs output_format csv (runtime.txt "
+              f"has {output_format}); writing full output in every scenario.")
+        split_output = False
+
     # ── Startup summary ───────────────────────────────────────────────────────
     n = len(comm_dirs)
     scenario_names = [s['stem'] or '(single)' for s in scenarios]
@@ -1045,6 +1094,11 @@ def main():
         print(f"Branching   : spin-up pulses 1-{branch_pulse} with "
               f"{Path(spinup_path).name}; scenarios run pulses "
               f"{branch_pulse + 1}-{pulse} from its end state")
+        print("Output      : " + (
+            f"days 0-{branch_pulse * cycle - 1} and Initialization once per "
+            f"community in {output_dir / 'spinup'}; scenario folders hold days "
+            f"{branch_pulse * cycle}-{pulse * cycle - 1}" if split_output else
+            "full series in every scenario folder"))
     print(f"Base seed   : {args.seed}")
     print(f"Output dir  : {output_dir}")
     print()
@@ -1089,6 +1143,20 @@ def main():
                                        f"spin-up failed: {e}"))
                     continue
 
+            spinup_run_dir = None
+            if state is not None and split_output:
+                spinup_run_dir = output_dir / 'spinup' / outname
+                try:
+                    export_spinup_output(state, output_format, branch_pulse,
+                                         cycle, spinup_run_dir, src_dir)
+                except Exception as e:
+                    print(f"  !! SPIN-UP OUTPUT FAILED: {e}", flush=True)
+                    traceback.print_exc()
+                    for scenario in scenarios:
+                        failed.append((comm_name, scenario['stem'] or 'run',
+                                       f"spin-up output failed: {e}"))
+                    continue
+
             for scenario in scenarios:
                 scen_stem  = scenario['stem']
                 clim_path  = scenario['path']
@@ -1122,6 +1190,7 @@ def main():
                             outname       = outname,
                             src_dir       = src_dir,
                             quiet         = args.quiet,
+                            spinup_run_dir= spinup_run_dir,
                         )
                     else:
                         run_simulation(
