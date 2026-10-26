@@ -403,5 +403,5 @@ else
     echo "  Cancel with:"
     echo "    scancel ${JOB_ID}"
     echo "  Check a task log:"
-    echo "    tail -f ${LOG_DIR}/deca_${JOB_ID}_1.out"
+    echo "    tail -f ${LOG_DIR}/deca_${JOB_ID}_${ARRAY_START}.out"
 fi
