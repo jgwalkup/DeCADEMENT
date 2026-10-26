@@ -34,6 +34,8 @@
 #   --python     PATH      Python interpreter for the tasks (default: the conda env's
 #                          python, found at submit time; see NOTES)
 #   --tasks      LIST      Explicit array task list instead of --range, e.g. 422-424,431,502
+#   --exclude    NODES     Nodes to keep tasks off, e.g. hpc3-19-03 or hpc3-19-03,hpc3-14-01
+#                          (a node that fails every task within seconds drains the whole array)
 #                          (task N = community N in the sorted pool), for resubmitting failures
 #   --partition  NAME      SLURM partition                 (default: standard)
 #   --account    NAME      SLURM account / PI group        (default: allisons_lab)
@@ -146,6 +148,7 @@ DRY_RUN=0
 RANGE_START=""
 TASKS=""
 PYTHON_BIN=""
+EXCLUDE=""
 RANGE_END=""
 
 # ── Argument parsing ──────────────────────────────────────────────────────────
@@ -169,6 +172,7 @@ while [[ $# -gt 0 ]]; do
         --conda-env)     CONDA_ENV="$2";     shift 2; COLLECTING_TEMP=0; COLLECTING_PSI=0 ;;
         --python)        PYTHON_BIN="$2";    shift 2; COLLECTING_TEMP=0; COLLECTING_PSI=0 ;;
         --tasks)         TASKS="$2";         shift 2; COLLECTING_TEMP=0; COLLECTING_PSI=0 ;;
+        --exclude)       EXCLUDE="$2";       shift 2; COLLECTING_TEMP=0; COLLECTING_PSI=0 ;;
         --partition)     PARTITION="$2";     shift 2; COLLECTING_TEMP=0; COLLECTING_PSI=0 ;;
         --account)       ACCOUNT="$2";       shift 2; COLLECTING_TEMP=0; COLLECTING_PSI=0 ;;
         --cpus)          CPUS="$2";          shift 2; COLLECTING_TEMP=0; COLLECTING_PSI=0 ;;
@@ -343,6 +347,11 @@ if [[ -n "${ACCOUNT}" ]]; then
     ACCOUNT_LINE="#SBATCH --account=${ACCOUNT}"
 fi
 
+EXCLUDE_LINE=""
+if [[ -n "${EXCLUDE}" ]]; then
+    EXCLUDE_LINE="#SBATCH --exclude=${EXCLUDE}"
+fi
+
 MAIL_LINES=""
 if [[ -n "${MAIL_USER}" ]]; then
     MAIL_LINES="#SBATCH --mail-user=${MAIL_USER}
@@ -370,6 +379,7 @@ echo "  Python        : ${PYTHON_BIN}"
 echo "  Log dir       : ${LOG_DIR}"
 if [[ -n "${ACCOUNT}" ]];   then echo "  Account       : ${ACCOUNT}"; fi
 if [[ -n "${MAIL_USER}" ]]; then echo "  Email         : ${MAIL_USER} (${MAIL_TYPE})"; fi
+if [[ -n "${EXCLUDE}" ]]; then echo "  Exclude nodes : ${EXCLUDE}"; fi
 if [[ -n "${CLIMATE}" ]];   then echo "  Climate       : ${CLIMATE}"; fi
 if [[ -n "${SPINUP_CLIMATE}" ]]; then echo "  Spin-up clim. : ${SPINUP_CLIMATE}"; fi
 if [[ "${REUSE_SPINUP}" -eq 1 ]]; then echo "  Reuse spin-up : yes"; fi
@@ -393,6 +403,7 @@ JOB_SCRIPT=$(cat <<SLURM_SCRIPT
 #SBATCH --partition=${PARTITION}
 ${ACCOUNT_LINE}
 ${MAIL_LINES}
+${EXCLUDE_LINE}
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=${CPUS}
