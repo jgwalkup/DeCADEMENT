@@ -31,6 +31,10 @@
 #   --input-dir  DIR       Input CSVs / runtime.txt dir   (default: input_full_port_bac)
 #   --seed       INT       Base random seed                (default: 0)
 #   --conda-env  NAME      Conda environment name          (default: decadementenv)
+#   --python     PATH      Python interpreter for the tasks (default: the conda env's
+#                          python, found at submit time; see NOTES)
+#   --tasks      LIST      Explicit array task list instead of --range, e.g. 422-424,431,502
+#                          (task N = community N in the sorted pool), for resubmitting failures
 #   --partition  NAME      SLURM partition                 (default: standard)
 #   --account    NAME      SLURM account / PI group        (default: allisons_lab)
 #   --cpus       INT       CPUs per task                   (default: 1)
@@ -103,6 +107,12 @@
 #     run sequentially within the task.  Wall-time limit must cover all scenarios.
 #   • Array throttle (--max-array) protects scheduler and filesystem from floods.
 #   • Logs go to <log-dir>/deca_%A_%a.{out,err}  where %A = job ID, %a = task ID.
+#   • Tasks do not run conda: the conda env's python is located once at submit time (on the login
+#     node, where numpy/pandas imports are checked) and every task calls it directly. Hundreds of
+#     simultaneous 'conda activate' calls crashed conda at task start (2026-10-26).
+#   • To resubmit every failed or cancelled task of an array:
+#       LIST=$(sacct -j <jobID> -X -n -P --format=JobID,State | awk -F'|' '$2 !~ /COMPLETED|RUNNING|PENDING/ {split($1,a,"_"); gsub(/[][]|%.*/,"",a[2]); print a[2]}' | paste -sd, -)
+#       bash submit_multi_climate.sh ... --tasks "$LIST"
 #   • If a task fails, resubmit only that community with:
 #       bash submit_multi_climate.sh ... --range FAILED_IDX FAILED_IDX
 # =============================================================================
@@ -134,6 +144,8 @@ MAIL_USER=""
 MAIL_TYPE="END,FAIL"
 DRY_RUN=0
 RANGE_START=""
+TASKS=""
+PYTHON_BIN=""
 RANGE_END=""
 
 # ── Argument parsing ──────────────────────────────────────────────────────────
@@ -155,6 +167,8 @@ while [[ $# -gt 0 ]]; do
         --full-branch-output) FULL_BRANCH_OUTPUT=1; shift; COLLECTING_TEMP=0; COLLECTING_PSI=0 ;;
         --seed)          SEED="$2";          shift 2; COLLECTING_TEMP=0; COLLECTING_PSI=0 ;;
         --conda-env)     CONDA_ENV="$2";     shift 2; COLLECTING_TEMP=0; COLLECTING_PSI=0 ;;
+        --python)        PYTHON_BIN="$2";    shift 2; COLLECTING_TEMP=0; COLLECTING_PSI=0 ;;
+        --tasks)         TASKS="$2";         shift 2; COLLECTING_TEMP=0; COLLECTING_PSI=0 ;;
         --partition)     PARTITION="$2";     shift 2; COLLECTING_TEMP=0; COLLECTING_PSI=0 ;;
         --account)       ACCOUNT="$2";       shift 2; COLLECTING_TEMP=0; COLLECTING_PSI=0 ;;
         --cpus)          CPUS="$2";          shift 2; COLLECTING_TEMP=0; COLLECTING_PSI=0 ;;
@@ -242,16 +256,46 @@ if [[ "${N_COMMUNITIES}" -eq 0 ]]; then
     exit 1
 fi
 
-# Apply --range if given, otherwise use full 1..N span
-if [[ -n "${RANGE_START}" && -n "${RANGE_END}" ]]; then
-    ARRAY_START="${RANGE_START}"
-    ARRAY_END="${RANGE_END}"
+# Apply --tasks or --range if given, otherwise use full 1..N span
+if [[ -n "${TASKS}" && -n "${RANGE_START}" ]]; then
+    echo "ERROR: --tasks and --range cannot be combined." >&2; exit 1
+fi
+if [[ -n "${TASKS}" ]]; then
+    if [[ ! "${TASKS}" =~ ^[0-9]+(-[0-9]+)?(,[0-9]+(-[0-9]+)?)*$ ]]; then
+        echo "ERROR: --tasks must look like 422-424,431,502 (got '${TASKS}')." >&2; exit 1
+    fi
+    ARRAY_START="${TASKS%%[-,]*}"
+    ARRAY_SPEC="${TASKS}%${MAX_ARRAY}"
 else
-    ARRAY_START=1
-    ARRAY_END="${N_COMMUNITIES}"
+    if [[ -n "${RANGE_START}" && -n "${RANGE_END}" ]]; then
+        ARRAY_START="${RANGE_START}"
+        ARRAY_END="${RANGE_END}"
+    else
+        ARRAY_START=1
+        ARRAY_END="${N_COMMUNITIES}"
+    fi
+    ARRAY_SPEC="${ARRAY_START}-${ARRAY_END}%${MAX_ARRAY}"
 fi
 
-ARRAY_SPEC="${ARRAY_START}-${ARRAY_END}%${MAX_ARRAY}"
+# ── Python interpreter for the tasks (no conda calls inside the jobs) ─────────
+if [[ -z "${PYTHON_BIN}" ]]; then
+    CAND="${HOME}/.conda/envs/${CONDA_ENV}/bin/python"
+    if [[ -x "${CAND}" ]]; then
+        PYTHON_BIN="${CAND}"
+    elif command -v conda >/dev/null 2>&1; then
+        ENV_PREFIX=$(conda env list 2>/dev/null | awk -v e="${CONDA_ENV}" '$1==e {print $NF}')
+        [[ -n "${ENV_PREFIX}" ]] && PYTHON_BIN="${ENV_PREFIX}/bin/python"
+    fi
+fi
+if [[ -z "${PYTHON_BIN}" || ! -x "${PYTHON_BIN}" ]]; then
+    echo "ERROR: could not find the python of conda env '${CONDA_ENV}'." >&2
+    echo "       Looked for ${HOME}/.conda/envs/${CONDA_ENV}/bin/python and in 'conda env list'." >&2
+    echo "       Pass it with --python /path/to/env/bin/python." >&2
+    exit 1
+fi
+if ! "${PYTHON_BIN}" -c "import numpy, pandas" >/dev/null 2>&1; then
+    echo "ERROR: ${PYTHON_BIN} cannot import numpy and pandas." >&2; exit 1
+fi
 
 # ── Build the python command args that each task will run ─────────────────────
 PYTHON_ARGS=(
@@ -291,7 +335,7 @@ if [[ -n "${STATIC_TEMP}" ]]; then
 fi
 
 # Convert array to a single string for embedding in the heredoc
-PYTHON_CMD="python ${PYTHON_ARGS[*]}"
+PYTHON_CMD="${PYTHON_BIN} ${PYTHON_ARGS[*]}"
 
 # ── Build optional SBATCH directives ─────────────────────────────────────────
 ACCOUNT_LINE=""
@@ -322,6 +366,7 @@ echo "  CPUs/task     : ${CPUS}"
 echo "  Mem/task      : ${MEM}"
 echo "  Wall time     : ${TIME}"
 echo "  Conda env     : ${CONDA_ENV}"
+echo "  Python        : ${PYTHON_BIN}"
 echo "  Log dir       : ${LOG_DIR}"
 if [[ -n "${ACCOUNT}" ]];   then echo "  Account       : ${ACCOUNT}"; fi
 if [[ -n "${MAIL_USER}" ]]; then echo "  Email         : ${MAIL_USER} (${MAIL_TYPE})"; fi
@@ -357,10 +402,13 @@ ${MAIL_LINES}
 #SBATCH --error=${LOG_DIR}/deca_%A_%a.err
 
 # ── Environment ------------------------------------------------------------------
-# HPC3 conda setup
-module load miniconda3/25.11.1
-source "\$(conda info --base)/etc/profile.d/conda.sh"
-conda activate "${CONDA_ENV}"
+# The conda env's python is called directly (located at submit time); no conda
+# commands run here, because hundreds of simultaneous 'conda activate' calls
+# crashed conda at task start.
+if ! "${PYTHON_BIN}" -c "import numpy, pandas"; then
+    echo "ERROR: ${PYTHON_BIN} cannot import numpy/pandas on \$(hostname)." >&2
+    exit 1
+fi
 
 # ── Working directory ------------------------------------------------------------
 # Run from the project root so relative paths (src/, input/, analysis/) resolve.
