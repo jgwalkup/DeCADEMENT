@@ -38,6 +38,10 @@
 #   --time       HH:MM:SS  Wall-clock limit per task       (default: 12:00:00)
 #   --max-array  INT       Max simultaneously running tasks (default: 64)
 #   --log-dir    DIR       Directory for SLURM log files   (default: logs/slurm)
+#   --mail-user  ADDRESS   Email address for SLURM notifications (default: none, no email)
+#   --mail-type  TYPES     Events to email about, e.g. END,FAIL or ALL (default: END,FAIL;
+#                          only used with --mail-user). For an array job SLURM sends one
+#                          message for the whole array, not one per task.
 #   --dry-run              Print the sbatch command without submitting
 #
 # EXAMPLES
@@ -126,6 +130,8 @@ MEM="8G"
 TIME="12:00:00"
 MAX_ARRAY=64
 LOG_DIR="logs/slurm"
+MAIL_USER=""
+MAIL_TYPE="END,FAIL"
 DRY_RUN=0
 RANGE_START=""
 RANGE_END=""
@@ -156,6 +162,8 @@ while [[ $# -gt 0 ]]; do
         --time)          TIME="$2";          shift 2; COLLECTING_TEMP=0; COLLECTING_PSI=0 ;;
         --max-array)     MAX_ARRAY="$2";     shift 2; COLLECTING_TEMP=0; COLLECTING_PSI=0 ;;
         --log-dir)       LOG_DIR="$2";       shift 2; COLLECTING_TEMP=0; COLLECTING_PSI=0 ;;
+        --mail-user)     MAIL_USER="$2";     shift 2; COLLECTING_TEMP=0; COLLECTING_PSI=0 ;;
+        --mail-type)     MAIL_TYPE="$2";     shift 2; COLLECTING_TEMP=0; COLLECTING_PSI=0 ;;
         --range)         RANGE_START="$2"; RANGE_END="$3"; shift 3;
                          COLLECTING_TEMP=0; COLLECTING_PSI=0 ;;
         --dry-run)       DRY_RUN=1;          shift;   COLLECTING_TEMP=0; COLLECTING_PSI=0 ;;
@@ -291,6 +299,12 @@ if [[ -n "${ACCOUNT}" ]]; then
     ACCOUNT_LINE="#SBATCH --account=${ACCOUNT}"
 fi
 
+MAIL_LINES=""
+if [[ -n "${MAIL_USER}" ]]; then
+    MAIL_LINES="#SBATCH --mail-user=${MAIL_USER}
+#SBATCH --mail-type=${MAIL_TYPE}"
+fi
+
 # ── Create log directory ──────────────────────────────────────────────────────
 mkdir -p "${LOG_DIR}"
 
@@ -310,6 +324,7 @@ echo "  Wall time     : ${TIME}"
 echo "  Conda env     : ${CONDA_ENV}"
 echo "  Log dir       : ${LOG_DIR}"
 if [[ -n "${ACCOUNT}" ]];   then echo "  Account       : ${ACCOUNT}"; fi
+if [[ -n "${MAIL_USER}" ]]; then echo "  Email         : ${MAIL_USER} (${MAIL_TYPE})"; fi
 if [[ -n "${CLIMATE}" ]];   then echo "  Climate       : ${CLIMATE}"; fi
 if [[ -n "${SPINUP_CLIMATE}" ]]; then echo "  Spin-up clim. : ${SPINUP_CLIMATE}"; fi
 if [[ "${REUSE_SPINUP}" -eq 1 ]]; then echo "  Reuse spin-up : yes"; fi
@@ -332,6 +347,7 @@ JOB_SCRIPT=$(cat <<SLURM_SCRIPT
 #SBATCH --array=${ARRAY_SPEC}
 #SBATCH --partition=${PARTITION}
 ${ACCOUNT_LINE}
+${MAIL_LINES}
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=${CPUS}
