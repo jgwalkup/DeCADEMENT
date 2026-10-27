@@ -659,12 +659,19 @@ def _fold(store: dict, key: str, val):
         else:
             arr = val.reindex(rec["index"]).to_numpy(dtype="float64")
 
-    mask = ~np.isnan(arr)
+    # inf (a 0-denominator ratio in output.py, e.g. CUE of a taxon with cells but
+    # no uptake) is not a value: count it out like NaN.
+    mask = np.isfinite(arr)
     rec["count"] += mask                      # bool adds 1.0 where present
     with np.errstate(invalid="ignore", divide="ignore"):
         delta = np.where(mask, arr - rec["mean"], 0.0)
         rec["mean"] += np.where(mask, delta / rec["count"], 0.0)
         rec["m2"]   += np.where(mask, delta * (arr - rec["mean"]), 0.0)
+
+
+def _natural_key(label):
+    import re
+    return [int(t) if t.isdigit() else t for t in re.split(r"(\d+)", str(label))]
 
 
 def _finalize_store(store: dict) -> dict:
@@ -684,6 +691,10 @@ def _finalize_store(store: dict) -> dict:
         if rec["is_df"]:
             mean = pd.DataFrame(mean, index=rec["index"], columns=rec["columns"])
             std  = pd.DataFrame(std,  index=rec["index"], columns=rec["columns"])
+            # Rows are accumulated in the order communities arrive; sort them
+            # (natural order, Tax2 before Tax10) so the output is deterministic.
+            order = sorted(mean.index, key=_natural_key)
+            mean, std = mean.loc[order], std.loc[order]
         else:
             mean = pd.Series(mean, index=rec["index"])
             std  = pd.Series(std,  index=rec["index"])
@@ -737,52 +748,82 @@ class _StreamAgg:
         return self._fsr.get(key, (None, None))
 
 
-def _stream_load_and_fold(run_dirs: list[Path], n_jobs: int, acc: _StreamAgg):
-    """Load runs (bounded parallel) and fold each into *acc*, discarding as we go.
+def _compute_community(jobs: list[tuple[str, Path]]) -> list[tuple[str, dict | None]]:
+    """compute_run for every scenario run of one community, in one worker.
+
+    Split branched output shares the spin-up part between a community's
+    scenarios; branch_output caches it, so it is read from disk once here."""
+    from branch_output import clear_cache
+    out = []
+    try:
+        for label, rd in jobs:
+            try:
+                out.append((label, compute_run(rd)))
+            except Exception as e:                      # one bad run must not sink the community
+                print(f"  [run {rd.name} / {label}] FAILED: {e}", flush=True)
+                out.append((label, None))
+    finally:
+        clear_cache()
+    return out
+
+
+def _group_by_community(scenario_list) -> list[list[tuple[str, Path]]]:
+    """[(label, run_dir), ...] per community folder name, in sorted order."""
+    by_comm: dict[str, list[tuple[str, Path]]] = {}
+    for label, run_dirs in scenario_list:
+        for rd in run_dirs:
+            by_comm.setdefault(rd.name, []).append((label, rd))
+    return [by_comm[k] for k in sorted(by_comm)]
+
+
+def _stream_load_and_fold(scenario_list, n_jobs: int, accs: dict[str, "_StreamAgg"]):
+    """Load every community's runs (bounded parallel) and fold each run into
+    its scenario's accumulator, discarding as we go.
 
     Outstanding futures are capped at n_jobs + buffer so completed run dicts are
     folded and freed immediately instead of piling up in the result queue — that
-    cap, not the community count, sets peak memory.
-    """
-    n = len(run_dirs)
+    cap, not the community count, sets peak memory."""
+    groups = _group_by_community(scenario_list)
+    n = len(groups)
+
+    def _fold(results):
+        for label, d in results:
+            accs[label].fold(d)
 
     if n_jobs <= 1 or n <= 1:
-        for i, rd in enumerate(run_dirs):
-            print(f"  [{i+1}/{n}] {rd.name}", end=" ", flush=True)
-            d = compute_run(rd)
-            ok = d is not None
-            acc.fold(d)
-            del d
-            print("ok" if ok else "FAILED")
+        for i, jobs in enumerate(groups):
+            res = _compute_community(jobs)
+            _fold(res)
+            n_ok = sum(d is not None for _, d in res)
+            print(f"  [{i+1}/{n}] {jobs[0][1].name}  {n_ok}/{len(jobs)} runs ok", flush=True)
         return
 
     max_outstanding = n_jobs + 4
-    print(f"  Streaming {n} runs across {n_jobs} workers "
+    print(f"  Streaming {n} communities across {n_jobs} workers "
           f"(≤{max_outstanding} in flight)...", flush=True)
     done = submitted = 0
     with ProcessPoolExecutor(max_workers=n_jobs) as ex:
         futures = {}
         while submitted < min(max_outstanding, n):
-            rd = run_dirs[submitted]
-            futures[ex.submit(compute_run, rd)] = rd.name
+            jobs = groups[submitted]
+            futures[ex.submit(_compute_community, jobs)] = jobs[0][1].name
             submitted += 1
         while futures:
             finished, _pending = wait(set(futures), return_when=FIRST_COMPLETED)
             for fut in finished:
                 name = futures.pop(fut)
                 try:
-                    d = fut.result()
-                    ok = d is not None
+                    res = fut.result()
                 except Exception as e:
-                    d, ok = None, False
-                    print(f"  [run {name}] FAILED: {e}", flush=True)
-                acc.fold(d)
-                del d
+                    res = []
+                    print(f"  [community {name}] FAILED: {e}", flush=True)
+                _fold(res)
+                del res
                 done += 1
-                print(f"  [{done}/{n}] {name} {'ok' if ok else 'FAILED'}", flush=True)
+                print(f"  [{done}/{n}] {name}", flush=True)
                 if submitted < n:
-                    rd = run_dirs[submitted]
-                    futures[ex.submit(compute_run, rd)] = rd.name
+                    jobs = groups[submitted]
+                    futures[ex.submit(_compute_community, jobs)] = jobs[0][1].name
                     submitted += 1
 
 
@@ -936,20 +977,22 @@ def main():
     pulse_rows_mean = {}
     pulse_rows_sd   = {}
 
-    acc = None
+    # Stream every community's runs into one mean/SD accumulator per scenario
+    # (memory independent of the community count; a community's scenarios are
+    # read together so a split run's spin-up part is read once).
+    print("── Loading runs ─────────────────────────────────────────────────")
+    for label, run_dirs in scenario_list:
+        print(f"  {label}: {len(run_dirs)} communities")
+    accs = {label: _StreamAgg() for label, _ in scenario_list}
+    _stream_load_and_fold(scenario_list, n_jobs, accs)
+    for a in accs.values():
+        a.finalize()
+    gc.collect()
+
     for label, run_dirs in scenario_list:
         n = len(run_dirs)
-        print(f"── {label}  ({n} communities) ──────────────────────────────")
-
-        # Stream runs into mean/SD accumulators (memory independent of count).
-        acc = None
-        gc.collect()
-        acc = _StreamAgg()
-        _stream_load_and_fold(run_dirs, n_jobs, acc)
-        acc.finalize()
-
-        loaded = acc.n_loaded
-        print(f"  Loaded {loaded}/{n}\n")
+        acc = accs[label]
+        print(f"── {label}  ({acc.n_loaded}/{n} communities loaded) ─────────────────")
 
         # ── Output directory for this scenario ────────────────────────────────
         safe_label = label.replace(" ", "_").replace("/", "-")
@@ -1167,7 +1210,7 @@ def main():
         print(f"  Wrote {len(files)} files to {out_dir}\n")
 
         # Drop this scenario's finalised aggregates before the next scenario.
-        acc = None
+        accs[label] = acc = None
         gc.collect()
 
     # ── Cross-scenario pulse summary ──────────────────────────────────────────

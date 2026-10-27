@@ -138,13 +138,21 @@ def write_marker(run_dir, spinup_dir, branch_day, n_days, trimmed):
         json.dump(info, fh, indent=1)
 
 
-def _read_csv(source, header):
-    n_index = 0
-    while n_index < len(header) and header[n_index] == '':
-        n_index += 1
-    n_index = max(n_index, 1)
-    return pd.read_csv(source, index_col=list(range(n_index)),
-                       float_precision='round_trip')
+def _header(path):
+    with open(path, newline='') as fh:
+        return next(csv.reader(fh))
+
+
+def _n_index(header):
+    """Leading index levels: the header's leading empty cells (at least one)."""
+    n = 0
+    while n < len(header) and header[n] == '':
+        n += 1
+    return max(n, 1)
+
+
+def _read_csv(path, header):
+    return pd.read_csv(path, index_col=list(range(_n_index(header))))
 
 
 def _rows(path):
@@ -161,35 +169,60 @@ def branch_info(run_dir):
         return json.load(fh)
 
 
+# Spin-up parts are shared by every scenario of a community.  A worker that
+# reads a community's scenarios one after another finds the spin-up part of
+# each table here instead of reading it again; clear_cache() drops them.
+_SPINUP_CACHE = {}
+
+
+def clear_cache():
+    _SPINUP_CACHE.clear()
+
+
+def _spinup_part(spin, name, kind):
+    key = (str(spin), name, kind)
+    df = _SPINUP_CACHE.get(key)
+    if df is None:
+        path = spin / f'{name}.csv'
+        if kind == 'per_pulse':
+            df = _rows(path)                  # raw rows: labels repeat per pulse
+        else:
+            df = _read_csv(path, _header(path))
+        _SPINUP_CACHE[key] = df
+    return df
+
+
 def read_table(run_dir, name):
     """
     One output table as a DataFrame: for split branched runs the spin-up days
     and the branch days joined into the full series; otherwise the file as is.
+    The joined frame is what reading the unsplit file gives.
     """
-    import io
     run_dir = Path(run_dir)
     path = run_dir / f'{name}.csv'
     info = branch_info(run_dir)
     split_cols = info is not None and name in info['trimmed_columns']
     split_rows = info is not None and name in info['trimmed_rows']
     if not (split_cols or split_rows):
-        with open(path, newline='') as fh:
-            header = next(csv.reader(fh))
-        return _read_csv(path, header)
-    # Rebuild the full CSV text from the two parts and parse it once, so the
-    # result is exactly what reading an unsplit file gives (including pandas'
-    # renaming of repeated column labels, e.g. in Taxon_count_repop).
+        return _read_csv(path, _header(path))
     spin = (run_dir / info['spinup_output']).resolve()
-    rs, rb = _rows(spin / f'{name}.csv'), _rows(path)
-    if split_cols:
+    header = _header(path)
+    if split_rows:                             # one row per day (Kill)
+        return pd.concat([_spinup_part(spin, name, 'rows'), _read_csv(path, header)])
+    kind = _day_columns(_header(spin / f'{name}.csv'), min_days=1)[1]
+    if kind == 'per_pulse':
+        # Labels restart every pulse; pandas renames repeated labels across the
+        # whole header, so rebuild the CSV text and parse it once.
+        import io
+        rs, rb = _spinup_part(spin, name, kind), _rows(path)
         p = _day_columns(rs[0], min_days=1)[0]
         rows = [x + y[p:] for x, y in zip(rs, rb)]
-    else:
-        rows = rs + rb[1:]
-    buf = io.StringIO()
-    csv.writer(buf, lineterminator='\n').writerows(rows)
-    buf.seek(0)
-    return _read_csv(buf, rows[0])
+        buf = io.StringIO()
+        csv.writer(buf, lineterminator='\n').writerows(rows)
+        buf.seek(0)
+        return _read_csv(buf, rows[0])
+    branch = _read_csv(path, header)
+    return pd.concat([_spinup_part(spin, name, kind), branch.reindex(_SPINUP_CACHE[(str(spin), name, kind)].index)], axis=1)
 
 
 def initialization_dir(run_dir):
