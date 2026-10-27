@@ -817,9 +817,11 @@ def _stream_load_and_fold(scenario_list, n_jobs: int, accs: dict[str, "_StreamAg
     """Load every community's runs (bounded parallel) and fold each run into
     its scenario's accumulator, discarding as we go.
 
-    Outstanding futures are capped at n_jobs + buffer so completed run dicts are
-    folded and freed immediately instead of piling up in the result queue — that
-    cap, not the community count, sets peak memory."""
+    Outstanding futures are capped at n_jobs so completed run dicts are folded
+    and freed instead of piling up in the result queue.  Memory: each worker
+    peaks at ~0.4 GB and each finished community is ~0.3 GB of frames until it
+    is folded (2190-day runs, 100 taxa), so budget ~1 GB per worker plus ~2 GB
+    for the accumulators and the main process."""
     groups = _group_by_community(scenario_list)
     n = len(groups)
 
@@ -835,7 +837,7 @@ def _stream_load_and_fold(scenario_list, n_jobs: int, accs: dict[str, "_StreamAg
             print(f"  [{i+1}/{n}] {jobs[0][1].name}  {n_ok}/{len(jobs)} runs ok", flush=True)
         return
 
-    max_outstanding = n_jobs + 4
+    max_outstanding = n_jobs
     print(f"  Streaming {n} communities across {n_jobs} workers "
           f"(≤{max_outstanding} in flight)...", flush=True)
     done = submitted = 0
@@ -989,7 +991,8 @@ def main():
         "--jobs", "-j", type=int, default=1, metavar="N",
         help="Number of parallel worker processes for per-run loading. "
              "1 (default) = serial; 0 = auto ($SLURM_CPUS_PER_TASK or all cores); "
-             "N = use N workers (clamped to available CPUs).",
+             "N = use N workers (clamped to available CPUs).  Memory: about "
+             "1 GB per worker plus 2 GB (six 365-day pulses, 100 taxa).",
     )
 
     args = parser.parse_args()
