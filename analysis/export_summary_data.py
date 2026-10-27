@@ -595,81 +595,93 @@ def _resolve_jobs(requested: int) -> int:
 _POOL_KEYS = ("SUB", "MON", "MIC", "ENE", "ENZ", "CNT")
 
 
-def _fold(store: dict, key: str, val):
+def _pack(d: dict | None):
+    """Turn a compute_run dict into plain arrays for cheap transfer and folding:
+    key -> (row labels, column labels or None, float64 ndarray).  Pickling a
+    dict of ~90 DataFrames costs seconds per community; arrays pickle at
+    memory-copy speed, and the fold below works on positions, not labels."""
+    if d is None:
+        return None
+    out = {}
+    for key, val in d.items():
+        if val is None:
+            continue
+        if isinstance(val, pd.DataFrame):
+            out[key] = (list(val.index), list(val.columns),
+                        np.ascontiguousarray(val.to_numpy(dtype="float64")))
+        elif isinstance(val, pd.Series):
+            out[key] = (list(val.index), None,
+                        np.ascontiguousarray(val.to_numpy(dtype="float64")))
+    return out
+
+
+def _fold(store: dict, key: str, packed):
     """Fold one run's value into running mean / M2 / count (Welford, numpy, in-place).
 
     For 2-D (taxon/type × day) values the ROW index grows to the union across
     runs, so the reference spans the full taxon pool and every run is aligned by
     identity; columns (days) and 1-D series stay anchored to the first run.
-    Cells missing from a run contribute NaN (counted out), so the finalised
-    mean/SD ignore them, ddof=1, averaging each cell over only the runs that
-    carry it.
+    Cells missing from a run contribute nothing (counted out), so the finalised
+    mean/SD average each cell over only the runs that carry it (ddof=1).  inf (a
+    0-denominator ratio in output.py, e.g. CUE of a taxon with cells but no
+    uptake) is not a value and is counted out like NaN.
 
-    Accumulation is done on numpy arrays with in-place updates rather than pandas
-    DataFrame arithmetic: the latter allocates a fresh block-managed frame on
-    every fold, which serialises the whole pipeline at scale.  Welford's update
-    (running mean and sum of squared deviations) avoids the cancellation of the
-    one-pass Σx² − (Σx)²/n formula, which loses digits when values are large
-    relative to their spread.
+    Rows are matched by position lookups, not pandas reindex: with ~270 frames
+    per community, reindexing was the main process's bottleneck.  Welford's
+    update (running mean and sum of squared deviations) avoids the cancellation
+    of the one-pass Σx² − (Σx)²/n formula.
     """
-    is_df = isinstance(val, pd.DataFrame)
+    idx, cols, arr = packed
+    is_df = cols is not None
+    if len(set(idx)) != len(idx):
+        dups = sorted({x for x in idx if idx.count(x) > 1})
+        raise ValueError(
+            f"_fold: frame for key '{key}' has duplicate row labels "
+            f"{dups[:10]}{' …' if len(dups) > 10 else ''}; a per-taxon run "
+            f"frame was not de-duplicated upstream (compute_run should have "
+            f"skipped this community).")
     rec = store.get(key)
     if rec is None:
-        if is_df:
-            idx, cols = val.index, val.columns
-            shape = (len(idx), len(cols))
-        else:
-            idx, cols = val.index, None
-            shape = (len(idx),)
+        shape = (len(idx), len(cols)) if is_df else (len(idx),)
         rec = store[key] = {
-            "is_df": is_df, "index": idx, "columns": cols,
-            "mean": np.zeros(shape, dtype="float64"),
-            "m2": np.zeros(shape, dtype="float64"),
-            "count": np.zeros(shape, dtype="float64"),
+            "is_df": is_df, "index": list(idx), "pos": {l: i for i, l in enumerate(idx)},
+            "columns": list(cols) if is_df else None,
+            "colpos": ({c: i for i, c in enumerate(cols)} if is_df else None),
+            "mean": np.zeros(shape), "m2": np.zeros(shape), "count": np.zeros(shape),
         }
-
-    # Align to the reference shape, then drop to a numpy array. Skip the (costly)
-    # reindex when the run already matches the reference exactly.
-    if rec["is_df"]:
-        if not val.index.is_unique:
-            dups = val.index[val.index.duplicated(keep=False)].unique().tolist()
-            raise ValueError(
-                f"_fold: frame for key '{key}' has duplicate row labels "
-                f"{dups[:10]}{' …' if len(dups) > 10 else ''}; a per-taxon run "
-                f"frame was not de-duplicated upstream (compute_run should have "
-                f"skipped this community).")
-        if val.index.equals(rec["index"]) and val.columns.equals(rec["columns"]):
-            arr = val.to_numpy(dtype="float64", copy=False)
-        else:
-            # Union-grow the ROW index so the reference spans every row seen
-            # across runs (e.g. the full taxon pool), aligned by identity rather
-            # than anchored to the first run.  New labels get zero-initialised
-            # history; per-cell count tracks n, so each row is averaged only over
-            # the runs that actually carry it.  Columns (days) stay first-run.
-            ref_set = set(rec["index"])
-            missing = [l for l in dict.fromkeys(val.index) if l not in ref_set]
-            if missing:
-                z = np.zeros((len(missing), rec["mean"].shape[1]), dtype="float64")
-                rec["mean"]  = np.vstack([rec["mean"],  z])
-                rec["m2"]    = np.vstack([rec["m2"],    z.copy()])
-                rec["count"] = np.vstack([rec["count"], z.copy()])
-                rec["index"] = rec["index"].append(pd.Index(missing))
-            arr = val.reindex(index=rec["index"],
-                              columns=rec["columns"]).to_numpy(dtype="float64")
+    # Union-grow the ROW index: new labels get zero-initialised history.
+    missing = [l for l in idx if l not in rec["pos"]]
+    if missing:
+        for l in missing:
+            rec["pos"][l] = len(rec["index"])
+            rec["index"].append(l)
+        pad = (len(missing),) + rec["mean"].shape[1:]
+        for k in ("mean", "m2", "count"):
+            rec[k] = np.concatenate([rec[k], np.zeros(pad)])
+    rows = np.fromiter((rec["pos"][l] for l in idx), dtype=np.intp, count=len(idx))
+    if is_df:
+        if cols == rec["columns"]:
+            sel = (rows, slice(None))
+        else:                                  # keep the reference columns only
+            keep = [(i, rec["colpos"][c]) for i, c in enumerate(cols) if c in rec["colpos"]]
+            if not keep:
+                return
+            src, dst = zip(*keep)
+            arr = arr[:, list(src)]
+            sel = (rows[:, None], np.asarray(dst, dtype=np.intp)[None, :])
     else:
-        if val.index.equals(rec["index"]):
-            arr = val.to_numpy(dtype="float64", copy=False)
-        else:
-            arr = val.reindex(rec["index"]).to_numpy(dtype="float64")
+        sel = (rows,)
 
-    # inf (a 0-denominator ratio in output.py, e.g. CUE of a taxon with cells but
-    # no uptake) is not a value: count it out like NaN.
     mask = np.isfinite(arr)
-    rec["count"] += mask                      # bool adds 1.0 where present
+    cnt = rec["count"][sel] + mask
+    mean = rec["mean"][sel]
     with np.errstate(invalid="ignore", divide="ignore"):
-        delta = np.where(mask, arr - rec["mean"], 0.0)
-        rec["mean"] += np.where(mask, delta / rec["count"], 0.0)
-        rec["m2"]   += np.where(mask, delta * (arr - rec["mean"]), 0.0)
+        delta = np.where(mask, arr - mean, 0.0)
+        mean = mean + np.where(mask, delta / cnt, 0.0)
+        m2 = rec["m2"][sel] + np.where(mask, delta * (arr - mean), 0.0)
+    rec["count"][sel] = cnt
+    rec["mean"][sel] = mean
+    rec["m2"][sel] = m2
 
 
 def _natural_key(label):
@@ -680,9 +692,9 @@ def _natural_key(label):
 def _finalize_store(store: dict) -> dict:
     """Turn mean/M2/count accumulators into (mean, std) with ddof=1.
 
-    std = sqrt(M2 / (n−1)) over non-NaN samples (np.nanstd(ddof=1)); NaN where
-    n < 2 (std) or n < 1 (mean).  Accumulators are numpy arrays; results are
-    rebuilt as pandas using the stored reference index/columns.
+    std = sqrt(M2 / (n−1)) over the runs that carry each cell (np.nanstd(ddof=1));
+    NaN where n < 2 (std) or n < 1 (mean).  Per-taxon rows come out in natural
+    order (Tax2 before Tax10) whatever order the communities arrived in.
     """
     out = {}
     for key, rec in store.items():
@@ -691,16 +703,15 @@ def _finalize_store(store: dict) -> dict:
             mean  = np.where(c >= 1, m, np.nan)
             denom = np.where(c >= 2, c - 1.0, np.nan)
             std   = np.sqrt(np.clip(m2 / denom, 0.0, None))
+        index = pd.Index(rec["index"])
         if rec["is_df"]:
-            mean = pd.DataFrame(mean, index=rec["index"], columns=rec["columns"])
-            std  = pd.DataFrame(std,  index=rec["index"], columns=rec["columns"])
-            # Rows are accumulated in the order communities arrive; sort them
-            # (natural order, Tax2 before Tax10) so the output is deterministic.
+            mean = pd.DataFrame(mean, index=index, columns=rec["columns"])
+            std  = pd.DataFrame(std,  index=index, columns=rec["columns"])
             order = sorted(mean.index, key=_natural_key)
             mean, std = mean.loc[order], std.loc[order]
         else:
-            mean = pd.Series(mean, index=rec["index"])
-            std  = pd.Series(std,  index=rec["index"])
+            mean = pd.Series(mean, index=index)
+            std  = pd.Series(std,  index=index)
         out[key] = (mean, std)
     return out
 
@@ -721,19 +732,19 @@ class _StreamAgg:
         self.n_loaded = 0
         self._fdf = self._fsr = self._fser = None
 
-    def fold(self, d):
-        if d is None:
+    def fold(self, packed):
+        """Fold one run (a _pack()ed compute_run dict, or None)."""
+        if packed is None:
             return
         self.n_loaded += 1
-        for key, val in d.items():
-            if val is None:
-                continue
-            if isinstance(val, pd.Series):
+        for key, val in packed.items():
+            idx, cols, arr = val
+            if cols is None:
                 _fold(self._ser, key, val)
-            elif isinstance(val, pd.DataFrame):
+            else:
                 _fold(self._df, key, val)
                 if key in _POOL_KEYS:
-                    _fold(self._sr, key, val.sum(axis=0))
+                    _fold(self._sr, key, (cols, None, np.nansum(arr, axis=0)))
 
     def finalize(self):
         self._fdf = _finalize_store(self._df)
@@ -792,7 +803,7 @@ def _compute_community(jobs: list[tuple[str, Path]],
             jobs, root = _stage_community(jobs, Path(stage_dir))
         for label, rd in jobs:
             try:
-                out.append((label, compute_run(rd)))
+                out.append((label, _pack(compute_run(rd))))
             except Exception as e:                      # one bad run must not sink the community
                 print(f"  [run {rd.name} / {label}] FAILED: {e}", flush=True)
                 out.append((label, None))
