@@ -32,7 +32,14 @@ from scenario_utils import (
     get_palette_from_args,
     add_summary_arg, resolve_summary_scenarios, load_summary, read_summary_meta,
     _parse_treatment_map,
+    resolve_runs,
 )
+
+# Raw per-run tables are read with scenario_utils.load_series, which joins split
+# branched output (branch_output.json) into the full series, keeps the
+# (taxon, type) index of Taxon_HSP_Series / Taxon_Osmo_Series aligned to the
+# right day (type level dropped), and renumbers day columns 1..n.
+load = load_series
 
 
 # ── Paths ─────────────────────────────────────────────────────────────────────
@@ -65,54 +72,6 @@ plt.rcParams.update({
 })
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
-def load(run_dir: Path, name: str):
-    f = run_dir / f"{name}.csv"
-    if not f.exists():
-        return None
-    df = pd.read_csv(f, index_col=0)
-    # Positional renaming: handles both correct (int) and broken ('C','C.1',...) column names
-    df.columns = range(len(df.columns))        # 0 = init state, 1..n = days
-    df = df.drop(columns=[0], errors="ignore") # drop init state column
-    df.columns = range(1, len(df.columns) + 1) # renumber 1..n_days
-    return df
-
-def pick_runs(scenario_dir: Path, min_cols: int = MIN_COLS):
-    if not scenario_dir.exists():
-        return []
-    by_rep = {}
-    for d in sorted(scenario_dir.iterdir()):
-        if not d.is_dir():
-            continue
-        f = d / "C_Uptake_Taxon.csv"
-        if not f.exists():
-            continue
-        try:
-            nc = pd.read_csv(f, index_col=0, nrows=1).shape[1]
-        except Exception:
-            continue
-        if nc < min_cols:
-            continue
-        parts = d.name.split("_")
-        rep = parts[1] if len(parts) > 1 else "000"
-        if rep not in by_rep or d.name > by_rep[rep].name:
-            by_rep[rep] = d
-    return list(by_rep.values())
-
-def resolve_runs(names: list[str], base_dir: Path) -> list[Path]:
-    dirs = []
-    for n in names:
-        p = Path(n)
-        if p.is_absolute():
-            if p.is_dir():
-                dirs.append(p)
-            else:
-                print(f"  WARNING: absolute path not found: {p}")
-        elif (base_dir / n).is_dir():
-            dirs.append(base_dir / n)
-        else:
-            print(f"  WARNING: run folder not found: {n!r} (looked in {base_dir})")
-    return dirs
-
 def safe_div(a, b):
     with np.errstate(divide="ignore", invalid="ignore"):
         r = a / b
@@ -199,21 +158,6 @@ def subsample(df, n=200):
     return df.iloc[:, idx]
 
 # ── Year / pulse helpers ───────────────────────────────────────────────────────
-def read_runtime(run_dir) -> dict:
-    """Read Runtime.csv → {'pulse': n_years, 'end_time': days_per_year}."""
-    if run_dir is None:
-        return {"pulse": 1, "end_time": 365}
-    f = run_dir / "Runtime.csv"
-    if not f.exists():
-        return {"pulse": 1, "end_time": 365}
-    try:
-        rt  = pd.read_csv(f, index_col=0, header=0)
-        col = rt.columns[0]
-        return {"pulse":    int(float(rt.loc["pulse",    col])),
-                "end_time": int(float(rt.loc["end_time", col]))}
-    except Exception:
-        return {"pulse": 1, "end_time": 365}
-
 def year_range(years_arg, n_years: int, days_per_year: int) -> tuple[int, int]:
     """Convert --years argument to (col_start, col_end) inclusive day range."""
     if years_arg is None:

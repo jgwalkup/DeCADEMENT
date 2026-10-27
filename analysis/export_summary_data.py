@@ -62,9 +62,34 @@ Efficiency  (index = taxon, columns = day)
   cue_taxon.csv                 – per-taxon CUE
   cae_taxon.csv                 – per-taxon CAE
 
-HSP  (index = taxon, columns = day)
+HSP / osmolytes  (index = taxon, columns = day)
   hsp_pool_taxon.csv            – total HSP pool C per taxon
   hsp_biomass_ratio_taxon.csv   – HSP pool C / biomass C per taxon
+  osmo_pool_taxon.csv           – total osmolyte pool C per taxon
+  osmo_biomass_ratio_taxon.csv  – osmolyte pool C / biomass C per taxon
+
+Energy budget and C losses  (index = taxon, columns = day;  per alive microbe)
+  c_endo_resp_taxon.csv         – biomass C respired endogenously to pay an energy deficit (R_endo)
+  c_rebalance_taxon.csv         – C respired by stoichiometric rebalancing (= R_stoich_E / E_yield)
+  c_retained_taxon.csv          – C retained: biosynthesis C − enzyme C − endogenous − rebalancing
+                                  (the numerator of the model's CUE; HSP/osmolyte C count as retained)
+  c_loss_taxon.csv              – C taken up − C retained
+  e_stoich_taxon.csv            – energy credited from rebalanced C (R_stoich)
+  e_unpaid_taxon.csv            – energy demand left unpaid after endogenous respiration
+  e_demand_ratio_taxon.csv      – total energy cost / (production + R_stoich credit), unclipped
+  drought_tol_taxon.csv         – drought tolerance, mean over living cells
+  *_per_biomass_taxon.csv       – endo_resp, rebalance, retained, e_unpaid also per unit biomass C
+                                  (per-microbe value × cells / taxon biomass C)
+  taxon_count_taxon.csv         – living cells per taxon
+
+Community totals per unit biomass C  (index = day)
+  comm_endo_resp_C_per_biomass.csv, comm_rebalance_C_per_biomass.csv,
+  comm_retained_C_per_biomass.csv, comm_unpaid_E_per_biomass.csv
+                                – Σ_taxa (per-microbe × cells) / Σ_taxa biomass C
+
+Net CUE  (unfloored; Σ retained / Σ uptake over the pulse, cells-weighted)
+  net_cue_pulse.csv             – index = pulse; community level (all taxa)
+  net_cue_pulse_taxon.csv       – index = taxon, columns = pulse
 
 Each file written contains the community mean.  A paired *_sd.csv is written
 alongside with the cross-community standard deviation.
@@ -107,6 +132,7 @@ _HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(_HERE))
 
 try:
+    from branch_output import initialization_dir, read_table
     from scenario_utils import (
         load_series,
         pick_runs,
@@ -157,7 +183,8 @@ _TAXON_SERIES = frozenset({
     "E_Prod_Taxon", "Microbe_E_Gain", "Microbe_E_Cost",
     "Transport_E_Taxon", "Maint_E_Taxon", "HSP_E_Taxon",
     "Enzyme_E_Taxon", "Osmo_E_Taxon",
-    "Taxon_HSP_Series",
+    "Taxon_HSP_Series", "Taxon_Osmo_Series", "Taxon_count",
+    "R_endo_C_Taxon", "R_stoich_E_Taxon", "E_unpaid_Taxon", "Drought_tol_Taxon",
 })
 
 
@@ -183,6 +210,34 @@ def _global_taxon_ids(run_dir: Path):
             except Exception:
                 continue
     return None
+
+
+def _rebalance_E_yield(run_dir: Path) -> float | None:
+    """Energy per C respired in rebalancing (R_stoich) and endogenous respiration:
+    E_resp of Mon_DeadMic from the run's Initialization/MonEnergy_Attrib.csv."""
+    p = initialization_dir(run_dir) / "MonEnergy_Attrib.csv"
+    try:
+        return float(pd.read_csv(p, index_col=0).loc["Mon_DeadMic", "E_resp"])
+    except Exception:
+        return None
+
+
+def _living_cells(run_dir: Path, L) -> pd.DataFrame | None:
+    """Living cells per taxon per day (taxa × days 1..n).
+
+    Current output.py writes Taxon_count day by day (initial state + one column
+    per day).  Older runs hold only the final count there; for those the daily
+    counts come from Taxon_count_repop, which has one column per day (labels
+    restart each pulse, no initial-state column), relabelled 1..n."""
+    cnt = L("Taxon_count")
+    if cnt is not None and cnt.shape[1] > 1:
+        return cnt
+    try:
+        rp = read_table(run_dir, "Taxon_count_repop")
+    except FileNotFoundError:
+        return None
+    rp.columns = range(1, rp.shape[1] + 1)
+    return rp
 
 
 def compute_run(run_dir: Path) -> dict | None:
@@ -259,8 +314,15 @@ def compute_run(run_dir: Path) -> dict | None:
     EE   = L("Enzyme_E_Taxon")        # taxa × days
     EO   = L("Osmo_E_Taxon")          # taxa × days
 
-    # HSP
+    # HSP / osmolyte pools, cell counts, energy budget
     HSP  = L("Taxon_HSP_Series")      # (taxa × HSP_type) × days
+    OSM  = L("Taxon_Osmo_Series")     # (taxa × osmolyte) × days
+    CNT  = _living_cells(run_dir, L)  # taxa × days (living cells)
+    RE   = L("R_endo_C_Taxon")        # taxa × days  C respired endogenously
+    RSE  = L("R_stoich_E_Taxon")      # taxa × days  energy credited from rebalanced C
+    EU   = L("E_unpaid_Taxon")        # taxa × days  unpaid energy demand
+    DT   = L("Drought_tol_Taxon")     # taxa × days
+    E_yield = _rebalance_E_yield(run_dir)
 
     # ── Derived: C allocation ──────────────────────────────────────────────────
     energy_C      = (CU - BC).clip(lower=0) if (CU is not None and BC is not None) else None
@@ -322,6 +384,75 @@ def compute_run(run_dir: Path) -> dict | None:
                 h = hsp_pool.loc[common_taxa, common_days].astype(float)
                 m = MIC.loc[common_taxa, common_days].astype(float)
                 hsp_biomass_ratio = safe_div(h, m).clip(lower=0)
+
+    # ── Derived: osmolyte pool ─────────────────────────────────────────────────
+    osmo_pool = osmo_biomass_ratio = None
+    if OSM is not None:
+        osmo_pool = OSM.groupby(OSM.index).sum()   # collapse osmolyte types
+        if MIC is not None:
+            common_taxa = sorted(set(osmo_pool.index) & set(MIC.index))
+            common_days = sorted(set(osmo_pool.columns) & set(MIC.columns))
+            if common_taxa and common_days:
+                osmo_biomass_ratio = safe_div(osmo_pool.loc[common_taxa, common_days].astype(float),
+                                              MIC.loc[common_taxa, common_days].astype(float)).clip(lower=0)
+
+    # ── Derived: C losses, retained C, energy budget ────────────────────────────
+    # Per-microbe quantities follow grid.py: retained = BC − enzyme C − C_endo − rebalancing C,
+    # with rebalancing C = R_stoich_E / E_yield (exact while R_stoich is on).
+    def _sub(a, b):
+        if a is None:
+            return None
+        if b is None:
+            return a
+        cc = sorted(set(a.columns) & set(b.columns))
+        return a[cc].sub(b[cc], fill_value=0)
+
+    rebal_C = (RSE / E_yield) if (RSE is not None and E_yield) else None
+    retained = _sub(_sub(_sub(BC, EC), RE), rebal_C)
+    loss     = _sub(CU, retained) if (CU is not None and retained is not None) else None
+    e_prod_total = _sub(EP, (-RSE) if RSE is not None else None) if EP is not None else None  # EP + RSE
+    e_demand_ratio = safe_div(e_total_cost, e_prod_total) if (e_total_cost is not None and e_prod_total is not None) else None
+
+    # Totals over cells (per-microbe × living cells) and per unit biomass C
+    def _tot(x):
+        if x is None or CNT is None:
+            return None
+        cc = sorted(set(x.columns) & set(CNT.columns))
+        tt = sorted(set(x.index) & set(CNT.index))
+        return x.loc[tt, cc] * CNT.loc[tt, cc]
+
+    def _per_biomass(x):
+        t = _tot(x)
+        if t is None or MIC is None:
+            return None
+        cc = sorted(set(t.columns) & set(MIC.columns))
+        tt = sorted(set(t.index) & set(MIC.index))
+        return safe_div(t.loc[tt, cc], MIC.loc[tt, cc].astype(float))
+
+    def _comm_per_biomass(x):
+        t = _tot(x)
+        if t is None or MIC is None:
+            return None
+        cc = sorted(set(t.columns) & set(MIC.columns))
+        return safe_div(t[cc].sum(axis=0), MIC[cc].astype(float).sum(axis=0))
+
+    # Net CUE per pulse (unfloored): Σ retained / Σ uptake over the pulse, per taxon and for the community
+    net_cue_pulse = net_cue_pulse_taxon = None
+    ret_tot, upt_tot = _tot(retained), _tot(CU)
+    if ret_tot is not None and upt_tot is not None:
+        rt = read_runtime(run_dir)
+        n_p, dpp = rt["pulse"], rt["end_time"]
+        cols_t, cols_c = [], []
+        for pidx in range(1, n_p + 1):
+            days = [d for d in ret_tot.columns if (pidx - 1) * dpp + 1 <= d <= pidx * dpp and d in upt_tot.columns]
+            if not days:
+                continue
+            r_sum, u_sum = ret_tot[days].sum(axis=1), upt_tot[days].sum(axis=1)
+            cols_t.append(safe_div(r_sum, u_sum).rename(f"Pulse {pidx}"))
+            cols_c.append(pd.Series({f"Pulse {pidx}": float(r_sum.sum()) / float(u_sum.sum()) if u_sum.sum() else np.nan}))
+        if cols_t:
+            net_cue_pulse_taxon = pd.concat(cols_t, axis=1)
+            net_cue_pulse = pd.concat(cols_c)
 
     # ── Derived: mass-specific respiration ──────────────────────────────────────
     # Community respiration per unit total microbial biomass C (1-D, over days).
@@ -414,8 +545,30 @@ def compute_run(run_dir: Path) -> dict | None:
         c_total_cost=c_total_cost,
         trans_ef=_efrac(ET), maint_ef=_efrac(EM),
         hsp_ef=_efrac(EH), enz_ef=_efrac(EE), osm_ef=_efrac(EO),
-        # HSP
+        # HSP / osmolytes
         hsp_pool=hsp_pool, hsp_biomass_ratio=hsp_biomass_ratio,
+        osmo_pool=osmo_pool, osmo_biomass_ratio=osmo_biomass_ratio,
+        # cells
+        CNT=CNT,
+        # energy budget and C losses (per microbe)
+        RE=RE, rebal_C=rebal_C, retained=retained, loss=loss,
+        RSE=RSE, EU=EU, e_demand_ratio=e_demand_ratio, DT=DT,
+        comm_endo_resp_C_per_microbe=_comm_mean(RE),
+        comm_rebalance_C_per_microbe=_comm_mean(rebal_C),
+        comm_retained_C_per_microbe=_comm_mean(retained),
+        comm_stoich_E_per_microbe=_comm_mean(RSE),
+        comm_unpaid_E_per_microbe=_comm_mean(EU),
+        # per unit biomass C
+        endo_resp_per_biomass=_per_biomass(RE),
+        rebalance_per_biomass=_per_biomass(rebal_C),
+        retained_per_biomass=_per_biomass(retained),
+        unpaid_E_per_biomass=_per_biomass(EU),
+        comm_endo_resp_C_per_biomass=_comm_per_biomass(RE),
+        comm_rebalance_C_per_biomass=_comm_per_biomass(rebal_C),
+        comm_retained_C_per_biomass=_comm_per_biomass(retained),
+        comm_unpaid_E_per_biomass=_comm_per_biomass(EU),
+        # net CUE
+        net_cue_pulse=net_cue_pulse, net_cue_pulse_taxon=net_cue_pulse_taxon,
     )
 
 
@@ -436,11 +589,11 @@ def _resolve_jobs(requested: int) -> int:
 # ── Streaming aggregation (memory independent of community count) ───────────────
 
 # Pool keys whose per-run frames are also summed across rows → system totals.
-_POOL_KEYS = ("SUB", "MON", "MIC", "ENE", "ENZ")
+_POOL_KEYS = ("SUB", "MON", "MIC", "ENE", "ENZ", "CNT")
 
 
 def _fold(store: dict, key: str, val):
-    """Fold one run's value into running sum / sumsq / count (numpy, in-place).
+    """Fold one run's value into running mean / M2 / count (Welford, numpy, in-place).
 
     For 2-D (taxon/type × day) values the ROW index grows to the union across
     runs, so the reference spans the full taxon pool and every run is aligned by
@@ -449,9 +602,12 @@ def _fold(store: dict, key: str, val):
     mean/SD ignore them, ddof=1, averaging each cell over only the runs that
     carry it.
 
-    Accumulation is done on numpy arrays with in-place adds rather than pandas
+    Accumulation is done on numpy arrays with in-place updates rather than pandas
     DataFrame arithmetic: the latter allocates a fresh block-managed frame on
-    every fold, which serialises the whole pipeline at scale.
+    every fold, which serialises the whole pipeline at scale.  Welford's update
+    (running mean and sum of squared deviations) avoids the cancellation of the
+    one-pass Σx² − (Σx)²/n formula, which loses digits when values are large
+    relative to their spread.
     """
     is_df = isinstance(val, pd.DataFrame)
     rec = store.get(key)
@@ -464,8 +620,8 @@ def _fold(store: dict, key: str, val):
             shape = (len(idx),)
         rec = store[key] = {
             "is_df": is_df, "index": idx, "columns": cols,
-            "sum": np.zeros(shape, dtype="float64"),
-            "sumsq": np.zeros(shape, dtype="float64"),
+            "mean": np.zeros(shape, dtype="float64"),
+            "m2": np.zeros(shape, dtype="float64"),
             "count": np.zeros(shape, dtype="float64"),
         }
 
@@ -490,9 +646,9 @@ def _fold(store: dict, key: str, val):
             ref_set = set(rec["index"])
             missing = [l for l in dict.fromkeys(val.index) if l not in ref_set]
             if missing:
-                z = np.zeros((len(missing), rec["sum"].shape[1]), dtype="float64")
-                rec["sum"]   = np.vstack([rec["sum"],   z])
-                rec["sumsq"] = np.vstack([rec["sumsq"], z.copy()])
+                z = np.zeros((len(missing), rec["mean"].shape[1]), dtype="float64")
+                rec["mean"]  = np.vstack([rec["mean"],  z])
+                rec["m2"]    = np.vstack([rec["m2"],    z.copy()])
                 rec["count"] = np.vstack([rec["count"], z.copy()])
                 rec["index"] = rec["index"].append(pd.Index(missing))
             arr = val.reindex(index=rec["index"],
@@ -504,29 +660,27 @@ def _fold(store: dict, key: str, val):
             arr = val.reindex(rec["index"]).to_numpy(dtype="float64")
 
     mask = ~np.isnan(arr)
-    arr0 = np.where(mask, arr, 0.0)
-    rec["sum"]   += arr0
-    rec["sumsq"] += arr0 * arr0
-    rec["count"] += mask        # bool adds 1.0 where present
+    rec["count"] += mask                      # bool adds 1.0 where present
+    with np.errstate(invalid="ignore", divide="ignore"):
+        delta = np.where(mask, arr - rec["mean"], 0.0)
+        rec["mean"] += np.where(mask, delta / rec["count"], 0.0)
+        rec["m2"]   += np.where(mask, delta * (arr - rec["mean"]), 0.0)
 
 
 def _finalize_store(store: dict) -> dict:
-    """Turn sum/sumsq/count accumulators into (mean, std) with ddof=1.
+    """Turn mean/M2/count accumulators into (mean, std) with ddof=1.
 
-    var = (Σx² − (Σx)²/n) / (n−1) over non-NaN samples — algebraically the
-    same as np.nanstd(ddof=1); clipped at 0 to absorb float cancellation.
-    NaN where n < 2 (std) or n < 1 (mean).  Accumulators are numpy arrays;
-    results are rebuilt as pandas using the stored reference index/columns.
+    std = sqrt(M2 / (n−1)) over non-NaN samples (np.nanstd(ddof=1)); NaN where
+    n < 2 (std) or n < 1 (mean).  Accumulators are numpy arrays; results are
+    rebuilt as pandas using the stored reference index/columns.
     """
     out = {}
     for key, rec in store.items():
-        s, ss, c = rec["sum"], rec["sumsq"], rec["count"]
+        m, m2, c = rec["mean"], rec["m2"], rec["count"]
         with np.errstate(invalid="ignore", divide="ignore"):
-            cpos  = np.where(c > 0, c, np.nan)
-            mean  = np.where(c >= 1, s / cpos, np.nan)
+            mean  = np.where(c >= 1, m, np.nan)
             denom = np.where(c >= 2, c - 1.0, np.nan)
-            var   = np.clip((ss - (s * s) / cpos) / denom, 0.0, None)
-            std   = np.sqrt(var)
+            std   = np.sqrt(np.clip(m2 / denom, 0.0, None))
         if rec["is_df"]:
             mean = pd.DataFrame(mean, index=rec["index"], columns=rec["columns"])
             std  = pd.DataFrame(std,  index=rec["index"], columns=rec["columns"])
@@ -844,7 +998,8 @@ def main():
                            ("system_monomer_C",        "MON"),
                            ("system_microbial_biomass_C", "MIC"),
                            ("system_microbial_energy", "ENE"),
-                           ("system_enzyme_C",         "ENZ")]:
+                           ("system_enzyme_C",         "ENZ"),
+                           ("system_taxon_count",      "CNT")]:
             m, s = acc.get_sumrows(key)
             if m is not None:
                 m = m.loc[col_start:col_end]
@@ -873,6 +1028,7 @@ def main():
         write("substrates_by_type", "SUB")
         write("monomers_by_type",   "MON")
         write("microbes_by_taxon",  "MIC")   # per-taxon biomass (taxa × days)
+        write("taxon_count_taxon",  "CNT")   # living cells per taxon (taxa × days)
 
         # ── Community-mean-per-alive-microbe pathway series (1-D) ───────────────
         # Mean across taxa, aggregated across communities; matches raw-mode
@@ -890,6 +1046,16 @@ def main():
         write("comm_hsp_E_per_microbe",          "comm_hsp_E_per_microbe",          is_series=True)
         write("comm_enzyme_E_per_microbe",       "comm_enzyme_E_per_microbe",       is_series=True)
         write("comm_osmolyte_E_per_microbe",     "comm_osmolyte_E_per_microbe",     is_series=True)
+        write("comm_endo_resp_C_per_microbe",    "comm_endo_resp_C_per_microbe",    is_series=True)
+        write("comm_rebalance_C_per_microbe",    "comm_rebalance_C_per_microbe",    is_series=True)
+        write("comm_retained_C_per_microbe",     "comm_retained_C_per_microbe",     is_series=True)
+        write("comm_stoich_E_per_microbe",       "comm_stoich_E_per_microbe",       is_series=True)
+        write("comm_unpaid_E_per_microbe",       "comm_unpaid_E_per_microbe",       is_series=True)
+        # Community totals per unit biomass C: Σ(per-microbe × cells) / Σ biomass C
+        write("comm_endo_resp_C_per_biomass",    "comm_endo_resp_C_per_biomass",    is_series=True)
+        write("comm_rebalance_C_per_biomass",    "comm_rebalance_C_per_biomass",    is_series=True)
+        write("comm_retained_C_per_biomass",     "comm_retained_C_per_biomass",     is_series=True)
+        write("comm_unpaid_E_per_biomass",       "comm_unpaid_E_per_biomass",       is_series=True)
 
         # ── Carbon allocation ──────────────────────────────────────────────────
         print("  Writing C allocation...", flush=True)
@@ -943,6 +1109,31 @@ def main():
         write("hsp_pool_taxon",          "hsp_pool")
         write("hsp_biomass_ratio_taxon", "hsp_biomass_ratio")
         write("hsp_production_fraction",  "hsp_prod_frac")
+        write("osmo_pool_taxon",          "osmo_pool")
+        write("osmo_biomass_ratio_taxon", "osmo_biomass_ratio")
+
+        # ── Energy budget and C losses ────────────────────────────────────────
+        print("  Writing energy budget / C losses...", flush=True)
+        for stem, key in [
+            ("c_endo_resp_taxon",              "RE"),
+            ("c_rebalance_taxon",              "rebal_C"),
+            ("c_retained_taxon",               "retained"),
+            ("c_loss_taxon",                   "loss"),
+            ("e_stoich_taxon",                 "RSE"),
+            ("e_unpaid_taxon",                 "EU"),
+            ("e_demand_ratio_taxon",           "e_demand_ratio"),
+            ("drought_tol_taxon",              "DT"),
+            ("c_endo_resp_per_biomass_taxon",  "endo_resp_per_biomass"),
+            ("c_rebalance_per_biomass_taxon",  "rebalance_per_biomass"),
+            ("c_retained_per_biomass_taxon",   "retained_per_biomass"),
+            ("e_unpaid_per_biomass_taxon",     "unpaid_E_per_biomass"),
+        ]:
+            write(stem, key)
+
+        # ── Net CUE per pulse (pulse-indexed; not day-filtered) ───────────────
+        print("  Writing net CUE...", flush=True)
+        write("net_cue_pulse",       "net_cue_pulse", is_series=True, col_filter=False)
+        write("net_cue_pulse_taxon", "net_cue_pulse_taxon", col_filter=False)
 
         # ── Pulse summary ─────────────────────────────────────────────────────
         print("  Computing pulse summaries...", flush=True)

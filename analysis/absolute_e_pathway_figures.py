@@ -38,7 +38,14 @@ sys.path.insert(0, str(Path(__file__).parent))
 from scenario_utils import (
     resolve_summary_scenarios, load_summary, read_summary_meta, add_summary_arg,
     scenario_color_map, get_palette_from_args, _parse_treatment_map,
+    load_series, pick_runs, resolve_runs, read_runtime,
 )
+
+# Raw per-run tables are read with scenario_utils.load_series, which joins split
+# branched output (branch_output.json) into the full series, keeps the
+# (taxon, type) index of Taxon_HSP_Series / Taxon_Osmo_Series aligned to the
+# right day (type level dropped), and renumbers day columns 1..n.
+load = load_series
 
 # -- Paths ---------------------------------------------------------------------
 BASE = Path(
@@ -69,38 +76,6 @@ plt.rcParams.update({
 })
 
 # -- Helpers -------------------------------------------------------------------
-def load(run_dir: Path, name: str):
-    f = run_dir / f"{name}.csv"
-    if not f.exists():
-        return None
-    df = pd.read_csv(f, index_col=0)
-    df.columns = range(len(df.columns))
-    df = df.drop(columns=[0], errors="ignore")
-    df.columns = range(1, len(df.columns) + 1)
-    return df
-
-def pick_runs(scenario_dir: Path, min_cols: int = MIN_COLS):
-    if not scenario_dir.exists():
-        return []
-    by_rep = {}
-    for d in sorted(scenario_dir.iterdir()):
-        if not d.is_dir():
-            continue
-        f = d / "C_Uptake_Taxon.csv"
-        if not f.exists():
-            continue
-        try:
-            nc = pd.read_csv(f, index_col=0, nrows=1).shape[1]
-        except Exception:
-            continue
-        if nc < min_cols:
-            continue
-        parts = d.name.split("_")
-        rep = parts[1] if len(parts) > 1 else "000"
-        if rep not in by_rep or d.name > by_rep[rep].name:
-            by_rep[rep] = d
-    return list(by_rep.values())
-
 def rep_mean(pool_list, key):
     frames = [a[key] for a in pool_list if a and a.get(key) is not None]
     if not frames:
@@ -121,20 +96,6 @@ def rep_std(pool_list, key):
 
 def smooth(s):
     return s
-
-def read_runtime(run_dir):
-    if run_dir is None:
-        return {"pulse": 1, "end_time": 365}
-    f = run_dir / "Runtime.csv"
-    if not f.exists():
-        return {"pulse": 1, "end_time": 365}
-    try:
-        rt  = pd.read_csv(f, index_col=0, header=0)
-        col = rt.columns[0]
-        return {"pulse":    int(float(rt.loc["pulse",    col])),
-                "end_time": int(float(rt.loc["end_time", col]))}
-    except Exception:
-        return {"pulse": 1, "end_time": 365}
 
 def year_range(years_arg, n_years, days_per_year):
     if years_arg is None:

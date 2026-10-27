@@ -27,7 +27,6 @@ import warnings
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-import matplotlib.cm as cm
 from matplotlib.gridspec import GridSpec
 from matplotlib.colors import Normalize
 from pathlib import Path
@@ -41,7 +40,14 @@ from scenario_utils import (
     add_year_labels, add_year_labels_heatmap,
     add_scenario_args, resolve_scenario_list,
     normalise_by_gridsize, get_scenario_gridsize,
+    resolve_runs,
 )
+
+# Raw per-run tables are read with scenario_utils.load_series, which joins split
+# branched output (branch_output.json) into the full series, keeps the
+# (taxon, type) index of Taxon_HSP_Series / Taxon_Osmo_Series aligned to the
+# right day (type level dropped), and renumbers day columns 1..n.
+load = load_series
 
 
 # ── Paths ─────────────────────────────────────────────────────────────────────
@@ -84,68 +90,6 @@ plt.rcParams.update({
 })
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
-def load(run_dir: Path, name: str) -> pd.DataFrame | None:
-    f = run_dir / f"{name}.csv"
-    if not f.exists():
-        return None
-    df = pd.read_csv(f, index_col=0)
-    df.columns = range(len(df.columns))        # positional rename handles 'C','C.1',... or ints
-    if 0 in df.columns:
-        df = df.drop(columns=[0])              # drop init state
-    df.columns = range(1, len(df.columns) + 1) # renumber 1..n_days
-    return df
-
-def pick_runs(scenario_dir: Path, min_cols: int = MIN_COLS) -> list[Path]:
-    if not scenario_dir.exists():
-        return []
-    by_rep: dict[str, Path] = {}
-    for d in sorted(scenario_dir.iterdir()):
-        if not d.is_dir():
-            continue
-        f = d / "C_Uptake_Taxon.csv"
-        if not f.exists():
-            continue
-        try:
-            nc = pd.read_csv(f, index_col=0, nrows=1).shape[1]
-        except Exception:
-            continue
-        if nc < min_cols:
-            continue
-        parts = d.name.split("_")
-        rep = parts[1] if len(parts) > 1 else "000"
-        if rep not in by_rep or d.name > by_rep[rep].name:
-            by_rep[rep] = d
-    return list(by_rep.values())
-
-def resolve_runs(names: list[str], base_dir: Path) -> list[Path]:
-    dirs = []
-    for n in names:
-        p = Path(n)
-        if p.is_absolute():
-            if p.is_dir():
-                dirs.append(p)
-            else:
-                print(f"  WARNING: absolute path not found: {p}")
-        elif (base_dir / n).is_dir():
-            dirs.append(base_dir / n)
-        else:
-            print(f"  WARNING: run folder not found: {n!r} (looked in {base_dir})")
-    return dirs
-
-def read_runtime(run_dir: Path | None) -> dict:
-    if run_dir is None:
-        return {"pulse": 1, "end_time": 365}
-    f = run_dir / "Runtime.csv"
-    if not f.exists():
-        return {"pulse": 1, "end_time": 365}
-    try:
-        rt  = pd.read_csv(f, index_col=0, header=0)
-        col = rt.columns[0]
-        return {"pulse":    int(float(rt.loc["pulse",    col])),
-                "end_time": int(float(rt.loc["end_time", col]))}
-    except Exception:
-        return {"pulse": 1, "end_time": 365}
-
 def year_range(years_arg, n_years: int, days_per_year: int) -> tuple[int, int]:
     if years_arg is None:
         return 1, n_years * days_per_year
@@ -178,18 +122,6 @@ def safe_div(a: pd.DataFrame, b: pd.DataFrame) -> pd.DataFrame:
         r = a / b
     r.replace([np.inf, -np.inf], np.nan, inplace=True)
     return r
-
-def rep_mean(pool_list: list, key: str) -> pd.DataFrame | None:
-    frames = [a[key] for a in pool_list if a and a.get(key) is not None]
-    if not frames:
-        return None
-    idx, cols = frames[0].index, frames[0].columns
-    try:
-        arr = np.stack([f.reindex(index=idx, columns=cols).values
-                        for f in frames], axis=2)
-        return pd.DataFrame(np.nanmean(arr, axis=2), index=idx, columns=cols)
-    except Exception:
-        return frames[0]
 
 def taxon_mean(df: pd.DataFrame | None) -> pd.Series | None:
     if df is None:
@@ -294,10 +226,12 @@ COL_START, COL_END = year_range(_args.years, N_YEARS, DAYS_PER_YEAR)
 print(f"Simulation: {N_YEARS} year(s), {DAYS_PER_YEAR} days/year  |  "
       f"Displaying: day {COL_START}-{COL_END}")
 
+# Day filtering applies to the taxa × day frames only; hsp_scalar is indexed by
+# taxon and hsp_label is a string.
 for _label in scen_labels:
-    scen_data[_label]         = {k: filter_cols(v, COL_START, COL_END)
+    scen_data[_label]         = {k: (filter_cols(v, COL_START, COL_END) if isinstance(v, pd.DataFrame) else v)
                                    for k, v in scen_data[_label].items()}
-    scen_data[_label + "_sd"] = {k: filter_cols(v, COL_START, COL_END)
+    scen_data[_label + "_sd"] = {k: (filter_cols(v, COL_START, COL_END) if isinstance(v, pd.DataFrame) else v)
                                    for k, v in scen_data[_label + "_sd"].items()}
 
 # ── Backward-compat aliases (ctrl/warm map to first two scenarios) ─────────────
@@ -311,7 +245,8 @@ scenarios = [(lab, scen_data[lab], scen_data[lab + "_sd"]) for lab in scen_label
 
 
 # ── Normalise absolute series by gridsize ────────────────────────────────────
-_NORM_SKIP = {"cost_frac"}
+# Fractions and per-alive-microbe scalars are not grid totals; labels are strings.
+_NORM_SKIP = {"cost_frac", "hsp_pf", "hsp_scalar", "hsp_label"}
 GRIDSIZE = get_scenario_gridsize(scenario_list)
 print(f"Grid size     : {GRIDSIZE} cells  (normalising absolute series by {GRIDSIZE})")
 for _label in scen_labels:
@@ -368,7 +303,7 @@ if ctrl_hsp_scalar is not None:
     hsp_vals = ctrl_hsp_scalar.reindex(hsp_order).fillna(0).values
     vmin_h, vmax_h = hsp_vals.min(), hsp_vals.max()
     norm_h = Normalize(vmin=vmin_h, vmax=max(vmax_h, 1e-12))
-    bar_colors = cm.get_cmap(CMAP_HSPBAR)(norm_h(hsp_vals))
+    bar_colors = plt.get_cmap(CMAP_HSPBAR)(norm_h(hsp_vals))
 else:
     hsp_vals   = np.zeros(n_taxa)
     bar_colors = ["#cccccc"] * n_taxa

@@ -31,7 +31,6 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-import matplotlib.cm as cm
 from matplotlib.patches import Patch
 
 warnings.filterwarnings("ignore")
@@ -136,7 +135,7 @@ def sub_label(name: str) -> str:
     return SUB_LABELS.get(name, name)
 
 def tab_colors(n: int, cmap: str = "tab20") -> list:
-    return [cm.get_cmap(cmap)(i / max(n - 1, 1)) for i in range(n)]
+    return [plt.get_cmap(cmap)(i / max(n - 1, 1)) for i in range(n)]
 
 def subsample(df: pd.DataFrame, n: int = 200) -> pd.DataFrame:
     if df is None or df.shape[1] <= n:

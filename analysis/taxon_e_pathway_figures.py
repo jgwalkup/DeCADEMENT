@@ -31,7 +31,6 @@ import warnings
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-import matplotlib.cm as cm
 from matplotlib.colors import Normalize
 from pathlib import Path
 
@@ -45,7 +44,14 @@ from scenario_utils import (
     add_scenario_args, resolve_scenario_list,
     normalise_by_gridsize, get_scenario_gridsize,
     get_palette_from_args,
+    resolve_runs,
 )
+
+# Raw per-run tables are read with scenario_utils.load_series, which joins split
+# branched output (branch_output.json) into the full series, keeps the
+# (taxon, type) index of Taxon_HSP_Series / Taxon_Osmo_Series aligned to the
+# right day (type level dropped), and renumbers day columns 1..n.
+load = load_series
 
 
 # ── Paths ─────────────────────────────────────────────────────────────────────
@@ -75,55 +81,6 @@ plt.rcParams.update({
 })
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
-def load(run_dir: Path, name: str) -> pd.DataFrame | None:
-    f = run_dir / f"{name}.csv"
-    if not f.exists():
-        return None
-    df = pd.read_csv(f, index_col=0)
-    # Positional renaming: handles both correct (int) and broken ('C','C.1',...) column names
-    df.columns = range(len(df.columns))        # 0 = init state, 1..n = days
-    if 0 in df.columns:
-        df = df.drop(columns=[0])              # drop init state
-    df.columns = range(1, len(df.columns) + 1) # renumber 1..n_days
-    return df
-
-def pick_runs(scenario_dir: Path, min_cols: int = MIN_COLS) -> list[Path]:
-    if not scenario_dir.exists():
-        return []
-    by_rep: dict[str, Path] = {}
-    for d in sorted(scenario_dir.iterdir()):
-        if not d.is_dir():
-            continue
-        f = d / "C_Uptake_Taxon.csv"
-        if not f.exists():
-            continue
-        try:
-            nc = pd.read_csv(f, index_col=0, nrows=1).shape[1]
-        except Exception:
-            continue
-        if nc < min_cols:
-            continue
-        parts = d.name.split("_")
-        rep = parts[1] if len(parts) > 1 else "000"
-        if rep not in by_rep or d.name > by_rep[rep].name:
-            by_rep[rep] = d
-    return list(by_rep.values())
-
-def resolve_runs(names: list[str], base_dir: Path) -> list[Path]:
-    dirs = []
-    for n in names:
-        p = Path(n)
-        if p.is_absolute():
-            if p.is_dir():
-                dirs.append(p)
-            else:
-                print(f"  WARNING: absolute path not found: {p}")
-        elif (base_dir / n).is_dir():
-            dirs.append(base_dir / n)
-        else:
-            print(f"  WARNING: run folder not found: {n!r} (looked in {base_dir})")
-    return dirs
-
 def safe_div(a: pd.DataFrame, b: pd.DataFrame) -> pd.DataFrame:
     with np.errstate(divide="ignore", invalid="ignore"):
         r = a / b
@@ -144,20 +101,6 @@ def rep_mean_df(pool_list: list, key: str) -> pd.DataFrame | None:
         return frames[0]
 
 # ── Year / pulse helpers ───────────────────────────────────────────────────────
-def read_runtime(run_dir: Path | None) -> dict:
-    if run_dir is None:
-        return {"pulse": 1, "end_time": 365}
-    f = run_dir / "Runtime.csv"
-    if not f.exists():
-        return {"pulse": 1, "end_time": 365}
-    try:
-        rt  = pd.read_csv(f, index_col=0, header=0)
-        col = rt.columns[0]
-        return {"pulse":    int(float(rt.loc["pulse",    col])),
-                "end_time": int(float(rt.loc["end_time", col]))}
-    except Exception:
-        return {"pulse": 1, "end_time": 365}
-
 def year_range(years_arg, n_years: int, days_per_year: int) -> tuple[int, int]:
     if years_arg is None:
         return 1, n_years * days_per_year
@@ -329,7 +272,7 @@ else:
     vmin_r, vmax_r = 0.0, 1.0
 
 norm_ratio = Normalize(vmin=vmin_r, vmax=vmax_r)
-cmap_fn    = cm.get_cmap(CMAP_RATIO)
+cmap_fn    = plt.get_cmap(CMAP_RATIO)
 
 def ratio_color(taxon):
     if mean_ratio is None or taxon not in mean_ratio.index:

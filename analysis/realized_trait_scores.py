@@ -91,6 +91,7 @@ _HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(_HERE))
 try:
     from scenario_utils import discover_scenarios, pick_runs, read_runtime
+    from branch_output import read_table, initialization_dir
 except ImportError as e:
     sys.exit(f"ERROR: could not import scenario_utils: {e}")
 
@@ -131,8 +132,11 @@ def _load_taxon_csv(run_dir: Path, stem: str) -> pd.DataFrame | None:
     csv_path = run_dir / f"{stem}.csv"
     nc_path  = run_dir / f"{stem}.nc"
     if csv_path.exists():
-        df = pd.read_csv(csv_path, index_col=0)
-        # Columns are day numbers — coerce to int
+        # read_table joins split branched output into the full series (column
+        # labels are absolute days, so crossing days from compute_run match).
+        df = read_table(run_dir, stem)
+        if isinstance(df.index, pd.MultiIndex):
+            df.index = df.index.get_level_values(0)
         df.columns = [int(c) for c in df.columns]
         return df
     if nc_path.exists():
@@ -153,7 +157,7 @@ def _global_taxon_ids(run_dir: Path) -> list[str] | None:
     Returns an ordered list matching the positional Tax1…TaxN labels used in
     output CSVs, or None if the file cannot be read.
     """
-    init_path = run_dir / "Initialization" / "Microbes_pp.csv"
+    init_path = initialization_dir(run_dir) / "Microbes_pp.csv"
     if not init_path.exists():
         return None
     try:
@@ -165,11 +169,14 @@ def _global_taxon_ids(run_dir: Path) -> list[str] | None:
 
 def _remap_index(df: pd.DataFrame, global_ids: list[str]) -> pd.DataFrame:
     """
-    Replace positional Tax1…TaxN row labels with global IDs.
+    Replace positional Tax1…TaxN row labels with global IDs.  Frames that already
+    carry global IDs (output.py writes them since Aug 2026) are left untouched.
     If the number of rows doesn't match, returns df unchanged with a warning.
     """
     if df is None:
         return None
+    if set(map(str, df.index)) != {f"Tax{i + 1}" for i in range(len(df))}:
+        return df
     if len(df) != len(global_ids):
         warnings.warn(
             f"Row count mismatch: DataFrame has {len(df)} rows but "

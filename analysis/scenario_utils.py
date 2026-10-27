@@ -83,7 +83,15 @@ def _load_csv(run_dir: Path, name: str) -> pd.DataFrame | None:
     p = run_dir / f"{name}.csv"
     if not p.exists():
         return None
-    df = pd.read_csv(p, index_col=0)
+    # Split branched output (branch_output.json): rebuild the full series from
+    # the shared spin-up part + this scenario's branch part.  Otherwise read as is.
+    from branch_output import read_table, branch_info
+    if branch_info(run_dir) is not None:
+        df = read_table(run_dir, name)
+        if isinstance(df.index, pd.MultiIndex):
+            df.index = df.index.get_level_values(0)   # match index_col=0 behaviour
+    else:
+        df = pd.read_csv(p, index_col=0)
     # Positional renaming: handles both correct (int) and broken ('C','C.1',...) column names
     df.columns = range(len(df.columns))        # 0 = init state, 1..n = days
     df = df.drop(columns=[0], errors="ignore") # drop init state column
@@ -249,7 +257,7 @@ def discover_scenarios(base: Path) -> list[tuple[str, Path]]:
 
     scenarios: list[tuple[str, Path]] = []
     for d in sorted(base.iterdir()):
-        if not d.is_dir():
+        if not d.is_dir() or d.name == "spinup":
             continue
         # Does this subdir contain any run dirs?
         has_runs = any(is_run_dir(sub) for sub in d.iterdir() if sub.is_dir())
@@ -487,6 +495,8 @@ def rep_mean(pool_list: list[dict | None], key: str) -> pd.DataFrame | None:
             return pd.Series(np.nanmean(arr, axis=1), index=frames[0].index)
         except Exception:
             return frames[0]
+    if not isinstance(frames[0], pd.DataFrame):      # labels and other non-numeric entries
+        return frames[0]
     idx, cols = frames[0].index, frames[0].columns
     try:
         arr = np.stack([f.reindex(index=idx, columns=cols).values
@@ -507,6 +517,8 @@ def rep_std(pool_list: list[dict | None], key: str) -> pd.DataFrame | None:
             return pd.Series(np.nanstd(arr, axis=1, ddof=1), index=frames[0].index)
         except Exception:
             return None
+    if not isinstance(frames[0], pd.DataFrame):      # labels and other non-numeric entries
+        return None
     idx, cols = frames[0].index, frames[0].columns
     try:
         arr = np.stack([f.reindex(index=idx, columns=cols).values

@@ -67,6 +67,9 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from branch_output import read_table  # noqa: E402
+
 
 # ── helpers ───────────────────────────────────────────────────────────────────
 
@@ -88,11 +91,14 @@ def _is_zarr_run(run_dir: Path) -> bool:
 # ── CSV loaders ───────────────────────────────────────────────────────────────
 
 def _load_series_csv(run_dir: Path, name: str) -> pd.DataFrame | None:
-    """Load a pool-series DataFrame from CSV.  Columns normalised to int."""
+    """Load a pool-series DataFrame from CSV.  Columns normalised to int.
+
+    branch_output.read_table joins split branched output (spin-up days +
+    branch days) into the full series; unsplit output is read as is."""
     p = run_dir / f"{name}.csv"
     if not p.exists():
         return None
-    df = pd.read_csv(p, index_col=0)
+    df = read_table(run_dir, name)
     df.columns = [int(c) if str(c).lstrip("-").isdigit() else c for c in df.columns]
     return df
 
@@ -204,12 +210,12 @@ def infer_pulse_structure(sub_df: pd.DataFrame,
 
 
 def pool_total_at(series_df: pd.DataFrame, day: int) -> float:
-    """Sum all pool rows at a given day column.  Returns nan if column absent."""
-    if series_df is None:
+    """Sum all pool rows at a given day column.  Returns nan if the column is
+    absent (never substitutes a neighbouring day: a missing day means the run
+    does not hold that state, and a silent substitute would hide it)."""
+    if series_df is None or day not in series_df.columns:
         return np.nan
-    int_cols = sorted(c for c in series_df.columns if isinstance(c, int))
-    col = day if day in int_cols else min(int_cols, key=lambda c: abs(c - day))
-    return float(series_df[col].sum())
+    return float(series_df[day].sum())
 
 def find_run_dirs(paths: list[str]) -> list[Path]:
     candidates = []
@@ -244,7 +250,7 @@ def find_run_dirs_multi_scenario(scenario_dir: Path) -> list[tuple[str, Path]]:
     results: list[tuple[str, Path]] = []
 
     for scen_d in sorted(scenario_dir.iterdir()):
-        if not scen_d.is_dir():
+        if not scen_d.is_dir() or scen_d.name == "spinup":   # spin-up states of branched runs are not a scenario
             continue
         rep_dirs = [d for d in sorted(scen_d.iterdir())
                     if d.is_dir() and (_is_csv_run(d) or _is_nc_run(d) or _is_zarr_run(d))]

@@ -112,73 +112,31 @@ C_MAINT = "#9467bd"
 
 # ── I/O helpers ───────────────────────────────────────────────────────────────
 
+_HERE = Path(__file__).resolve().parent
+if str(_HERE) not in sys.path:
+    sys.path.insert(0, str(_HERE))
+from scenario_utils import load_series, pick_runs as _su_pick_runs, read_runtime as _read_runtime  # noqa: E402
+
+# Raw per-run tables are read with scenario_utils.load_series, which joins split
+# branched output (branch_output.json) into the full series, keeps the
+# (taxon, type) index of Taxon_HSP_Series / Taxon_Osmo_Series aligned to the
+# right day (type level dropped), and renumbers day columns 1..n.
+
+
 def _load_csv(run_dir: Path, name: str) -> pd.DataFrame | None:
-    """Load a CSV output file from a run directory, normalising column indices."""
-    f = run_dir / f"{name}.csv"
-    if not f.exists():
+    df = load_series(run_dir, name)
+    if df is None:
         return None
-    try:
-        df = pd.read_csv(f, index_col=0)
-    except Exception:
-        return None
-    # Normalise columns to integers 1..n (drop init-state column 0)
-    df.columns = range(len(df.columns))
-    df = df.drop(columns=[0], errors="ignore")
-    df.columns = range(1, len(df.columns) + 1)
     # Per-taxon ratio outputs (CUE/CAE and pathway-per-count quantities) are
     # divided by taxon_count in output.py.  Taxa absent from the grid on a given
     # day have count 0, yielding +/-inf (nonzero numerator) or NaN (0/0).  These
     # are not real values — they are absent-taxon artifacts — so we convert inf
     # to NaN and let the nan-aware reductions average only over present taxa.
-    df = df.replace([np.inf, -np.inf], np.nan)
-    return df
+    return df.replace([np.inf, -np.inf], np.nan)
 
 
 def _pick_runs(scenario_dir: Path, min_cols: int) -> list[Path]:
-    """
-    Return one run directory per replicate in scenario_dir.
-    Replicates are identified by the second underscore-delimited token of the
-    folder name (e.g. community_0001_s42 → rep '0001').
-    The most-recent / most-complete run per replicate is kept.
-    """
-    if not scenario_dir.exists():
-        return []
-    by_rep: dict[str, Path] = {}
-    for d in sorted(scenario_dir.iterdir()):
-        if not d.is_dir():
-            continue
-        # Probe a file that is always present for completed runs
-        probe = d / "SubstratesSeries.csv"
-        if not probe.exists():
-            probe = d / "MicrobesSeries.csv"
-        if not probe.exists():
-            probe = d / "C_Uptake_Taxon.csv"
-        if not probe.exists():
-            continue
-        try:
-            nc = pd.read_csv(probe, index_col=0, nrows=1).shape[1]
-        except Exception:
-            continue
-        if nc < min_cols:
-            continue
-        parts = d.name.split("_")
-        rep = parts[1] if len(parts) > 1 else d.name
-        if rep not in by_rep or d.name > by_rep[rep].name:
-            by_rep[rep] = d
-    return list(by_rep.values())
-
-
-def _read_runtime(run_dir: Path) -> dict:
-    f = run_dir / "Runtime.csv"
-    if not f.exists():
-        return {"pulse": 1, "end_time": 365}
-    try:
-        rt  = pd.read_csv(f, index_col=0, header=0)
-        col = rt.columns[0]
-        return {"pulse":    int(float(rt.loc["pulse",    col])),
-                "end_time": int(float(rt.loc["end_time", col]))}
-    except Exception:
-        return {"pulse": 1, "end_time": 365}
+    return _su_pick_runs(scenario_dir, min_cols=min_cols)
 
 
 def _col_range(years_arg, n_years: int, days_per_year: int) -> tuple[int, int]:
