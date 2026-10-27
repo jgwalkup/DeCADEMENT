@@ -841,7 +841,15 @@ def _stream_load_and_fold(scenario_list, n_jobs: int, accs: dict[str, "_StreamAg
     print(f"  Streaming {n} communities across {n_jobs} workers "
           f"(≤{max_outstanding} in flight)...", flush=True)
     done = submitted = 0
-    with ProcessPoolExecutor(max_workers=n_jobs) as ex:
+    # One fresh worker process per community: a long-lived worker's RSS creeps
+    # up with heap fragmentation over hundreds of communities (observed: 32
+    # workers exceeding 40 GB), and a new process costs ~1 s against ~2 min
+    # of compute.  max_tasks_per_child needs Python 3.11+.
+    try:
+        ex = ProcessPoolExecutor(max_workers=n_jobs, max_tasks_per_child=1)
+    except TypeError:
+        ex = ProcessPoolExecutor(max_workers=n_jobs)
+    with ex:
         futures = {}
         while submitted < min(max_outstanding, n):
             jobs = groups[submitted]
