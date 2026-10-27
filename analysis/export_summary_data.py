@@ -104,6 +104,9 @@ USAGE
   python export_summary_data.py --base /path/to/output \\
       --treatment-map ambient_dir=Ambient mod_dir="Moderate Warming" ext_dir="Extreme Warming"
 
+  # on a slow network filesystem: stage each community to node-local disk
+  python export_summary_data.py --base /out --out-dir /summary -j 16 --stage-dir $TMPDIR
+
   python export_summary_data.py \\
       --scenario-dirs /out/ambient /out/mod /out/ext \\
       --scenario-labels Ambient "Moderate Warming" "Extreme Warming" \\
@@ -748,14 +751,45 @@ class _StreamAgg:
         return self._fsr.get(key, (None, None))
 
 
-def _compute_community(jobs: list[tuple[str, Path]]) -> list[tuple[str, dict | None]]:
+def _stage_community(jobs: list[tuple[str, Path]], stage_dir: Path) -> tuple[list[tuple[str, Path]], Path]:
+    """Copy one community's run folders (and, for split branched output, its
+    spin-up folder) under stage_dir, keeping the <scenario>/<community> and
+    spinup/<community> layout that branch_output.json refers to.  Returns the
+    staged (label, run_dir) list and the folder to remove afterwards."""
+    import shutil
+    from branch_output import branch_info
+    root = Path(stage_dir) / f"export_stage_{os.getpid()}_{jobs[0][1].name}"
+    if root.exists():
+        shutil.rmtree(root)
+    staged = []
+    for label, rd in jobs:
+        real = rd.resolve()
+        dst = root / real.parent.name / real.name
+        shutil.copytree(real, dst)
+        info = branch_info(real)
+        if info is not None:
+            spin = (real / info["spinup_output"]).resolve()
+            spin_dst = (dst / info["spinup_output"]).resolve()
+            if not spin_dst.exists():
+                shutil.copytree(spin, spin_dst)
+        staged.append((label, dst))
+    return staged, root
+
+
+def _compute_community(jobs: list[tuple[str, Path]],
+                       stage_dir: str | None = None) -> list[tuple[str, dict | None]]:
     """compute_run for every scenario run of one community, in one worker.
 
     Split branched output shares the spin-up part between a community's
-    scenarios; branch_output caches it, so it is read from disk once here."""
+    scenarios; branch_output caches it, so it is read from disk once here.
+    With stage_dir, the community's folders are first copied there in one
+    sequential pass (node-local disk, e.g. $TMPDIR) and read from the copy."""
+    import shutil
     from branch_output import clear_cache
-    out = []
+    out, root = [], None
     try:
+        if stage_dir:
+            jobs, root = _stage_community(jobs, Path(stage_dir))
         for label, rd in jobs:
             try:
                 out.append((label, compute_run(rd)))
@@ -764,6 +798,8 @@ def _compute_community(jobs: list[tuple[str, Path]]) -> list[tuple[str, dict | N
                 out.append((label, None))
     finally:
         clear_cache()
+        if root is not None:
+            shutil.rmtree(root, ignore_errors=True)
     return out
 
 
@@ -776,7 +812,8 @@ def _group_by_community(scenario_list) -> list[list[tuple[str, Path]]]:
     return [by_comm[k] for k in sorted(by_comm)]
 
 
-def _stream_load_and_fold(scenario_list, n_jobs: int, accs: dict[str, "_StreamAgg"]):
+def _stream_load_and_fold(scenario_list, n_jobs: int, accs: dict[str, "_StreamAgg"],
+                          stage_dir: str | None = None):
     """Load every community's runs (bounded parallel) and fold each run into
     its scenario's accumulator, discarding as we go.
 
@@ -792,7 +829,7 @@ def _stream_load_and_fold(scenario_list, n_jobs: int, accs: dict[str, "_StreamAg
 
     if n_jobs <= 1 or n <= 1:
         for i, jobs in enumerate(groups):
-            res = _compute_community(jobs)
+            res = _compute_community(jobs, stage_dir)
             _fold(res)
             n_ok = sum(d is not None for _, d in res)
             print(f"  [{i+1}/{n}] {jobs[0][1].name}  {n_ok}/{len(jobs)} runs ok", flush=True)
@@ -806,7 +843,7 @@ def _stream_load_and_fold(scenario_list, n_jobs: int, accs: dict[str, "_StreamAg
         futures = {}
         while submitted < min(max_outstanding, n):
             jobs = groups[submitted]
-            futures[ex.submit(_compute_community, jobs)] = jobs[0][1].name
+            futures[ex.submit(_compute_community, jobs, stage_dir)] = jobs[0][1].name
             submitted += 1
         while futures:
             finished, _pending = wait(set(futures), return_when=FIRST_COMPLETED)
@@ -823,7 +860,7 @@ def _stream_load_and_fold(scenario_list, n_jobs: int, accs: dict[str, "_StreamAg
                 print(f"  [{done}/{n}] {name}", flush=True)
                 if submitted < n:
                     jobs = groups[submitted]
-                    futures[ex.submit(_compute_community, jobs)] = jobs[0][1].name
+                    futures[ex.submit(_compute_community, jobs, stage_dir)] = jobs[0][1].name
                     submitted += 1
 
 
@@ -941,6 +978,14 @@ def main():
              "(default: <base>/export_summary_data).",
     )
     parser.add_argument(
+        "--stage-dir", default=None, metavar="DIR",
+        help="Copy each community's run folders (and its spin-up folder) to DIR "
+             "in one sequential pass before reading them, one community per "
+             "worker at a time, and delete the copy afterwards.  Use a node-local "
+             "disk such as $TMPDIR when the output lives on a slow network "
+             "filesystem (many small reads stall; one sequential copy does not).",
+    )
+    parser.add_argument(
         "--jobs", "-j", type=int, default=1, metavar="N",
         help="Number of parallel worker processes for per-run loading. "
              "1 (default) = serial; 0 = auto ($SLURM_CPUS_PER_TASK or all cores); "
@@ -984,7 +1029,10 @@ def main():
     for label, run_dirs in scenario_list:
         print(f"  {label}: {len(run_dirs)} communities")
     accs = {label: _StreamAgg() for label, _ in scenario_list}
-    _stream_load_and_fold(scenario_list, n_jobs, accs)
+    if args.stage_dir:
+        Path(args.stage_dir).mkdir(parents=True, exist_ok=True)
+        print(f"  Staging communities through {args.stage_dir}")
+    _stream_load_and_fold(scenario_list, n_jobs, accs, args.stage_dir)
     for a in accs.values():
         a.finalize()
     gc.collect()
