@@ -225,6 +225,84 @@ def _rebalance_E_yield(run_dir: Path) -> float | None:
         return None
 
 
+PULSE_METRICS = [
+    "net_cue", "c_uptake", "c_retained", "c_resp", "c_endo_resp", "c_rebalance",
+    "e_unpaid", "biomass_C_mean", "biomass_C_end", "substrate_C_end",
+    "taxa_alive_end", "cells_end",
+]
+
+
+def pulse_metrics(CU, BC, EC, RE, RSE, EU, CNT, MIC, SUB, RESP, E_yield,
+                  n_pulses: int, days_per_pulse: int) -> pd.DataFrame | None:
+    """Community-level scalars per pulse (index 'Pulse p', columns PULSE_METRICS).
+
+    Per-taxon inputs are per-alive-microbe means × days (as output.py writes
+    them); CNT is living cells per taxon × day; MIC, SUB are totals; RESP is the
+    daily respiration series.  Columns are absolute day labels (k = state after
+    day k−1).  Pulses with no days present are left out, so the same function
+    serves full series and branch-only folders.
+      net_cue      Σ retained / Σ uptake over the pulse (unfloored; retained =
+                   BC − enzyme C − C_endo − rebalancing C, cells-weighted)
+      c_*          cells-weighted totals over the pulse; c_resp from RESP
+      e_unpaid     unpaid energy demand, cells-weighted total
+      biomass_C_*  Σ_taxa MIC, mean over the pulse and on its last day
+      taxa_alive_end / cells_end  taxa with cells, and cells, on the last day
+    """
+    if CU is None or BC is None or CNT is None:
+        return None
+    rebal = (RSE / E_yield) if (RSE is not None and E_yield) else None
+
+    def _sub(a, b):
+        if a is None:
+            return None
+        if b is None:
+            return a
+        cc = sorted(set(a.columns) & set(b.columns))
+        return a[cc].sub(b[cc], fill_value=0)
+
+    retained = _sub(_sub(_sub(BC, EC), RE), rebal)
+
+    def _tot(x):
+        if x is None:
+            return None
+        cc = sorted(set(x.columns) & set(CNT.columns))
+        tt = sorted(set(x.index) & set(CNT.index))
+        return x.loc[tt, cc] * CNT.loc[tt, cc]
+
+    tots = {k: _tot(v) for k, v in dict(upt=CU, ret=retained, endo=RE, rebal=rebal, unpaid=EU).items()}
+    resp = RESP if RESP is None or isinstance(RESP, pd.Series) else RESP.iloc[0]
+    rows = {}
+    for pidx in range(1, n_pulses + 1):
+        lo, hi = (pidx - 1) * days_per_pulse + 1, pidx * days_per_pulse
+        days = [d for d in CNT.columns if lo <= d <= hi]
+        if not days:
+            continue
+        last = days[-1]
+        r = {}
+        def _sum(t):
+            if t is None:
+                return np.nan
+            dd = [d for d in days if d in t.columns]
+            return float(np.nansum(t[dd].to_numpy(float))) if dd else np.nan
+        r["c_uptake"], r["c_retained"] = _sum(tots["upt"]), _sum(tots["ret"])
+        r["net_cue"] = r["c_retained"] / r["c_uptake"] if r["c_uptake"] else np.nan
+        r["c_resp"] = float(resp.loc[[d for d in days if d in resp.index]].sum()) if resp is not None else np.nan
+        r["c_endo_resp"], r["c_rebalance"], r["e_unpaid"] = _sum(tots["endo"]), _sum(tots["rebal"]), _sum(tots["unpaid"])
+        if MIC is not None:
+            md = [d for d in days if d in MIC.columns]
+            tot_bio = MIC[md].astype(float).sum(axis=0)
+            r["biomass_C_mean"], r["biomass_C_end"] = float(tot_bio.mean()), float(tot_bio.loc[last]) if last in tot_bio.index else np.nan
+        else:
+            r["biomass_C_mean"] = r["biomass_C_end"] = np.nan
+        r["substrate_C_end"] = float(SUB[last].sum()) if (SUB is not None and last in SUB.columns) else np.nan
+        r["taxa_alive_end"] = int((CNT[last] > 0).sum())
+        r["cells_end"] = float(CNT[last].sum())
+        rows[f"Pulse {pidx}"] = r
+    if not rows:
+        return None
+    return pd.DataFrame(rows).T[PULSE_METRICS]
+
+
 def _living_cells(run_dir: Path, L) -> pd.DataFrame | None:
     """Living cells per taxon per day (taxa × days 1..n).
 
@@ -457,6 +535,11 @@ def compute_run(run_dir: Path) -> dict | None:
             net_cue_pulse_taxon = pd.concat(cols_t, axis=1)
             net_cue_pulse = pd.concat(cols_c)
 
+    # Per-pulse community scalars (one row per pulse) for community_pulse_metrics.csv
+    _rt = read_runtime(run_dir)
+    pulse_table = pulse_metrics(CU, BC, EC, RE, RSE, EU, CNT, MIC, SUB, RESP, E_yield,
+                                _rt["pulse"], _rt["end_time"])
+
     # ── Derived: mass-specific respiration ──────────────────────────────────────
     # Community respiration per unit total microbial biomass C (1-D, over days).
     resp_per_biomass = None
@@ -572,6 +655,8 @@ def compute_run(run_dir: Path) -> dict | None:
         comm_unpaid_E_per_biomass=_comm_per_biomass(EU),
         # net CUE
         net_cue_pulse=net_cue_pulse, net_cue_pulse_taxon=net_cue_pulse_taxon,
+        # per-pulse scalars (collected per community, not folded)
+        pulse_metrics=pulse_table,
     )
 
 
@@ -731,14 +816,20 @@ class _StreamAgg:
         self._df, self._sr, self._ser = {}, {}, {}
         self.n_loaded = 0
         self._fdf = self._fsr = self._fser = None
+        self.pulse_rows = []          # per-community pulse_metrics frames
 
-    def fold(self, packed):
+    def fold(self, packed, community: str | None = None):
         """Fold one run (a _pack()ed compute_run dict, or None)."""
         if packed is None:
             return
         self.n_loaded += 1
         for key, val in packed.items():
             idx, cols, arr = val
+            if key == "pulse_metrics":
+                df = pd.DataFrame(arr, index=idx, columns=cols)
+                df.insert(0, "community", community)
+                self.pulse_rows.append(df.rename_axis("pulse").reset_index())
+                continue
             if cols is None:
                 _fold(self._ser, key, val)
             else:
@@ -803,10 +894,10 @@ def _compute_community(jobs: list[tuple[str, Path]],
             jobs, root = _stage_community(jobs, Path(stage_dir))
         for label, rd in jobs:
             try:
-                out.append((label, _pack(compute_run(rd))))
+                out.append((label, rd.name, _pack(compute_run(rd))))
             except Exception as e:                      # one bad run must not sink the community
                 print(f"  [run {rd.name} / {label}] FAILED: {e}", flush=True)
-                out.append((label, None))
+                out.append((label, rd.name, None))
     finally:
         clear_cache()
         if root is not None:
@@ -837,14 +928,14 @@ def _stream_load_and_fold(scenario_list, n_jobs: int, accs: dict[str, "_StreamAg
     n = len(groups)
 
     def _fold(results):
-        for label, d in results:
-            accs[label].fold(d)
+        for label, community, d in results:
+            accs[label].fold(d, community)
 
     if n_jobs <= 1 or n <= 1:
         for i, jobs in enumerate(groups):
             res = _compute_community(jobs, stage_dir)
             _fold(res)
-            n_ok = sum(d is not None for _, d in res)
+            n_ok = sum(d is not None for _, _, d in res)
             print(f"  [{i+1}/{n}] {jobs[0][1].name}  {n_ok}/{len(jobs)} runs ok", flush=True)
         return
 
@@ -1100,6 +1191,14 @@ def main():
     for a in accs.values():
         a.finalize()
     gc.collect()
+
+    # Per-community, per-pulse scalars across all scenarios (for paired analyses).
+    rows = [df.assign(scenario=label) for label, a in accs.items() for df in a.pulse_rows]
+    if rows:
+        pm = pd.concat(rows, ignore_index=True)
+        pm = pm[["scenario", "community", "pulse"] + PULSE_METRICS]
+        pm.to_csv(root_out / "community_pulse_metrics.csv", index=False)
+        print(f"  community_pulse_metrics.csv: {len(pm)} rows\n")
 
     for label, run_dirs in scenario_list:
         n = len(run_dirs)
