@@ -976,6 +976,38 @@ def resolve_scenario_list(args) -> list[tuple[str, list[Path]]]:
     return result
 
 
+# ── Community pairing across scenarios ────────────────────────────────────────
+
+def _pair_communities(scenario_list, keep_all: bool = False):
+    """Restrict every scenario to the communities (run folder names) present in
+    all of them, unless keep_all.  Returns (scenario_list, skipped) where skipped
+    maps a community to the scenarios it is missing from."""
+    sets = {label: {rd.name for rd in runs} for label, runs in scenario_list}
+    everywhere = set.intersection(*sets.values()) if sets else set()
+    skipped = {}
+    for label, members in sets.items():
+        for c in set.union(*sets.values()) - members:
+            skipped.setdefault(c, []).append(label)
+    if skipped:
+        print(f"{len(skipped)} communit{'y is' if len(skipped) == 1 else 'ies are'} "
+              f"missing from some scenario{'' if keep_all else ' and skipped'}:")
+        for c in sorted(skipped):
+            print(f"  {c}: missing in {', '.join(skipped[c])}")
+        print()
+    if keep_all:
+        return scenario_list, skipped
+    return [(label, [rd for rd in runs if rd.name in everywhere])
+            for label, runs in scenario_list], skipped
+
+
+def _write_community_lists(root_out: Path, scenario_list, skipped: dict) -> None:
+    included = sorted({rd.name for _, runs in scenario_list for rd in runs})
+    pd.Series(included, name="community").to_csv(root_out / "communities_included.csv", index=False)
+    rows = [{"community": c, "missing_in": ";".join(labels)} for c, labels in sorted(skipped.items())]
+    pd.DataFrame(rows, columns=["community", "missing_in"]).to_csv(
+        root_out / "communities_skipped.csv", index=False)
+
+
 # ── Main ──────────────────────────────────────────────────────────────────────
 
 def main():
@@ -999,6 +1031,14 @@ def main():
              "(default: <base>/export_summary_data).",
     )
     parser.add_argument(
+        "--all-communities", action="store_true",
+        help="Fold every run found.  By default only communities present in "
+             "every scenario are used (so scenario means are paired over the "
+             "same communities) and the others are listed and skipped.  Either "
+             "way communities_included.csv / communities_skipped.csv are written "
+             "to the output root.",
+    )
+    parser.add_argument(
         "--stage-dir", default=None, metavar="DIR",
         help="Copy each community's run folders (and its spin-up folder) to DIR "
              "in one sequential pass before reading them, one community per "
@@ -1019,6 +1059,7 @@ def main():
     scenario_list = resolve_scenario_list(args)
     if not scenario_list:
         sys.exit("ERROR: no scenarios resolved.")
+    scenario_list, skipped = _pair_communities(scenario_list, keep_all=args.all_communities)
 
     n_jobs = _resolve_jobs(args.jobs)
     if n_jobs > 1:
@@ -1027,6 +1068,7 @@ def main():
     base = Path(args.base) if args.base else BASE
     root_out = Path(args.out_dir) if args.out_dir else base / "export_summary_data"
     root_out.mkdir(parents=True, exist_ok=True)
+    _write_community_lists(root_out, scenario_list, skipped)
 
     # Runtime
     first_run = next((r for _, runs in scenario_list for r in runs), None)
