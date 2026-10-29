@@ -82,10 +82,14 @@ Energy budget and C losses  (index = taxon, columns = day;  per alive microbe)
                                   (per-microbe value × cells / taxon biomass C)
   taxon_count_taxon.csv         – living cells per taxon
 
-Community totals per unit biomass C  (index = day)
-  comm_endo_resp_C_per_biomass.csv, comm_rebalance_C_per_biomass.csv,
-  comm_retained_C_per_biomass.csv, comm_unpaid_E_per_biomass.csv
-                                – Σ_taxa (per-microbe × cells) / Σ_taxa biomass C
+Community series on three bases  (index = day), for every pathway / budget term:
+  comm_<x>_per_microbe.csv      – mean across taxa of the per-alive-microbe rate
+  comm_<x>_total.csv            – grid total: Σ_taxa (per-microbe rate × living cells)
+  comm_<x>_per_biomass.csv      – total / Σ_taxa biomass C
+  <x> in: uptake_C, biosynthesis_C, enzyme_C, hsp_C, osmolyte_C, transport_C,
+          production_E, gain_E, cost_E, transport_E, maintenance_E, hsp_E,
+          enzyme_E, osmolyte_E, endo_resp_C, rebalance_C, retained_C, loss_C,
+          stoich_E, unpaid_E
 
 Net CUE  (unfloored; Σ retained / Σ uptake over the pulse, cells-weighted)
   net_cue_pulse.csv             – index = pulse; community level (all taxa)
@@ -303,6 +307,14 @@ def pulse_metrics(CU, BC, EC, RE, RSE, EU, CNT, MIC, SUB, RESP, E_yield,
     return pd.DataFrame(rows).T[PULSE_METRICS]
 
 
+COMM_SERIES_NAMES = ["uptake_C", "biosynthesis_C", "enzyme_C", "hsp_C", "osmolyte_C", "transport_C",
+                     "production_E", "gain_E", "cost_E", "transport_E", "maintenance_E", "hsp_E",
+                     "enzyme_E", "osmolyte_E", "endo_resp_C", "rebalance_C", "retained_C", "loss_C",
+                     "stoich_E", "unpaid_E"]
+COMM_SERIES_KEYS = [f"comm_{nm}_{basis}" for nm in COMM_SERIES_NAMES
+                    for basis in ("per_microbe", "total", "per_biomass")]
+
+
 def _living_cells(run_dir: Path, L) -> pd.DataFrame | None:
     """Living cells per taxon per day (taxa × days 1..n).
 
@@ -517,6 +529,12 @@ def compute_run(run_dir: Path) -> dict | None:
         cc = sorted(set(t.columns) & set(MIC.columns))
         return safe_div(t[cc].sum(axis=0), MIC[cc].astype(float).sum(axis=0))
 
+    def _comm_total(x):
+        """Grid total: Σ_taxa (per-microbe rate × living cells)."""
+        t = _tot(x)
+        return None if t is None else t.sum(axis=0)
+
+
     # Net CUE per pulse (unfloored): Σ retained / Σ uptake over the pulse, per taxon and for the community
     net_cue_pulse = net_cue_pulse_taxon = None
     ret_tot, upt_tot = _tot(retained), _tot(CU)
@@ -594,6 +612,22 @@ def compute_run(run_dir: Path) -> dict | None:
     def _comm_mean(df):
         return df.mean(axis=0, skipna=True) if df is not None else None
 
+    # Community series on three bases: per alive microbe (mean across taxa),
+    # grid total (Σ_taxa rate × cells) and per unit biomass C (total / Σ biomass).
+    _COMM = {
+        "uptake_C": CU, "biosynthesis_C": BC, "enzyme_C": EC, "hsp_C": HC,
+        "osmolyte_C": OC, "transport_C": TC,
+        "production_E": EP, "gain_E": EGN, "cost_E": ECT,
+        "transport_E": ET, "maintenance_E": EM, "hsp_E": EH, "enzyme_E": EE, "osmolyte_E": EO,
+        "endo_resp_C": RE, "rebalance_C": rebal_C, "retained_C": retained, "loss_C": loss,
+        "stoich_E": RSE, "unpaid_E": EU,
+    }
+    comm_series = {}
+    for nm, x in _COMM.items():
+        comm_series[f"comm_{nm}_per_microbe"] = _comm_mean(x)
+        comm_series[f"comm_{nm}_total"] = _comm_total(x)
+        comm_series[f"comm_{nm}_per_biomass"] = _comm_per_biomass(x)
+
     return dict(
         # pools
         SUB=SUB, MON=MON, MIC=MIC, ENE=ENE, ENZ=ENZ,
@@ -604,18 +638,8 @@ def compute_run(run_dir: Path) -> dict | None:
         nh4_monomer=nh4_mon, po4_monomer=po4_mon, fermprod_monomer=ferm_mon,
         deadmic_monomer=deadmic_mon, deadenz_monomer=deadenz_mon,
         deadmic_substrate=deadmic_sub, deadenz_substrate=deadenz_sub,
-        # community-mean-per-alive-microbe pathway series (1-D)
-        comm_uptake_C_per_microbe=_comm_mean(CU),
-        comm_biosynthesis_C_per_microbe=_comm_mean(BC),
-        comm_enzyme_C_per_microbe=_comm_mean(EC),
-        comm_hsp_C_per_microbe=_comm_mean(HC),
-        comm_osmolyte_C_per_microbe=_comm_mean(OC),
-        comm_production_E_per_microbe=_comm_mean(EP),
-        comm_transport_E_per_microbe=_comm_mean(ET),
-        comm_maintenance_E_per_microbe=_comm_mean(EM),
-        comm_hsp_E_per_microbe=_comm_mean(EH),
-        comm_enzyme_E_per_microbe=_comm_mean(EE),
-        comm_osmolyte_E_per_microbe=_comm_mean(EO),
+        # community series: comm_<x>_{per_microbe,total,per_biomass} (1-D), see _COMM
+        **comm_series,
         CUE_sys=_squeeze(CUE_sys), CAE_sys=_squeeze(CAE_sys),
         CUE_tax=CUE_tax, CAE_tax=CAE_tax,
         # C
@@ -639,20 +663,11 @@ def compute_run(run_dir: Path) -> dict | None:
         # energy budget and C losses (per microbe)
         RE=RE, rebal_C=rebal_C, retained=retained, loss=loss,
         RSE=RSE, EU=EU, e_demand_ratio=e_demand_ratio, DT=DT,
-        comm_endo_resp_C_per_microbe=_comm_mean(RE),
-        comm_rebalance_C_per_microbe=_comm_mean(rebal_C),
-        comm_retained_C_per_microbe=_comm_mean(retained),
-        comm_stoich_E_per_microbe=_comm_mean(RSE),
-        comm_unpaid_E_per_microbe=_comm_mean(EU),
         # per unit biomass C
         endo_resp_per_biomass=_per_biomass(RE),
         rebalance_per_biomass=_per_biomass(rebal_C),
         retained_per_biomass=_per_biomass(retained),
         unpaid_E_per_biomass=_per_biomass(EU),
-        comm_endo_resp_C_per_biomass=_comm_per_biomass(RE),
-        comm_rebalance_C_per_biomass=_comm_per_biomass(rebal_C),
-        comm_retained_C_per_biomass=_comm_per_biomass(retained),
-        comm_unpaid_E_per_biomass=_comm_per_biomass(EU),
         # net CUE
         net_cue_pulse=net_cue_pulse, net_cue_pulse_taxon=net_cue_pulse_taxon,
         # per-pulse scalars (collected per community, not folded)
@@ -1288,28 +1303,9 @@ def main():
         # Mean across taxa, aggregated across communities; matches raw-mode
         # absolute_c/absolute_e exactly (mean and SD).  total_cost / net_gain are
         # derived in the figure scripts from these components.
-        print("  Writing community-mean pathway series...", flush=True)
-        write("comm_uptake_C_per_microbe",       "comm_uptake_C_per_microbe",       is_series=True)
-        write("comm_biosynthesis_C_per_microbe", "comm_biosynthesis_C_per_microbe", is_series=True)
-        write("comm_enzyme_C_per_microbe",       "comm_enzyme_C_per_microbe",       is_series=True)
-        write("comm_hsp_C_per_microbe",          "comm_hsp_C_per_microbe",          is_series=True)
-        write("comm_osmolyte_C_per_microbe",     "comm_osmolyte_C_per_microbe",     is_series=True)
-        write("comm_production_E_per_microbe",   "comm_production_E_per_microbe",   is_series=True)
-        write("comm_transport_E_per_microbe",    "comm_transport_E_per_microbe",    is_series=True)
-        write("comm_maintenance_E_per_microbe",  "comm_maintenance_E_per_microbe",  is_series=True)
-        write("comm_hsp_E_per_microbe",          "comm_hsp_E_per_microbe",          is_series=True)
-        write("comm_enzyme_E_per_microbe",       "comm_enzyme_E_per_microbe",       is_series=True)
-        write("comm_osmolyte_E_per_microbe",     "comm_osmolyte_E_per_microbe",     is_series=True)
-        write("comm_endo_resp_C_per_microbe",    "comm_endo_resp_C_per_microbe",    is_series=True)
-        write("comm_rebalance_C_per_microbe",    "comm_rebalance_C_per_microbe",    is_series=True)
-        write("comm_retained_C_per_microbe",     "comm_retained_C_per_microbe",     is_series=True)
-        write("comm_stoich_E_per_microbe",       "comm_stoich_E_per_microbe",       is_series=True)
-        write("comm_unpaid_E_per_microbe",       "comm_unpaid_E_per_microbe",       is_series=True)
-        # Community totals per unit biomass C: Σ(per-microbe × cells) / Σ biomass C
-        write("comm_endo_resp_C_per_biomass",    "comm_endo_resp_C_per_biomass",    is_series=True)
-        write("comm_rebalance_C_per_biomass",    "comm_rebalance_C_per_biomass",    is_series=True)
-        write("comm_retained_C_per_biomass",     "comm_retained_C_per_biomass",     is_series=True)
-        write("comm_unpaid_E_per_biomass",       "comm_unpaid_E_per_biomass",       is_series=True)
+        print("  Writing community series (per microbe / grid total / per biomass C)...", flush=True)
+        for key in sorted(k for k in COMM_SERIES_KEYS):
+            write(key, key, is_series=True)
 
         # ── Carbon allocation ──────────────────────────────────────────────────
         print("  Writing C allocation...", flush=True)
