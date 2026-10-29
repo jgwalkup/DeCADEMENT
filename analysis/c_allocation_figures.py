@@ -210,6 +210,9 @@ _p = _ap.ArgumentParser(description="c_allocation_figures.py (multi-scenario)",
                         formatter_class=_ap.RawDescriptionHelpFormatter)
 add_scenario_args(_p)
 add_summary_arg(_p)
+_p.add_argument("--days", type=int, nargs=2, metavar=("START", "END"), default=None,
+                help="Restrict to an absolute day window (overrides --years), e.g. "
+                     "--days 2040 2090 for the summer heatwave week and the month after.")
 _args = _p.parse_args()
 
 from pathlib import Path as _Path
@@ -226,7 +229,7 @@ _SUMMARY_STEMS = {
     "biosyn_C":     "c_biosynthesis_taxon",
     "energy_frac":  "c_energy_fraction_taxon",
     "biosyn_frac":  "c_biosyn_fraction_taxon",
-    "hsp_pool_frac":"hsp_pool_fraction",
+    "hsp_pool_frac":"hsp_biomass_ratio_taxon",
     "hsp_bf":       "c_hsp_biosyn_frac",
     "enz_bf":       "c_enzyme_biosyn_frac",
     "osm_bf":       "c_osmolyte_biosyn_frac",
@@ -311,6 +314,9 @@ else:
           f"Displaying: day {COL_START}-{COL_END}")
     GRIDSIZE = get_scenario_gridsize(scenario_list)
 
+if _args.days:
+    COL_START, COL_END = _args.days
+    print(f"Day window: {COL_START}-{COL_END}")
 for _label in scen_labels:
     scen_data[_label]         = {k: filter_cols(v, COL_START, COL_END)
                                    for k, v in scen_data[_label].items()}
@@ -331,16 +337,19 @@ scenarios = [(lab, scen_data[lab], scen_data[lab + "_sd"]) for lab in scen_label
 # Divides absolute pool/pathway quantities by grid cells so results are
 # expressed per grid cell. Ratio/fraction/efficiency series are excluded
 # (they are already normalised by biomass, uptake, or total energy).
-_NORM_SKIP = {"biosyn_frac", "energy_frac", "enz_bf", "hsp_bf", "hsp_pool_frac", "osm_bf", "trans_bf"}
-print(f"Grid size     : {GRIDSIZE} cells  (normalising absolute series by {GRIDSIZE})")
+# Gridsize normalisation applies to grid totals only: per-taxon biomass (MIC).
+# C, BC, energy_C, biosyn_C are per alive microbe (output.py divides per-taxon
+# series by cell count) and the rest are fractions.
+_NORM_KEYS = {"MIC"}
+print(f"Grid size     : {GRIDSIZE} cells  (normalising per-taxon biomass by {GRIDSIZE})")
 for _label in scen_labels:
     scen_data[_label] = {
-        k: (v if k in _NORM_SKIP else normalise_by_gridsize(v, GRIDSIZE))
+        k: (normalise_by_gridsize(v, GRIDSIZE) if k in _NORM_KEYS else v)
         for k, v in scen_data[_label].items()
     }
     if _label + '_sd' in scen_data:
         scen_data[_label + '_sd'] = {
-            k: (v if k in _NORM_SKIP else normalise_by_gridsize(v, GRIDSIZE))
+            k: (normalise_by_gridsize(v, GRIDSIZE) if k in _NORM_KEYS else v)
             for k, v in scen_data[_label + '_sd'].items()
         }
 
@@ -545,9 +554,9 @@ fig5.savefig(FIG_DIR / "fig5_taxon_allocation_heatmaps.png", dpi=150, bbox_inche
 plt.close(fig5); print("Saved fig5")
 
 # ────────────────────────────────────────────────────────────────────────────
-# Fig 6: Pairwise Δ allocation per taxon (adjacent scenario pairs)
+# Fig 6: Δ allocation per taxon, each scenario − the first (baseline) scenario
 # ────────────────────────────────────────────────────────────────────────────
-pairs = [(scen_labels[i], scen_labels[i + 1]) for i in range(N_SCEN - 1)]
+pairs = [(scen_labels[0], scen_labels[i]) for i in range(1, N_SCEN)]
 
 for a_label, b_label in pairs:
     a = scen_data[a_label]
@@ -568,7 +577,7 @@ for a_label, b_label in pairs:
     fig6, axs = plt.subplots(1, n_panels, figsize=(7 * n_panels, 9), sharey=True)
     if n_panels == 1: axs = [axs]
     fig6.suptitle(f"{b_label} − {a_label}: Difference in C Allocation Per Taxon\n"
-                  "(positive = higher in warmer scenario)",
+                  f"(positive = higher in {b_label})",
                   fontsize=12, fontweight="bold")
 
     c_pos = COLOR[b_label]
@@ -594,7 +603,7 @@ for a_label, b_label in pairs:
                       Patch(facecolor=c_neg, label=f"Higher in {a_label}")]
     axs[-1].legend(handles=legend_handles, loc="upper center",
                    bbox_to_anchor=(0.5, -0.20), ncols=2, framealpha=0.85, fontsize=8)
-    safe_a = a_label.replace("/", "-"); safe_b = b_label.replace("/", "-")
+    safe_a = a_label.replace("/", "-").replace(" ", "_"); safe_b = b_label.replace("/", "-").replace(" ", "_")
     fig6.tight_layout()
     fig6.savefig(FIG_DIR / f"fig6_delta_alloc_{safe_b}_minus_{safe_a}.png",
                  dpi=150, bbox_inches="tight")

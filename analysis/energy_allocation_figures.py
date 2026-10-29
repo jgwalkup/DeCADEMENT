@@ -115,7 +115,7 @@ def compute_e(run_dir: Path):
         EP=EP, EC=EC, EG=EG,
         ET=ET, EM=EM, EH=EH, EE=EE, EO=EO,
         total_cost=total_cost,
-        cost_frac=cost_frac, net_frac=net_frac,
+        cost_frac=cost_frac, demand_ratio=(safe_div(total_cost, EP) if (total_cost is not None and EP is not None) else None), net_frac=net_frac,
         trans_pf=_pf(ET), maint_pf=_pf(EM),
         hsp_pf=_pf(EH),   enz_pf=_pf(EE), osm_pf=_pf(EO),
     )
@@ -198,13 +198,16 @@ _p = _ap.ArgumentParser(description="energy_allocation_figures.py (multi-scenari
                         formatter_class=_ap.RawDescriptionHelpFormatter)
 add_scenario_args(_p)
 add_summary_arg(_p)
+_p.add_argument("--days", type=int, nargs=2, metavar=("START", "END"), default=None,
+                help="Restrict to an absolute day window (overrides --years), e.g. "
+                     "--days 2040 2090 for the summer heatwave week and the month after.")
 _args = _p.parse_args()
 
 from pathlib import Path as _Path
 
 # All keys returned by compute_e() — used to build scen_data dicts
 KEYS = ["EP", "EC", "EG", "ET", "EM", "EH", "EE", "EO",
-        "total_cost", "cost_frac", "net_frac",
+        "total_cost", "cost_frac", "net_frac", "demand_ratio",
         "trans_pf", "maint_pf", "hsp_pf", "enz_pf", "osm_pf"]
 
 # key → export_summary_data.py stem.  compute_run mirrors compute_e exactly
@@ -220,6 +223,7 @@ _SUMMARY_STEMS = {
     "EO":         "e_osmolyte_taxon",
     "total_cost": "e_total_cost_taxon",
     "cost_frac":  "e_cost_fraction_taxon",
+    "demand_ratio": "e_demand_ratio_taxon",    # unclipped cost / (production + R_stoich credit)
     "net_frac":   "e_net_fraction",
     "trans_pf":   "e_transport_frac",
     "maint_pf":   "e_maintenance_frac",
@@ -303,6 +307,9 @@ else:
     print(f"Simulation: {N_YEARS} year(s), {DAYS_PER_YEAR} days/year  |  "
           f"Displaying: day {COL_START}-{COL_END}")
 
+if _args.days:
+    COL_START, COL_END = _args.days
+    print(f"Day window: {COL_START}-{COL_END}")
 for _label in scen_labels:
     scen_data[_label]         = {k: filter_cols(v, COL_START, COL_END)
                                    for k, v in scen_data[_label].items()}
@@ -323,28 +330,19 @@ scenarios = [(lab, scen_data[lab], scen_data[lab + "_sd"]) for lab in scen_label
 # Divides absolute pool/pathway quantities by grid cells so results are
 # expressed per grid cell. Ratio/fraction/efficiency series are excluded
 # (they are already normalised by biomass, uptake, or total energy).
-_NORM_SKIP = {"cost_frac", "enz_pf", "hsp_pf", "maint_pf", "net_frac", "osm_pf", "trans_pf"}
-print(f"Grid size     : {GRIDSIZE} cells  (normalising absolute series by {GRIDSIZE})")
-for _label in scen_labels:
-    scen_data[_label] = {
-        k: (v if k in _NORM_SKIP else normalise_by_gridsize(v, GRIDSIZE))
-        for k, v in scen_data[_label].items()
-    }
-    if _label + '_sd' in scen_data:
-        scen_data[_label + '_sd'] = {
-            k: (v if k in _NORM_SKIP else normalise_by_gridsize(v, GRIDSIZE))
-            for k, v in scen_data[_label + '_sd'].items()
-        }
+# No gridsize normalisation here: every series in this script is per alive
+# microbe (output.py divides per-taxon series by cell count) or a fraction.
+print(f"Grid size     : {GRIDSIZE} cells")
 
 # ────────────────────────────────────────────────────────────────────────────
 # Fig 1: E production, cost, net gain — community time series
 # ────────────────────────────────────────────────────────────────────────────
-fig1, axes = plt.subplots(1, 2, figsize=(13, 5), sharey=True)
+fig1, axes = plt.subplots(1, N_SCEN, figsize=(6.5 * N_SCEN, 5), sharey=True)
 fig1.suptitle("Energy Production, Total Cost, and Net Gain Per Alive Microbe\n"
               "(community mean)",
               fontsize=12, fontweight="bold")
 
-for ax, dat, title in zip(axes, [scen_data[l] for l in scen_labels[:2]], scen_labels[:2]):
+for ax, dat, title in zip(np.atleast_1d(axes), [scen_data[l] for l in scen_labels], scen_labels):
     ep_mu, ep_sd = comm_ts(dat["EP"])
     tc_mu, tc_sd = comm_ts(dat["total_cost"])
     if ep_mu is None:
@@ -369,12 +367,12 @@ plt.close(fig1); print("Saved fig1")
 # ────────────────────────────────────────────────────────────────────────────
 # Fig 2: Proportional E allocation
 # ────────────────────────────────────────────────────────────────────────────
-fig2, axes = plt.subplots(1, 2, figsize=(13, 5), sharey=True)
+fig2, axes = plt.subplots(1, N_SCEN, figsize=(6.5 * N_SCEN, 5), sharey=True)
 fig2.suptitle("Proportional Energy Allocation — Cost vs. Net Gain\n"
               "(community mean across alive taxa)",
               fontsize=12, fontweight="bold")
 
-for ax, dat, title in zip(axes, [scen_data[l] for l in scen_labels[:2]], scen_labels[:2]):
+for ax, dat, title in zip(np.atleast_1d(axes), [scen_data[l] for l in scen_labels], scen_labels):
     cf_mu, cf_sd = comm_ts(dat["cost_frac"])
     nf_mu, nf_sd = comm_ts(dat["net_frac"])
     if cf_mu is None:
@@ -406,12 +404,12 @@ if ctrl_cf_m is not None:
 else:
     order = None
 
-fig3, axes = plt.subplots(1, 2, figsize=(14, 9), sharey=True)
+fig3, axes = plt.subplots(1, N_SCEN, figsize=(7 * N_SCEN, 9), sharey=True)
 fig3.suptitle("Mean Proportional E Allocation Per Taxon\n"
-              "(averaged over all alive days; taxa sorted by Control cost fraction)",
+              f"(averaged over all alive days; taxa sorted by {_l0} cost fraction)",
               fontsize=12, fontweight="bold")
 
-for ax, dat, title in zip(axes, [scen_data[l] for l in scen_labels[:2]], scen_labels[:2]):
+for ax, dat, title in zip(np.atleast_1d(axes), [scen_data[l] for l in scen_labels], scen_labels):
     cf_df = dat["cost_frac"]
     nf_df = dat["net_frac"]
     if cf_df is None or order is None:
@@ -434,7 +432,8 @@ plt.close(fig3); print("Saved fig3")
 # ────────────────────────────────────────────────────────────────────────────
 # Fig 4: Within-cost pathway breakdown
 # ────────────────────────────────────────────────────────────────────────────
-fig4, axes = plt.subplots(1, 2, figsize=(13, 5), sharey=True)
+fig4, axes = plt.subplots(1, N_SCEN, figsize=(6.5 * N_SCEN, 5), sharey=True)
+axes = np.atleast_1d(axes)
 
 has_pathways = any(scen_data[scen_labels[0]].get(k) is not None
                    for k in ['trans_pf', 'maint_pf', 'hsp_pf', 'enz_pf', 'osm_pf'])
@@ -442,7 +441,7 @@ if has_pathways:
     fig4.suptitle("Within-Cost E Pathway Breakdown\n"
                   "(fraction of total E cost; transport / maintenance / HSP / enzyme / osmolyte)",
                   fontsize=12, fontweight="bold")
-    for ax, dat, title in zip(axes, [ctrl, warm], ["Control", "Warm"]):
+    for ax, dat, title in zip(axes, [scen_data[l] for l in scen_labels], scen_labels):
         tr_m, _ = comm_ts(dat["trans_pf"])
         ma_m, _ = comm_ts(dat["maint_pf"])
         hs_m, _ = comm_ts(dat["hsp_pf"])
@@ -471,7 +470,7 @@ else:
     fig4.suptitle("Within-Cost E Breakdown — pathway CSVs not available\n"
                   "Re-run the model after adding per-pathway tracking to output.py",
                   fontsize=11, fontweight="bold")
-    for ax, dat, title in zip(axes, [ctrl, warm], ["Control", "Warm"]):
+    for ax, dat, title in zip(axes, [scen_data[l] for l in scen_labels], scen_labels):
         ep_mu, _ = comm_ts(dat["EP"])
         if ep_mu is None:
             ax.set_title(f"{title} — no data"); continue
@@ -495,15 +494,12 @@ plt.close(fig4); print("Saved fig4")
 cf_order = (taxon_mean(ctrl["cost_frac"]).sort_values(ascending=False).index
             if ctrl["cost_frac"] is not None else None)
 
-fig5, axes = plt.subplots(2, 2, figsize=(16, 11))
+fig5, axes = plt.subplots(2, N_SCEN, figsize=(8 * N_SCEN, 11), squeeze=False)
 fig5.suptitle("Per-Taxon E Allocation Heatmaps  "
-              "(rows = taxa sorted by ctrl cost fraction; cols = days)",
+              f"(rows = taxa sorted by {_l0} cost fraction; cols = days)",
               fontsize=12, fontweight="bold")
 
-datasets = [
-    (ctrl["cost_frac"], ctrl["trans_pf"], "Control"),
-    (warm["cost_frac"], warm["trans_pf"], "Warm"),
-]
+datasets = [(scen_data[l]["cost_frac"], scen_data[l]["trans_pf"], l) for l in scen_labels]
 
 day_labels = np.linspace(COL_START, COL_END, 6, dtype=int)
 
@@ -555,53 +551,59 @@ fig5.savefig(FIG_DIR / "fig5_taxon_e_alloc_heatmaps.png", dpi=150, bbox_inches="
 plt.close(fig5); print("Saved fig5")
 
 # ────────────────────────────────────────────────────────────────────────────
-# Fig 6: Warm − Control Δ E allocation per taxon
+# Fig 6: Δ E allocation per taxon, each scenario − the first (baseline) scenario
 # ────────────────────────────────────────────────────────────────────────────
-if ctrl["cost_frac"] is not None and warm["cost_frac"] is not None:
-    ctrl_cf_m = taxon_mean(ctrl["cost_frac"])
-    warm_cf_m = taxon_mean(warm["cost_frac"])
-    delta_cf  = (warm_cf_m - ctrl_cf_m).dropna()
-
-    ctrl_tr_m = taxon_mean(ctrl["trans_pf"]) if ctrl["trans_pf"] is not None else None
-    warm_tr_m = taxon_mean(warm["trans_pf"]) if warm["trans_pf"] is not None else None
-    delta_tr  = ((warm_tr_m - ctrl_tr_m).dropna()
-                 if (ctrl_tr_m is not None and warm_tr_m is not None) else None)
+for s_label in scen_labels[1:]:
+    other = scen_data[s_label]
+    # The clipped cost fraction saturates at 1 during an energy deficit, which
+    # erases the difference the figure is for; use the unclipped demand ratio
+    # (cost / production) when the export provides it.
+    key6 = "demand_ratio" if (ctrl.get("demand_ratio") is not None and other.get("demand_ratio") is not None) else "cost_frac"
+    if ctrl[key6] is None or other[key6] is None:
+        print(f"Skipped fig6 ({s_label} − {_l0}) — missing {key6} data")
+        continue
+    delta_cf = (taxon_mean(other[key6]) - taxon_mean(ctrl[key6])).dropna()
+    delta_tr = None
+    if ctrl["trans_pf"] is not None and other["trans_pf"] is not None:
+        delta_tr = (taxon_mean(other["trans_pf"]) - taxon_mean(ctrl["trans_pf"])).dropna()
 
     order6   = delta_cf.sort_values(ascending=True).index
     yticks6  = np.arange(len(order6))
     n_panels = 2 if delta_tr is not None else 1
+    c_pos, c_neg = COLOR[s_label], COLOR[_l0]
 
     fig6, axs = plt.subplots(1, n_panels, figsize=(7 * n_panels, 9), sharey=True)
     if n_panels == 1:
         axs = [axs]
-    fig6.suptitle("Warm − Control Difference in E Allocation Per Taxon\n"
-                  "(positive = higher under warming)", fontsize=12, fontweight="bold")
+    fig6.suptitle(f"{s_label} − {_l0}: Difference in E Allocation Per Taxon\n"
+                  f"(positive = higher in {s_label})", fontsize=12, fontweight="bold")
 
     vals6   = delta_cf.reindex(order6).fillna(0).values
-    colors6 = [C_WARM if v > 0 else C_CTRL for v in vals6]
-    axs[0].barh(yticks6, vals6, color=colors6, alpha=0.85, edgecolor="white", linewidth=0.3)
+    axs[0].barh(yticks6, vals6, color=[c_pos if v > 0 else c_neg for v in vals6],
+                alpha=0.85, edgecolor="white", linewidth=0.3)
     axs[0].axvline(0, color="black", lw=0.9)
-    axs[0].set_yticks(yticks6); axs[0].set_yticklabels(order6, fontsize=7)
-    axs[0].set_xlabel("Δ E cost fraction (Warm − Control)")
-    axs[0].set_title("Δ E cost / production")
+    step = max(1, len(order6) // 40)
+    axs[0].set_yticks(yticks6[::step]); axs[0].set_yticklabels(order6[::step], fontsize=7)
+    axs[0].set_xlabel(f"Δ E demand ratio ({s_label} − {_l0})" if key6 == "demand_ratio"
+                      else f"Δ E cost fraction ({s_label} − {_l0})")
+    axs[0].set_title(f"Δ E cost / production (unclipped, mean over days {COL_START}–{COL_END})"
+                     if key6 == "demand_ratio" else f"Δ E cost / production (days {COL_START}–{COL_END})")
 
-    if delta_tr is not None and n_panels > 1:
-        vals_tr   = delta_tr.reindex(order6).fillna(0).values
-        colors_tr = [C_WARM if v > 0 else C_CTRL for v in vals_tr]
-        axs[1].barh(yticks6, vals_tr, color=colors_tr, alpha=0.85,
-                    edgecolor="white", linewidth=0.3)
+    if delta_tr is not None:
+        vals_tr = delta_tr.reindex(order6).fillna(0).values
+        axs[1].barh(yticks6, vals_tr, color=[c_pos if v > 0 else c_neg for v in vals_tr],
+                    alpha=0.85, edgecolor="white", linewidth=0.3)
         axs[1].axvline(0, color="black", lw=0.9)
-        axs[1].set_xlabel("Δ Transport E fraction (Warm − Control)")
+        axs[1].set_xlabel(f"Δ Transport E fraction ({s_label} − {_l0})")
         axs[1].set_title("Δ Transport fraction of E cost")
 
-    legend_handles = [Patch(facecolor=C_WARM, label="Higher under warming"),
-                      Patch(facecolor=C_CTRL, label="Lower under warming")]
+    legend_handles = [Patch(facecolor=c_pos, label=f"Higher in {s_label}"),
+                      Patch(facecolor=c_neg, label=f"Higher in {_l0}")]
     axs[-1].legend(handles=legend_handles, loc="upper center",
                    bbox_to_anchor=(0.5, -0.20), ncols=2, framealpha=0.85, fontsize=8)
+    safe_a = _l0.replace("/", "-").replace(" ", "_"); safe_b = s_label.replace("/", "-").replace(" ", "_")
     fig6.tight_layout()
-    fig6.savefig(FIG_DIR / "fig6_warm_ctrl_delta_e_alloc.png", dpi=150, bbox_inches="tight")
-    plt.close(fig6); print("Saved fig6")
-else:
-    print("Skipped fig6 — missing cost_frac data for control or warm")
+    fig6.savefig(FIG_DIR / f"fig6_delta_e_alloc_{safe_b}_minus_{safe_a}.png", dpi=150, bbox_inches="tight")
+    plt.close(fig6); print(f"Saved fig6  ({s_label} − {_l0})")
 
 print(f"\nAll figures saved to: {FIG_DIR}")

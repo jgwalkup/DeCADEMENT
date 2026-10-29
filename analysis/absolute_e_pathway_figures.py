@@ -517,6 +517,7 @@ else:
                 delta = smooth(dat[name] - ref)
                 days  = delta.index
                 ax3.plot(days, delta.values, color=pcolor, lw=1.8,
+                         ls=["-", "--", ":", "-."][si % 4],      # line style tells the scenarios apart
                          label=f"{name} ({label})")
 
         ax3.axhline(0, color="black", lw=0.8, ls="--")

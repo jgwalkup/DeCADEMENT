@@ -342,6 +342,27 @@ def discover_summary_scenarios(root: Path) -> list[tuple[str, Path]]:
     return found
 
 
+# ── Display labels ────────────────────────────────────────────────────────────
+# Scenario folder names stay as they are on disk (and in export output); these
+# are the names used in figure titles and legends.  --treatment-map overrides.
+_PRETTY_LABELS = {
+    "climate_ambient_temp": "Ambient",
+    "climate_summer_warm":  "Summer heatwave",
+    "climate_winter_warm":  "Winter heatwave",
+    "climate_5d_warm":      "+5 °C warming",
+}
+
+
+def pretty_label(name: str) -> str:
+    """Display label for a scenario folder name: a known name from the table
+    above, otherwise the name without a 'climate_' prefix and with underscores
+    as spaces ('static_T15_Pn0p5' -> 'static T15 Pn0p5')."""
+    if name in _PRETTY_LABELS:
+        return _PRETTY_LABELS[name]
+    base = name[len("climate_"):] if name.startswith("climate_") else name
+    return base.replace("_", " ")
+
+
 def resolve_summary_scenarios(summary_dir,
                               treatment_map: dict | None = None,
                               label_order: list[str] | None = None
@@ -354,7 +375,7 @@ def resolve_summary_scenarios(summary_dir,
     """
     found = discover_summary_scenarios(Path(summary_dir))
     tmap = treatment_map or {}
-    relabelled = [(tmap.get(name, name), path) for name, path in found]
+    relabelled = [(tmap.get(name, pretty_label(name)), path) for name, path in found]
     if label_order:
         rank = {lab: i for i, lab in enumerate(label_order)}
         relabelled.sort(key=lambda lp: rank.get(lp[0], len(rank)))
@@ -697,7 +718,7 @@ def resolve_scenario_list(
             elif positional_labels and i < len(positional_labels):
                 label = positional_labels[i]
             else:
-                label = stem
+                label = pretty_label(stem)
             result.append((label, path))
         return result
 

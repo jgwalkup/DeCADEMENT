@@ -56,7 +56,7 @@ _HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(_HERE))
 from branch_output import branch_info, initialization_dir          # noqa: E402
 from export_summary_data import PULSE_METRICS, pulse_metrics        # noqa: E402
-from scenario_utils import discover_scenarios, pick_runs, read_runtime  # noqa: E402
+from scenario_utils import discover_scenarios, pick_runs, pretty_label, read_runtime  # noqa: E402
 
 try:
     from scipy import stats as _stats
@@ -258,7 +258,7 @@ def make_figure(pairs: pd.DataFrame, table: pd.DataFrame, path: Path) -> None:
         bins = np.linspace(np.nanmin(vals), np.nanmax(vals), 41)
         for s in scen:
             d = sub[sub.scenario == s]["diff"].to_numpy(float)
-            ax.hist(d[np.isfinite(d)], bins=bins, alpha=0.55, label=s.replace("climate_", ""))
+            ax.hist(d[np.isfinite(d)], bins=bins, alpha=0.55, label=pretty_label(s))
             r = table[(table.scenario == s) & (table.metric == m)].iloc[0]
             ax.axvline(r.diff_mean, color=ax.patches[-1].get_facecolor(), lw=1.5)
         ax.axvline(0, color="k", lw=0.8, ls="--")

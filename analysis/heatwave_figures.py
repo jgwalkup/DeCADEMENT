@@ -81,8 +81,8 @@ PAIR_METRICS = [("net_cue", "Net CUE, branch year"), ("c_retained", "C retained"
                 ("c_endo_resp", "Endogenous respiration C"), ("biomass_C_end", "Biomass C, year end")]
 
 
-def label(s: str) -> str:
-    return s.replace("climate_", "").replace("_", " ")
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from scenario_utils import pretty_label as label  # noqa: E402  display names for scenario folders
 
 
 def color(s: str, i: int) -> str:

@@ -74,13 +74,14 @@ SMOOTH    = 14
 C_HSP    = "#8c564b"
 C_ENZ    = "#e377c2"
 C_OSMO   = "#bcbd22"
+C_ENDO   = "#7f7f7f"    # endogenous respiration (biomass C respired to pay energy deficits)
 C_UPTAKE = "#2ca02c"    # total C uptake overlay
 C_BIOSYN = "#1f77b4"    # biosynthesis C overlay
 C_CTRL   = "#1f77b4"
 C_WARM   = "#d62728"
 
-PATHWAY_ORDER  = ["Enzymes", "Osmolytes", "HSP"]
-PATHWAY_COLORS = [C_ENZ,     C_OSMO,      C_HSP]
+PATHWAY_ORDER  = ["Enzymes", "Osmolytes", "HSP", "Endogenous resp."]
+PATHWAY_COLORS = [C_ENZ,     C_OSMO,      C_HSP, C_ENDO]
 
 plt.rcParams.update({
     "font.size": 10, "axes.titlesize": 11, "axes.labelsize": 10,
@@ -158,6 +159,7 @@ def compute_run(run_dir: Path) -> dict | None:
     EE = load(run_dir, "Enzyme_C_Taxon")
     EH = load(run_dir, "HSP_C_Taxon")
     EO = load(run_dir, "Osmo_C_Taxon")
+    RE = load(run_dir, "R_endo_C_Taxon")
     CU = load(run_dir, "C_Uptake_Taxon")
     BC = load(run_dir, "BC_Uptake_Taxon")
 
@@ -171,10 +173,11 @@ def compute_run(run_dir: Path) -> dict | None:
     ee = _comm(EE)
     eh = _comm(EH)
     eo = _comm(EO)
+    re = _comm(RE)
     cu = _comm(CU)
     bc = _comm(BC)
 
-    pathway_series = [s for s in [ee, eh, eo] if s is not None]
+    pathway_series = [s for s in [ee, eh, eo, re] if s is not None]
     if pathway_series:
         idx = pathway_series[0].index
         total_cost = pd.Series(
@@ -185,7 +188,7 @@ def compute_run(run_dir: Path) -> dict | None:
         total_cost = None
 
     return dict(
-        Enzymes=ee, HSP=eh, Osmolytes=eo,
+        Enzymes=ee, HSP=eh, Osmolytes=eo, **{"Endogenous resp.": re},
         C_uptake=cu, Biosynthesis=bc,
         total_cost=total_cost,
     )
@@ -204,7 +207,7 @@ _args = _p.parse_args()
 
 from pathlib import Path as _Path
 
-KEYS = ["Enzymes", "HSP", "Osmolytes", "C_uptake", "Biosynthesis", "total_cost"]
+KEYS = ["Enzymes", "HSP", "Osmolytes", "Endogenous resp.", "C_uptake", "Biosynthesis", "total_cost"]
 
 # key → export stem.  Community-mean-per-microbe series whose cross-community
 # mean/SD match raw-mode compute_run exactly.  total_cost is derived-but-unplotted
@@ -213,6 +216,7 @@ _SUMMARY_STEMS = {
     "Enzymes":      "comm_enzyme_C_per_microbe",
     "HSP":          "comm_hsp_C_per_microbe",
     "Osmolytes":    "comm_osmolyte_C_per_microbe",
+    "Endogenous resp.": "comm_endo_resp_C_per_microbe",
     "C_uptake":     "comm_uptake_C_per_microbe",
     "Biosynthesis": "comm_biosynthesis_C_per_microbe",
     "total_cost":   None,
@@ -484,48 +488,39 @@ else:
     plt.close(fig2); print("Saved fig2")
 
 # ────────────────────────────────────────────────────────────────────────────
-# Fig 3: Pairwise Δ absolute C cost per pathway (adjacent scenario pairs)
+# Fig 3: Δ absolute C cost per pathway, each scenario − the first (baseline)
 # ────────────────────────────────────────────────────────────────────────────
-pairs = [(scen_labels[i], scen_labels[i + 1]) for i in range(N_SCEN - 1)]
 path_color_map = dict(zip(PATHWAY_ORDER, PATHWAY_COLORS))
-
-for a_label, b_label in pairs:
-    a = scen_data[a_label]
-    b = scen_data[b_label]
-    delta_paths = [name for name in PATHWAY_ORDER
-                   if a.get(name) is not None and b.get(name) is not None]
-    if not delta_paths:
-        print(f"Skipped fig3 pair {a_label}/{b_label} — no matching pathway data")
-        continue
-
-    fig3, ax3 = plt.subplots(figsize=(10, 4))
-    fig3.suptitle(
-        f"{b_label} − {a_label}: Δ Absolute C Cost Per Pathway\n"
-        f"(community mean {NORM_LABEL}; positive = higher in warmer scenario)",
-        fontsize=12, fontweight="bold",
-    )
-    days = None
-    for name in delta_paths:
-        delta = smooth(b[name] - a[name].reindex(b[name].index))
-        days  = delta.index
-        ax3.plot(days, delta.values, color=path_color_map[name], lw=1.8, label=name)
-
-    ax3.axhline(0, color="black", lw=0.8, ls="--")
-    ax3.set_xlabel("Day")
-    ax3.set_ylabel(f"Δ C cost ({b_label} − {a_label}, model units {NORM_LABEL})")
-    if days is not None:
-        ax3.set_xlim(days.min(), days.max())
-    ax3.legend(loc="upper center", bbox_to_anchor=(0.5, -0.22),
-               ncols=3, fontsize=9, framealpha=0.85)
-    ax3.spines[["top", "right"]].set_visible(False)
-    if days is not None:
-        add_year_labels(ax3, COL_START, COL_END, N_YEARS, DAYS_PER_YEAR)
-
-    safe_a = a_label.replace("/", "-"); safe_b = b_label.replace("/", "-")
-    fig3.tight_layout()
-    fig3.savefig(FIG_DIR / f"fig3_delta_c_pathway_{safe_b}_minus_{safe_a}{NORM_SUFFIX}.png",
-                 dpi=150, bbox_inches="tight")
-    plt.close(fig3)
-    print(f"Saved fig3  ({b_label} − {a_label})")
+_LINESTYLES = ["-", "--", ":", "-."]
+base_label = scen_labels[0]
+base = scen_data[base_label]
+fig3, ax3 = plt.subplots(figsize=(10, 4.4))
+fig3.suptitle(
+    f"Δ Absolute C Cost Per Pathway Relative to {base_label}\n"
+    f"(community mean {NORM_LABEL}; positive = higher than {base_label})",
+    fontsize=12, fontweight="bold",
+)
+days = None
+for k, s_label in enumerate(scen_labels[1:]):
+    other = scen_data[s_label]
+    for name in PATHWAY_ORDER:
+        if base.get(name) is None or other.get(name) is None:
+            continue
+        delta = smooth(other[name] - base[name].reindex(other[name].index))
+        days = delta.index
+        ax3.plot(days, delta.values, color=path_color_map[name], lw=1.8,
+                 ls=_LINESTYLES[k % len(_LINESTYLES)], label=f"{name} ({s_label})")
+ax3.axhline(0, color="black", lw=0.8, ls="--")
+ax3.set_xlabel("Day")
+ax3.set_ylabel(f"Δ C cost (scenario − {base_label}, model units {NORM_LABEL})")
+if days is not None:
+    ax3.set_xlim(days.min(), days.max())
+    add_year_labels(ax3, COL_START, COL_END, N_YEARS, DAYS_PER_YEAR)
+ax3.legend(loc="upper center", bbox_to_anchor=(0.5, -0.22), ncols=3, fontsize=8, framealpha=0.85)
+ax3.spines[["top", "right"]].set_visible(False)
+fig3.tight_layout()
+fig3.savefig(FIG_DIR / f"fig3_absolute_c_pathway_delta{NORM_SUFFIX}.png", dpi=150, bbox_inches="tight")
+plt.close(fig3)
+print("Saved fig3")
 
 print(f"\nAll figures saved to: {FIG_DIR}")
