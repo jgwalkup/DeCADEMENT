@@ -500,7 +500,34 @@ def scenario_color_map(labels: list[str],
     for lab, pos in zip(labels, positions):
         rgba = cmap(pos)
         result[lab] = mcolors.to_hex(rgba)
+    result[labels[0]] = BASELINE_COLOR          # baseline: black (see baseline convention)
     return result
+
+
+# ── Baseline convention for line graphs ──────────────────────────────────────
+# The first scenario in display order is the baseline (ambient / control).  In
+# overlaid line graphs it is drawn black and dashed, plotted after the other
+# scenarios so it sits on top, and listed first in the legend.
+BASELINE_COLOR = "#000000"
+
+
+def line_style(label: str, labels: list[str]) -> dict:
+    """Extra kwargs for ax.plot of one scenario's line."""
+    return {"ls": "--", "zorder": 5} if labels and label == labels[0] else {"ls": "-"}
+
+
+def plot_order(labels: list[str]) -> list[str]:
+    """Scenario labels in drawing order: treatments first, baseline last (on top)."""
+    labels = list(labels)
+    return labels[1:] + labels[:1]
+
+
+def legend_baseline_first(ax, labels: list[str], **kwargs):
+    """ax.legend with the baseline entry first and the others in display order."""
+    handles, labs = ax.get_legend_handles_labels()
+    rank = {lab: i for i, lab in enumerate(labels)}
+    order = sorted(range(len(labs)), key=lambda i: rank.get(labs[i], len(rank) + i))
+    return ax.legend([handles[i] for i in order], [labs[i] for i in order], **kwargs)
 
 
 # ── Aggregation helpers ───────────────────────────────────────────────────────

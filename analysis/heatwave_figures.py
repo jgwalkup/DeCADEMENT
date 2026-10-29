@@ -54,8 +54,8 @@ import matplotlib.pyplot as plt
 plt.rcParams.update({"font.size": 9, "axes.titlesize": 10, "axes.labelsize": 9,
                      "legend.fontsize": 8, "figure.dpi": 150})
 
-COLORS = {"climate_ambient_temp": "#555555", "climate_summer_warm": "#d62728",
-          "climate_winter_warm": "#1f77b4"}
+COLORS = {"climate_ambient_temp": "#000000", "climate_summer_warm": "#d62728",
+          "climate_winter_warm": "#1f77b4"}   # baseline black, dashed, on top (see scenario_utils)
 _FALLBACK = ["#2ca02c", "#9467bd", "#ff7f0e", "#8c564b"]
 
 SERIES = [  # (stem, title, ylabel)
@@ -82,7 +82,7 @@ PAIR_METRICS = [("net_cue", "Net CUE, branch year"), ("c_retained", "C retained"
 
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from scenario_utils import pretty_label as label  # noqa: E402  display names for scenario folders
+from scenario_utils import pretty_label as label, line_style, plot_order, legend_baseline_first  # noqa: E402
 
 
 def color(s: str, i: int) -> str:
@@ -136,7 +136,8 @@ def fig_year_series(scen, root, year, dpp, heatwaves, out, diff_against=None,
     for ax, (stem, ttl, ylab) in zip(axes.ravel(), series):
         base_m = read_series(root / diff_against, stem)[0] if diff_against else None
         plotted = False
-        for i, s in enumerate(scen):
+        for s in plot_order(scen):                     # baseline last, on top
+            i = scen.index(s)
             if diff_against and s == diff_against:
                 continue
             m, sd = read_series(root / s, stem)
@@ -148,7 +149,7 @@ def fig_year_series(scen, root, year, dpp, heatwaves, out, diff_against=None,
             elif ribbon and sd is not None:
                 sd = sd.reindex(m.index)
                 ax.fill_between(m.index, (m - sd).values, (m + sd).values, color=color(s, i), alpha=0.15, lw=0)
-            ax.plot(m.index, m.values, color=color(s, i), lw=1.1, label=label(s))
+            ax.plot(m.index, m.values, color=color(s, i), lw=1.1, label=label(s), **line_style(s, scen))
             plotted = True
         if not plotted:
             ax.set_visible(False)
@@ -167,7 +168,7 @@ def fig_year_series(scen, root, year, dpp, heatwaves, out, diff_against=None,
         ax.set_xlim(lo, hi)
     for ax in axes.ravel()[len(series):]:
         ax.set_visible(False)
-    axes[0, 0].legend(frameon=False)
+    legend_baseline_first(axes[0, 0], [label(s) for s in scen], frameon=False)
     if diff_against:
         fig.suptitle(f"Scenario − {label(diff_against)} (difference of community means), year {year}", y=1.01)
     elif title:
@@ -189,14 +190,15 @@ def fig_net_cue_pulses(scen, root, n_pulses, out):
         n = pd.read_csv(root / "communities_included.csv").shape[0] if (root / "communities_included.csv").exists() else np.nan
         se = (sd.values / np.sqrt(n)) if (sd is not None and np.isfinite(n)) else None
         off = (i - (len(scen) - 1) / 2) * 0.08
-        ax.errorbar(m.index + off, m.values, yerr=se, fmt="o-", ms=3.5, lw=1, capsize=2,
-                    color=color(s, i), label=label(s))
+        ax.errorbar(m.index + off, m.values, yerr=se, fmt="o", ms=3.5, lw=1, capsize=2,
+                    color=color(s, i), label=label(s), zorder=5 if s == scen[0] else 3)
+        ax.plot(m.index + off, m.values, color=color(s, i), lw=1, **line_style(s, scen))
     ax.axvline(n_pulses - 0.5, color="0.6", lw=0.8, ls=":")
     ax.set_xticks(x)
     ax.set_xlabel("pulse (year)")
     ax.set_ylabel("net CUE  (Σ retained / Σ uptake)")
     ax.set_title("Net CUE per year, mean ± SE across communities")
-    ax.legend(frameon=False)
+    legend_baseline_first(ax, [label(s) for s in scen], frameon=False)
     fig.tight_layout()
     fig.savefig(out, bbox_inches="tight")
     plt.close(fig)

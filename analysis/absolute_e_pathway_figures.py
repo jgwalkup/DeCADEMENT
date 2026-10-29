@@ -39,6 +39,7 @@ from scenario_utils import (
     resolve_summary_scenarios, load_summary, read_summary_meta, add_summary_arg,
     scenario_color_map, get_palette_from_args, _parse_treatment_map,
     load_series, pick_runs, resolve_runs, read_runtime,
+    line_style, plot_order, legend_baseline_first,
 )
 
 # Raw per-run tables are read with scenario_utils.load_series, which joins split
@@ -449,14 +450,15 @@ else:
         pcolor = path_color_map[name]
         days   = None
 
-        for si, (label, scen_color, dat, dat_sd) in enumerate(scenarios):
-            s = dat[name]
+        _labels = [lab for lab, _, _, _ in scenarios]
+        for label, scen_color, dat, dat_sd in sorted(scenarios, key=lambda t: plot_order(_labels).index(t[0])):
+            s = dat[name]                              # baseline last, on top
             if s is None:
                 continue
             days = s.index
             s_sm = smooth(s)
             ax.plot(days, s_sm.values, color=scen_color, lw=1.8,
-                    label=label)
+                    label=label, **line_style(label, _labels))
             if dat_sd[name] is not None:
                 sd_sm = smooth(dat_sd[name])
                 ax.fill_between(days,
@@ -468,8 +470,8 @@ else:
         ax.set_ylabel(f"E cost (model units {NORM_LABEL})")
         if days is not None:
             ax.set_xlim(days.min(), days.max())
-        ax.legend(loc="upper center", bbox_to_anchor=(0.5, -0.20),
-                  ncols=min(n_scen, 3), fontsize=8, framealpha=0.85)
+        legend_baseline_first(ax, _labels, loc="upper center", bbox_to_anchor=(0.5, -0.20),
+                              ncols=min(n_scen, 3), fontsize=8, framealpha=0.85)
         ax.spines[["top", "right"]].set_visible(False)
         if days is not None:
             add_year_labels(ax, COL_START, COL_END, N_YEARS, DAYS_PER_YEAR)

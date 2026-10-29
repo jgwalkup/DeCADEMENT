@@ -63,6 +63,7 @@ try:
         add_scenario_args, resolve_scenario_list,
         add_summary_arg, resolve_summary_scenarios, load_summary, read_summary_meta,
         scenario_color_map, get_palette_from_args, _parse_treatment_map,
+        line_style, plot_order, legend_baseline_first,
     )
     _SU_ERR = None
 except ImportError as _e:
@@ -304,7 +305,11 @@ for ax, key, ylabel, title in [
          "CAE  (assimilated C / uptaken C)"),
 ]:
     has_data = False
-    for label, data, sd in scenarios:
+    _by = {lab: (lab, d, sd_) for lab, d, sd_ in scenarios}
+    for label in plot_order(scen_labels):              # baseline last, on top
+        if label not in _by:
+            continue
+        label, data, sd = _by[label]
         df    = data.get(key)
         df_sd = sd.get(key)
         if df is None:
@@ -312,7 +317,7 @@ for ax, key, ylabel, title in [
 
         s    = df.iloc[0]
         c    = COLOR[label]
-        ax.plot(s.index, s.values, color=c, lw=1.6, label=label)
+        ax.plot(s.index, s.values, color=c, lw=1.6, label=label, **line_style(label, scen_labels))
 
         # ±1 SD ribbon across replicates (from summary SD or rep_std)
         if df_sd is not None:
@@ -333,10 +338,10 @@ for ax, key, ylabel, title in [
     ax.set_title(title)
     ax.set_ylim(0, 1)
     ax.spines[["top", "right"]].set_visible(False)
-    ax.legend(loc="upper center",
-              bbox_to_anchor=(0.5, -0.20),
-              ncols=_legend_ncols(len(scen_labels)),
-              framealpha=0.85, fontsize=8)
+    legend_baseline_first(ax, scen_labels, loc="upper center",
+                          bbox_to_anchor=(0.5, -0.20),
+                          ncols=_legend_ncols(len(scen_labels)),
+                          framealpha=0.85, fontsize=8)
     add_year_labels(ax, COL_START, COL_END, N_YEARS, DAYS_PER_YEAR)
 
 fig1.tight_layout()
@@ -358,7 +363,11 @@ for ax, key, ylabel, title in [
         (axes2[1], "CAE_tax", "CAE (per taxon)",  "Per-Taxon CAE"),
 ]:
     has_data = False
-    for label, data, sd in scenarios:
+    _by = {lab: (lab, d, sd_) for lab, d, sd_ in scenarios}
+    for label in plot_order(scen_labels):              # baseline last, on top
+        if label not in _by:
+            continue
+        label, data, sd = _by[label]
         df   = data.get(key)
         df_sd = sd.get(key)
         if df is None:
@@ -374,7 +383,7 @@ for ax, key, ylabel, title in [
             _, sig = comm_ts(df_sd)
 
         c = COLOR[label]
-        ax.plot(mu.index, mu.values, color=c, lw=1.6, label=label)
+        ax.plot(mu.index, mu.values, color=c, lw=1.6, label=label, **line_style(label, scen_labels))
         if sig is not None:
             ax.fill_between(mu.index,
                             (mu - sig).clip(lower=0).values,
@@ -392,10 +401,10 @@ for ax, key, ylabel, title in [
     ax.set_title(title)
     ax.set_ylim(0, 1)
     ax.spines[["top", "right"]].set_visible(False)
-    ax.legend(loc="upper center",
-              bbox_to_anchor=(0.5, -0.20),
-              ncols=_legend_ncols(len(scen_labels)),
-              framealpha=0.85, fontsize=8)
+    legend_baseline_first(ax, scen_labels, loc="upper center",
+                          bbox_to_anchor=(0.5, -0.20),
+                          ncols=_legend_ncols(len(scen_labels)),
+                          framealpha=0.85, fontsize=8)
     add_year_labels(ax, COL_START, COL_END, N_YEARS, DAYS_PER_YEAR)
 
 fig2.tight_layout()

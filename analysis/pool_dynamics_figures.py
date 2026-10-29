@@ -46,6 +46,7 @@ from scenario_utils import (
     normalise_by_gridsize, get_scenario_gridsize,
     get_palette_from_args,
     add_summary_arg, resolve_summary_scenarios, load_summary, read_summary_meta,
+    line_style, plot_order, legend_baseline_first,
 )
 
 # ── Hardcoded base path (override with --base) ────────────────────────────────
@@ -572,9 +573,9 @@ fig5.savefig(FIG_DIR / "fig5_taxon_biomass_heatmap.png", dpi=150, bbox_inches="t
 plt.close(fig5); print("Saved fig5")
 
 # ────────────────────────────────────────────────────────────────────────────
-# Fig 6: Pairwise Δ C pools (scenario B − scenario A) for all adjacent pairs
+# Fig 6: Δ C pools, each scenario − the first (baseline) scenario
 # ────────────────────────────────────────────────────────────────────────────
-pairs = [(scen_labels[i], scen_labels[i + 1]) for i in range(N_SCEN - 1)]
+pairs = [(scen_labels[0], scen_labels[i]) for i in range(1, N_SCEN)]
 
 for a_label, b_label in pairs:
     a = scen_data[a_label]
@@ -608,9 +609,11 @@ for a_label, b_label in pairs:
         yticks = np.arange(len(delta))
         ax.barh(yticks, delta.values, color=colors, alpha=0.85,
                 edgecolor="white", linewidth=0.4)
-        ax.set_yticks(yticks)
-        ax.set_yticklabels([label_fn(t) for t in delta.index], fontsize=9)
+        step = max(1, len(delta) // 40)            # readable labels for a 200-taxon pool
+        ax.set_yticks(yticks[::step])
+        ax.set_yticklabels([label_fn(t) for t in delta.index[::step]], fontsize=9 if step == 1 else 7)
         ax.axvline(0, color="black", lw=0.9)
+        ax.tick_params(axis="x", labelsize=8)
         ax.set_xlabel(f"{xlabel} ({b_label} − {a_label})")
         ax.set_title(title)
 
@@ -619,8 +622,8 @@ for a_label, b_label in pairs:
     axs[-1].legend(handles=legend_handles, loc="upper center",
                    bbox_to_anchor=(0.5, -0.20), ncols=2, framealpha=0.85, fontsize=8)
     fig6.tight_layout()
-    safe_a = a_label.replace("/", "-")
-    safe_b = b_label.replace("/", "-")
+    safe_a = a_label.replace("/", "-").replace(" ", "_")
+    safe_b = b_label.replace("/", "-").replace(" ", "_")
     fname  = FIG_DIR / f"fig6_delta_pools_{safe_b}_minus_{safe_a}.png"
     fig6.savefig(fname, dpi=150, bbox_inches="tight")
     plt.close(fig6)
@@ -669,12 +672,12 @@ def draw_daily_respiration(per_biomass):
     fig.suptitle(f"{title}\n({sub}; mean ± 1 SD across replicates; all scenarios overlaid)",
                  fontsize=12, fontweight="bold")
     any_resp = False
-    for label in scen_labels:
+    for label in plot_order(scen_labels):           # baseline last, on top
         series, band = _daily_resp_series(label, per_biomass)
         if series is None:
             continue
         days = series.index
-        ax.plot(days, series.values, color=COLOR[label], lw=1.8, label=label)
+        ax.plot(days, series.values, color=COLOR[label], lw=1.8, label=label, **line_style(label, scen_labels))
         if band is not None:
             ax.fill_between(days,
                             (series - band).clip(0).values,
@@ -684,8 +687,8 @@ def draw_daily_respiration(per_biomass):
 
     if any_resp:
         ax.set_xlabel("Day"); ax.set_ylabel(ylabel)
-        ax.legend(loc="upper center", bbox_to_anchor=(0.5, -0.15),
-                  ncols=min(N_SCEN, 4), framealpha=0.85, fontsize=9)
+        legend_baseline_first(ax, scen_labels, loc="upper center", bbox_to_anchor=(0.5, -0.15),
+                              ncols=min(N_SCEN, 4), framealpha=0.85, fontsize=9)
         ax.spines[["top", "right"]].set_visible(False)
         add_year_labels(ax, COL_START, COL_END, N_YEARS, DAYS_PER_YEAR)
     else:
@@ -710,13 +713,13 @@ def draw_cumulative_respiration(per_biomass):
     fig, ax = plt.subplots(figsize=(10, 5))
     fig.suptitle(f"{title}\n({sub}; mean ± 1 SD)", fontsize=12, fontweight="bold")
     any_cum = False
-    for label in scen_labels:
+    for label in plot_order(scen_labels):           # baseline last, on top
         series, band = _daily_resp_series(label, per_biomass)
         if series is None:
             continue
         cum  = series.cumsum()
         days = cum.index
-        ax.plot(days, cum.values, color=COLOR[label], lw=1.8, label=label)
+        ax.plot(days, cum.values, color=COLOR[label], lw=1.8, label=label, **line_style(label, scen_labels))
         if band is not None:
             # Propagate SD through cumsum: Var(sum) = sum(Var) for independent days
             cum_sd = band.fillna(0).pow(2).cumsum().pow(0.5)
@@ -728,7 +731,7 @@ def draw_cumulative_respiration(per_biomass):
 
     if any_cum:
         ax.set_xlabel("Day"); ax.set_ylabel(ylabel)
-        ax.legend(loc="upper center", bbox_to_anchor=(0.5, -0.15),
+        legend_baseline_first(ax, scen_labels, loc="upper center", bbox_to_anchor=(0.5, -0.15),
                   ncols=min(N_SCEN, 4), framealpha=0.85, fontsize=9)
         ax.spines[["top", "right"]].set_visible(False)
         add_year_labels(ax, COL_START, COL_END, N_YEARS, DAYS_PER_YEAR)
