@@ -181,6 +181,8 @@ def pick_runs(scenario_dir: Path, min_cols: int = 100,
             continue
         if not is_run_dir(d):
             continue
+        if not run_is_complete(d):
+            continue
 
         # Column-count filter ─────────────────────────────────────────────────
         nc = _count_cols(d, sentinel)
@@ -193,6 +195,30 @@ def pick_runs(scenario_dir: Path, min_cols: int = 100,
             by_rep[rep] = d
 
     return list(by_rep.values())
+
+
+def run_is_complete(run_dir: Path) -> bool:
+    """False for a run folder that is still being written.
+
+    Split branched output (a 'spinup/' folder beside the scenario folders):
+    the scenario folder is complete once branch_output.json exists (written
+    last, after the split), and its spin-up folder once it holds
+    SPINUP_OUTPUT_COMPLETE.  Unsplit output has no marker and is taken as is.
+    """
+    run_dir = Path(run_dir)
+    spinup_root = run_dir.parent.parent / "spinup"
+    if not spinup_root.is_dir():
+        return True                                   # unsplit layout
+    marker = run_dir / "branch_output.json"
+    if not marker.exists():
+        return False
+    try:
+        import json
+        with open(marker) as fh:
+            rel = json.load(fh)["spinup_output"]
+    except Exception:
+        return False
+    return ((run_dir / rel).resolve() / "SPINUP_OUTPUT_COMPLETE").exists()
 
 
 def _count_cols(run_dir: Path, preferred: str | None) -> int | None:

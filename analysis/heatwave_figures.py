@@ -111,6 +111,8 @@ def read_meta(scen_dir: Path) -> dict:
 
 
 def parse_heatwaves(items) -> list[tuple[str, int, int]]:
+    if len(items) == 1 and items[0].lower() == "none":    # e.g. year-round warming: nothing to shade
+        return []
     out = []
     for it in items:
         name, span = it.split(":")
@@ -249,7 +251,8 @@ def main():
     ap.add_argument("--summary-dir", required=True)
     ap.add_argument("--baseline", default="climate_ambient_temp")
     ap.add_argument("--heatwave", nargs="+", default=["winter:1860-1866", "summer:2048-2054"],
-                    metavar="NAME:START-END")
+                    metavar="NAME:START-END",
+                    help="heatwave windows to shade (absolute days); 'none' for no shading")
     ap.add_argument("--year", type=int, default=None, help="year to plot (default: last pulse)")
     ap.add_argument("--fig-dir", default=None)
     a = ap.parse_args()
