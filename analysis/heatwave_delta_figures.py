@@ -219,6 +219,7 @@ def main():
     ap.add_argument("--days", type=int, nargs=2, metavar=("START", "END"), default=None,
                     help="absolute day window (overrides --year)")
     ap.add_argument("--heatwave", nargs="+", default=["winter:1860-1866", "summer:2048-2054"],
+                    # summer-timing runs: --heatwave one:1999-2005 two:2018-2024
                     metavar="NAME:START-END",
                     help="heatwave windows to shade (absolute days); 'none' for no shading")
     ap.add_argument("--smooth", type=int, default=0, help="running-mean window in days (0 = none)")

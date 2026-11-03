@@ -376,6 +376,10 @@ _PRETTY_LABELS = {
     "climate_summer_warm":  "Summer heatwave",
     "climate_winter_warm":  "Winter heatwave",
     "climate_5d_warm":      "+5 °C warming",
+    # Summer-timing experiment (input_full_port_annual_temp_warming): 32 °C for 7 days
+    "climate_heatwave_one":  "Early-drought heatwave",   # days 1999-2005 (7-13 Jun, Psi -1.6..-2.7)
+    "climate_heatwave_two":  "Drought heatwave",         # days 2018-2024 (26 Jun-2 Jul, Psi -4.4..-5.2)
+    "climate_heatwave_both": "Both heatwaves",           # union of the two
 }
 
 

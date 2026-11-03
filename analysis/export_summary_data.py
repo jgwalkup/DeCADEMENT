@@ -123,6 +123,7 @@ import argparse
 import gc
 import os
 import sys
+import time
 import warnings
 from concurrent.futures import ProcessPoolExecutor, wait, FIRST_COMPLETED
 from pathlib import Path
@@ -313,6 +314,21 @@ COMM_SERIES_NAMES = ["uptake_C", "biosynthesis_C", "enzyme_C", "hsp_C", "osmolyt
                      "stoich_E", "unpaid_E"]
 COMM_SERIES_KEYS = [f"comm_{nm}_{basis}" for nm in COMM_SERIES_NAMES
                     for basis in ("per_microbe", "total", "per_biomass")]
+
+# Bump when the set of exported tables changes; written to summary_meta.csv so a
+# summary folder can be checked against the code that produced it.
+EXPORT_VERSION = "2026-11-03"   # three-basis comm_<x>_{per_microbe,total,per_biomass}, pulse metrics
+
+
+def _git_short_hash() -> str:
+    """Short git hash of the analysis repo (or 'unknown')."""
+    try:
+        import subprocess
+        return subprocess.check_output(
+            ["git", "rev-parse", "--short", "HEAD"], cwd=Path(__file__).resolve().parent,
+            stderr=subprocess.DEVNULL, text=True).strip()
+    except Exception:
+        return "unknown"
 
 
 def _living_cells(run_dir: Path, L) -> pd.DataFrame | None:
@@ -1231,7 +1247,9 @@ def main():
         _gs = read_gridsize(run_dirs[0]) if run_dirs else 1
         pd.Series(
             {"gridsize": _gs, "pulse": n_pulses, "end_time": days_per_pulse,
-             "col_start": col_start, "col_end": col_end},
+             "col_start": col_start, "col_end": col_end,
+             "export_version": EXPORT_VERSION, "export_git": _git_short_hash(),
+             "export_time": time.strftime("%Y-%m-%d %H:%M:%S")},
             name="value",
         ).to_csv(out_dir / "summary_meta.csv", header=["value"])
 
