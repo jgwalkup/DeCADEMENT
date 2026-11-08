@@ -469,26 +469,59 @@ def run_pulses(Ecosystem, Output_init, runtime, p_start, p_end, t_total,
         _print_timing(f"Pulse {p + 1}/{pulse}", t_pulse, cycle)
 
 
+# Transient file-system errors seen on HPC3's dfs (parallel) storage while
+# writing output: ECOMM "Communication error on send", EIO, ESTALE, ETIMEDOUT.
+# The model state is still in memory, so the export is simply retried.
+_TRANSIENT_ERRNO = {5, 70, 110, 116}
+EXPORT_RETRIES = 4
+EXPORT_RETRY_WAIT = 60          # seconds between attempts
+
+
 def export_output(Output_init, output_format, output_path, outname):
     t0 = time.perf_counter()
     project_root = os.getcwd()
-    output_path.mkdir(parents=True, exist_ok=True)
-    os.chdir(output_path)
-    try:
-        if output_format == 'csv':
-            Output_init.export_to_csv(outname)
-        elif output_format == 'netcdf':
-            Output_init.export_to_netcdf(outname)
-        elif output_format == 'zarr':
-            Output_init.export_to_zarr(outname)
-        else:
-            warnings.warn(
-                f"Unknown output_format '{output_format}', defaulting to NetCDF."
-            )
-            Output_init.export_to_netcdf(outname)
-    finally:
-        os.chdir(project_root)
+    for attempt in range(1, EXPORT_RETRIES + 1):
+        try:
+            output_path.mkdir(parents=True, exist_ok=True)
+            os.chdir(output_path)
+            try:
+                if output_format == 'csv':
+                    Output_init.export_to_csv(outname)
+                elif output_format == 'netcdf':
+                    Output_init.export_to_netcdf(outname)
+                elif output_format == 'zarr':
+                    Output_init.export_to_zarr(outname)
+                else:
+                    warnings.warn(
+                        f"Unknown output_format '{output_format}', defaulting to NetCDF."
+                    )
+                    Output_init.export_to_netcdf(outname)
+            finally:
+                os.chdir(project_root)
+            break
+        except OSError as e:
+            os.chdir(project_root)
+            if e.errno not in _TRANSIENT_ERRNO or attempt == EXPORT_RETRIES:
+                raise
+            print(f"    !! export attempt {attempt}/{EXPORT_RETRIES} failed "
+                  f"({e}); retrying in {EXPORT_RETRY_WAIT} s", flush=True)
+            time.sleep(EXPORT_RETRY_WAIT)
     print(f"    {'Export':22s}  {_fmt_time(time.perf_counter() - t0)}", flush=True)
+
+
+def run_output_complete(run_dir, split_output):
+    """True if a scenario run folder already holds finished output.
+
+    Split branched output writes branch_output.json last, so its presence
+    means the export and split both finished. For full (unsplit) output the
+    series files written at the end of export_to_csv are checked instead.
+    """
+    run_dir = Path(run_dir)
+    if split_output:
+        return (run_dir / 'branch_output.json').exists()
+    return all((run_dir / f).exists()
+               for f in ('SubstratesSeries.csv', 'MicrobesSeries.csv',
+                         'RespSeries.csv'))
 
 
 # ---------------------------------------------------------------------------
@@ -879,6 +912,12 @@ def main():
                              'with --communities or --start-from.')
     parser.add_argument('--quiet', action='store_true',
                         help='Suppress per-day progress output')
+    parser.add_argument('--skip-complete', action='store_true',
+                        help='Skip scenario runs whose output folder is already '
+                             'complete (branch_output.json present for split '
+                             'output), so a rerun after file-system failures '
+                             'only redoes the missing runs. Partial folders are '
+                             'overwritten.')
 
     args = parser.parse_args()
 
@@ -1105,6 +1144,7 @@ def main():
 
     # ── Main loop ─────────────────────────────────────────────────────────────
     failed = []
+    n_skipped = 0
 
     try:
         # Seed by position in the full sorted pool, not in the selected subset,
@@ -1160,6 +1200,14 @@ def main():
             for scenario in scenarios:
                 scen_stem  = scenario['stem']
                 clim_path  = scenario['path']
+
+                _out_path = output_dir if scen_stem is None else output_dir / scen_stem
+                if args.skip_complete and run_output_complete(_out_path / outname,
+                                                              split_output):
+                    print(f"{run_label}  [{scen_stem}]  already complete, skipped",
+                          flush=True)
+                    n_skipped += 1
+                    continue
 
                 # Reseed for every scenario, not once per community: all
                 # randomness (placement, mortality, dispersal, ReqEnz) uses
@@ -1225,6 +1273,7 @@ def main():
     print(
         f"Done. {total_runs - n_failed}/{total_runs} run(s) completed successfully "
         f"({n} communities × {len(scenarios)} scenario(s))."
+        + (f"  {n_skipped} already complete and skipped." if n_skipped else "")
     )
     if failed:
         print(f"\nFailed runs ({n_failed}):")

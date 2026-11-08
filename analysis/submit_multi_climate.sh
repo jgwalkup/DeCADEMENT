@@ -35,6 +35,7 @@
 #                          python, found at submit time; see NOTES)
 #   --tasks      LIST      Explicit array task list instead of --range, e.g. 422-424,431,502
 #   --exclude    NODES     Nodes to keep tasks off, e.g. hpc3-19-03 or hpc3-19-03,hpc3-14-01
+#   --skip-complete        Skip scenario runs whose output is already complete (rerun after dfs failures)
 #                          (a node that fails every task within seconds drains the whole array)
 #                          (task N = community N in the sorted pool), for resubmitting failures
 #   --partition  NAME      SLURM partition                 (default: standard)
@@ -131,6 +132,7 @@ SPINUP_CLIMATE=""
 REUSE_SPINUP=0
 NO_SAVE_SPINUP=0
 FULL_BRANCH_OUTPUT=0
+SKIP_COMPLETE=0
 STATIC_TEMP=""         # space-separated values collected during arg parse
 STATIC_PSI=""
 SEED=0
@@ -168,6 +170,7 @@ while [[ $# -gt 0 ]]; do
         --reuse-spinup)  REUSE_SPINUP=1;     shift;   COLLECTING_TEMP=0; COLLECTING_PSI=0 ;;
         --no-save-spinup) NO_SAVE_SPINUP=1;  shift;   COLLECTING_TEMP=0; COLLECTING_PSI=0 ;;
         --full-branch-output) FULL_BRANCH_OUTPUT=1; shift; COLLECTING_TEMP=0; COLLECTING_PSI=0 ;;
+        --skip-complete) SKIP_COMPLETE=1;    shift;   COLLECTING_TEMP=0; COLLECTING_PSI=0 ;;
         --seed)          SEED="$2";          shift 2; COLLECTING_TEMP=0; COLLECTING_PSI=0 ;;
         --conda-env)     CONDA_ENV="$2";     shift 2; COLLECTING_TEMP=0; COLLECTING_PSI=0 ;;
         --python)        PYTHON_BIN="$2";    shift 2; COLLECTING_TEMP=0; COLLECTING_PSI=0 ;;
@@ -331,6 +334,10 @@ fi
 
 if [[ "${FULL_BRANCH_OUTPUT}" -eq 1 ]]; then
     PYTHON_ARGS+=("--full-branch-output")
+fi
+
+if [[ "${SKIP_COMPLETE}" -eq 1 ]]; then
+    PYTHON_ARGS+=("--skip-complete")
 fi
 
 if [[ -n "${STATIC_TEMP}" ]]; then

@@ -251,7 +251,7 @@ def main():
     ap.add_argument("--summary-dir", required=True)
     ap.add_argument("--baseline", default="climate_ambient_temp")
     ap.add_argument("--heatwave", nargs="+", default=["winter:1860-1866", "summer:2048-2054"],
-                    # summer-timing runs: --heatwave one:1999-2005 two:2018-2024
+                    # summer heatwave-timing runs: --heatwave june:2020-2026 july:2048-2054 august:2076-2082
                     metavar="NAME:START-END",
                     help="heatwave windows to shade (absolute days); 'none' for no shading")
     ap.add_argument("--year", type=int, default=None, help="year to plot (default: last pulse)")

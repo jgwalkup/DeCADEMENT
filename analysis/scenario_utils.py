@@ -376,10 +376,16 @@ _PRETTY_LABELS = {
     "climate_summer_warm":  "Summer heatwave",
     "climate_winter_warm":  "Winter heatwave",
     "climate_5d_warm":      "+5 °C warming",
-    # Summer-timing experiment (input_full_port_annual_temp_warming): 32 °C for 7 days
-    "climate_heatwave_one":  "Early-drought heatwave",   # days 1999-2005 (7-13 Jun, Psi -1.6..-2.7)
-    "climate_heatwave_two":  "Drought heatwave",         # days 2018-2024 (26 Jun-2 Jul, Psi -4.4..-5.2)
-    "climate_heatwave_both": "Both heatwaves",           # union of the two
+    # Summer heatwave-timing experiment (input_full_port_annual_temp_warming):
+    # 32 °C for 7 days; June = days 2020-2026 (28 Jun-4 Jul), July = 2048-2054
+    # (26 Jul-1 Aug, same as climate_summer_warm), August = 2076-2082 (23-29 Aug)
+    "climate_June_heatwave":        "June heatwave",
+    "climate_July_heatwave":        "July heatwave",
+    "climate_August_heatwave":      "August heatwave",
+    "climate_June_July_heatwave":   "June + July heatwaves",
+    "climate_July_August_heatwave": "July + August heatwaves",
+    "climate_June_August_heatwave": "June + August heatwaves",
+    "climate_all_three_heatwave":   "All three heatwaves",
 }
 
 
