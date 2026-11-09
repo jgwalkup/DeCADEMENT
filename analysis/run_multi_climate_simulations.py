@@ -469,43 +469,51 @@ def run_pulses(Ecosystem, Output_init, runtime, p_start, p_end, t_total,
         _print_timing(f"Pulse {p + 1}/{pulse}", t_pulse, cycle)
 
 
-# Transient file-system errors seen on HPC3's dfs (parallel) storage while
-# writing output: ECOMM "Communication error on send", EIO, ESTALE, ETIMEDOUT.
-# The model state is still in memory, so the export is simply retried.
-_TRANSIENT_ERRNO = {5, 70, 110, 116}
-EXPORT_RETRIES = 4
-EXPORT_RETRY_WAIT = 60          # seconds between attempts
+# Transient file-system errors seen on HPC3's dfs (parallel) storage: ECOMM
+# "Communication error on send" (70), EREMOTEIO (121), EIO (5), ESTALE (116),
+# ETIMEDOUT (110), and a spurious FileExistsError (17) from mkdir(exist_ok).
+# Outages have lasted several minutes, so file-system steps are retried with
+# increasing waits for up to ~45 min before the run is given up.
+_TRANSIENT_ERRNO = {5, 17, 70, 110, 116, 121}
+FS_RETRY_WAITS = (60, 120, 240, 300, 300, 300, 300, 300, 300, 300)   # seconds
+
+
+def fs_retry(fn, what):
+    """Call fn() and retry it on transient file-system errors."""
+    for attempt, wait in enumerate(FS_RETRY_WAITS + (None,), start=1):
+        try:
+            return fn()
+        except OSError as e:
+            if e.errno not in _TRANSIENT_ERRNO or wait is None:
+                raise
+            print(f"    !! {what}: attempt {attempt} failed ({e}); "
+                  f"retrying in {wait} s", flush=True)
+            time.sleep(wait)
 
 
 def export_output(Output_init, output_format, output_path, outname):
     t0 = time.perf_counter()
     project_root = os.getcwd()
-    for attempt in range(1, EXPORT_RETRIES + 1):
+
+    def _do_export():
+        output_path.mkdir(parents=True, exist_ok=True)
+        os.chdir(output_path)
         try:
-            output_path.mkdir(parents=True, exist_ok=True)
-            os.chdir(output_path)
-            try:
-                if output_format == 'csv':
-                    Output_init.export_to_csv(outname)
-                elif output_format == 'netcdf':
-                    Output_init.export_to_netcdf(outname)
-                elif output_format == 'zarr':
-                    Output_init.export_to_zarr(outname)
-                else:
-                    warnings.warn(
-                        f"Unknown output_format '{output_format}', defaulting to NetCDF."
-                    )
-                    Output_init.export_to_netcdf(outname)
-            finally:
-                os.chdir(project_root)
-            break
-        except OSError as e:
+            if output_format == 'csv':
+                Output_init.export_to_csv(outname)
+            elif output_format == 'netcdf':
+                Output_init.export_to_netcdf(outname)
+            elif output_format == 'zarr':
+                Output_init.export_to_zarr(outname)
+            else:
+                warnings.warn(
+                    f"Unknown output_format '{output_format}', defaulting to NetCDF."
+                )
+                Output_init.export_to_netcdf(outname)
+        finally:
             os.chdir(project_root)
-            if e.errno not in _TRANSIENT_ERRNO or attempt == EXPORT_RETRIES:
-                raise
-            print(f"    !! export attempt {attempt}/{EXPORT_RETRIES} failed "
-                  f"({e}); retrying in {EXPORT_RETRY_WAIT} s", flush=True)
-            time.sleep(EXPORT_RETRY_WAIT)
+
+    fs_retry(_do_export, f"export to {output_path / outname}")
     print(f"    {'Export':22s}  {_fmt_time(time.perf_counter() - t0)}", flush=True)
 
 
@@ -730,8 +738,11 @@ def export_spinup_output(state, output_format, branch_pulse, cycle,
     Ecosystem, Output_init, _ = pickle.loads(state)
     export_output(Output_init, output_format, spinup_run_dir.parent,
                   spinup_run_dir.name)
-    split_run_output(spinup_run_dir, 'spinup', branch_pulse * cycle)
-    done.write_text('spin-up output complete\n')
+
+    def _split_and_mark():
+        split_run_output(spinup_run_dir, 'spinup', branch_pulse * cycle)
+        done.write_text('spin-up output complete\n')
+    fs_retry(_split_and_mark, f"split spin-up output in {spinup_run_dir}")
     print(f"  Spin-up output (days 0-{branch_pulse * cycle - 1}) written to "
           f"{spinup_run_dir}", flush=True)
 
@@ -784,9 +795,12 @@ def run_branch(state, runtime, output_format, climate_path, branch_pulse,
     if spinup_run_dir is not None:
         from branch_output import split_run_output, write_marker
         run_dir = output_path / outname
-        trimmed = split_run_output(run_dir, 'branch', branch_pulse * cycle)
-        write_marker(run_dir, spinup_run_dir, branch_pulse * cycle,
-                     pulse * cycle, trimmed)
+
+        def _split_and_mark():
+            trimmed = split_run_output(run_dir, 'branch', branch_pulse * cycle)
+            write_marker(run_dir, spinup_run_dir, branch_pulse * cycle,
+                         pulse * cycle, trimmed)
+        fs_retry(_split_and_mark, f"split output in {run_dir}")
 
 
 # ---------------------------------------------------------------------------
@@ -1202,12 +1216,20 @@ def main():
                 clim_path  = scenario['path']
 
                 _out_path = output_dir if scen_stem is None else output_dir / scen_stem
-                if args.skip_complete and run_output_complete(_out_path / outname,
-                                                              split_output):
-                    print(f"{run_label}  [{scen_stem}]  already complete, skipped",
-                          flush=True)
-                    n_skipped += 1
-                    continue
+                if args.skip_complete:
+                    try:
+                        _done = fs_retry(
+                            lambda: run_output_complete(_out_path / outname, split_output),
+                            f"checking {_out_path / outname}")
+                    except OSError as e:
+                        print(f"  !! FAILED: {e}", flush=True)
+                        failed.append((comm_name, scen_stem or 'run', str(e)))
+                        continue
+                    if _done:
+                        print(f"{run_label}  [{scen_stem}]  already complete, skipped",
+                              flush=True)
+                        n_skipped += 1
+                        continue
 
                 # Reseed for every scenario, not once per community: all
                 # randomness (placement, mortality, dispersal, ReqEnz) uses
