@@ -662,6 +662,9 @@ def spinup_metadata(runtime, community_dir, comm_seed, spinup_path, branch_pulse
     }
 
 
+_LAST_SPINUP_LOADED = False     # set by run_spinup: state came from the saved pickle
+
+
 def run_spinup(runtime, community_dir, spinup_path, branch_pulse, comm_seed,
                src_dir, input_dir, spinup_file, reuse, save, quiet=False):
     """
@@ -673,6 +676,7 @@ def run_spinup(runtime, community_dir, spinup_path, branch_pulse, comm_seed,
            climate; otherwise simulate.
     save:  write the state to spinup_file after simulating.
     """
+    global _LAST_SPINUP_LOADED
     import pickle
     meta = spinup_metadata(runtime, community_dir, comm_seed, spinup_path,
                            branch_pulse, src_dir, input_dir)
@@ -683,6 +687,7 @@ def run_spinup(runtime, community_dir, spinup_path, branch_pulse, comm_seed,
             stored_meta = pickle.load(fh)
             if stored_meta == meta:
                 state = fh.read()
+                _LAST_SPINUP_LOADED = True
                 print(f"  Spin-up loaded from {spinup_file} "
                       f"({len(state) / 1e6:.0f} MB, {_fmt_time(time.perf_counter() - t0)})",
                       flush=True)
@@ -692,6 +697,7 @@ def run_spinup(runtime, community_dir, spinup_path, branch_pulse, comm_seed,
               f"(differs in: {', '.join(changed)}); simulating the spin-up.",
               flush=True)
 
+    _LAST_SPINUP_LOADED = False
     _import_model(src_dir)          # pickle needs the model classes importable
     np.random.seed(comm_seed)
     run_start = time.perf_counter()
@@ -1197,6 +1203,24 @@ def main():
                                        f"spin-up failed: {e}"))
                     continue
 
+            # Scenario runs are paired only if they all branch from the same
+            # spin-up state. A recomputed spin-up is not guaranteed to be
+            # bit-identical to an earlier one (different node/CPU), so with
+            # --skip-complete the skip is honoured only when the state was
+            # loaded from the saved pickle; otherwise every scenario of this
+            # community is rerun and its spin-up output rewritten.
+            skip_here = args.skip_complete
+            if skip_here and state is not None and not _LAST_SPINUP_LOADED:
+                print(f"  spin-up was recomputed, not loaded: rerunning all "
+                      f"scenarios of {comm_name} so they stay paired", flush=True)
+                skip_here = False
+                _marker = output_dir / 'spinup' / outname / 'SPINUP_OUTPUT_COMPLETE'
+                try:
+                    if _marker.exists():
+                        _marker.unlink()
+                except OSError:
+                    pass
+
             spinup_run_dir = None
             if state is not None and split_output:
                 spinup_run_dir = output_dir / 'spinup' / outname
@@ -1216,7 +1240,7 @@ def main():
                 clim_path  = scenario['path']
 
                 _out_path = output_dir if scen_stem is None else output_dir / scen_stem
-                if args.skip_complete:
+                if skip_here:
                     try:
                         _done = fs_retry(
                             lambda: run_output_complete(_out_path / outname, split_output),
