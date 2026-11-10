@@ -772,7 +772,8 @@ def run_branch(state, runtime, output_format, climate_path, branch_pulse,
     # Swap in the scenario climate: the grid reads Temp and Psi by day from
     # these two series, and the output object exports them as
     # Initialization/Temp.csv and Psi.csv.
-    temp, psi = read_climate_series(climate_path)
+    temp, psi = fs_retry(lambda: read_climate_series(climate_path),
+                         f"reading {Path(climate_path).name}")
     Ecosystem.temp = temp
     Ecosystem.psi = psi
     Output_init.Initialization['Temp'] = temp

@@ -82,7 +82,7 @@ PAIR_METRICS = [("net_cue", "Net CUE, branch year"), ("c_retained", "C retained"
 
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from scenario_utils import pretty_label as label, line_style, plot_order, legend_baseline_first  # noqa: E402
+from scenario_utils import scenario_selected, set_scenario_filter, pretty_label as label, line_style, plot_order, legend_baseline_first  # noqa: E402
 
 
 def color(s: str, i: int) -> str:
@@ -249,6 +249,9 @@ def fig_paired(root, baseline, out):
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--summary-dir", required=True)
+    ap.add_argument("--scenarios", nargs="+", default=None, metavar="NAME",
+                    help="plot only these scenario folders (stems or display labels; "
+                         "include the baseline explicitly)")
     ap.add_argument("--baseline", default="climate_ambient_temp")
     ap.add_argument("--heatwave", nargs="+", default=["winter:1860-1866", "summer:2048-2054"],
                     # summer heatwave-timing runs: --heatwave june:2020-2026 july:2048-2054 august:2076-2082
@@ -257,9 +260,11 @@ def main():
     ap.add_argument("--year", type=int, default=None, help="year to plot (default: last pulse)")
     ap.add_argument("--fig-dir", default=None)
     a = ap.parse_args()
+    set_scenario_filter(a.scenarios)
 
     root = Path(a.summary_dir)
-    scen = sorted(d.name for d in root.iterdir() if d.is_dir() and (d / "summary_meta.csv").exists())
+    scen = sorted(d.name for d in root.iterdir() if d.is_dir() and (d / "summary_meta.csv").exists()
+                  and scenario_selected(d.name))
     if a.baseline not in scen:
         sys.exit(f"ERROR: baseline {a.baseline!r} not among scenarios {scen}")
     scen = [a.baseline] + [s for s in scen if s != a.baseline]

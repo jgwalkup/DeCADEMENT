@@ -43,7 +43,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from scenario_utils import pretty_label, scenario_color_map  # noqa: E402
+from scenario_utils import scenario_selected, set_scenario_filter, pretty_label, scenario_color_map  # noqa: E402
 
 plt.rcParams.update({"font.size": 9, "axes.titlesize": 10, "axes.labelsize": 9,
                      "legend.fontsize": 8, "figure.dpi": 150})
@@ -214,6 +214,9 @@ def make_group(root, fname, gtitle, quantities, scen, baseline, lo, hi, heatwave
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--summary-dir", required=True)
+    ap.add_argument("--scenarios", nargs="+", default=None, metavar="NAME",
+                    help="plot only these scenario folders (stems or display labels; "
+                         "include the baseline explicitly)")
     ap.add_argument("--baseline", default="climate_ambient_temp")
     ap.add_argument("--year", type=int, default=None, help="year to plot (default: last pulse)")
     ap.add_argument("--days", type=int, nargs=2, metavar=("START", "END"), default=None,
@@ -228,9 +231,11 @@ def main():
                          "pools, respiration and efficiency panels are unaffected)")
     ap.add_argument("--fig-dir", default=None, help="default <summary-dir>/figures/deltas")
     a = ap.parse_args()
+    set_scenario_filter(a.scenarios)
 
     root = Path(a.summary_dir)
-    scen = sorted(d.name for d in root.iterdir() if d.is_dir() and (d / "summary_meta.csv").exists())
+    scen = sorted(d.name for d in root.iterdir() if d.is_dir() and (d / "summary_meta.csv").exists()
+                  and scenario_selected(d.name))
     if a.baseline not in scen:
         sys.exit(f"ERROR: baseline {a.baseline!r} not among scenarios {scen}")
     scen = [a.baseline] + [s for s in scen if s != a.baseline]

@@ -21,6 +21,7 @@ scenario_color_map(labels)      – assign a colour to each scenario label
 
 from __future__ import annotations
 
+import argparse
 import numpy as np
 import pandas as pd
 from pathlib import Path
@@ -361,7 +362,8 @@ def discover_summary_scenarios(root: Path) -> list[tuple[str, Path]]:
     root = Path(root)
     if not root.exists():
         return []
-    found = [(d.name, d) for d in root.iterdir() if d.is_dir() and has_summary(d)]
+    found = [(d.name, d) for d in root.iterdir()
+             if d.is_dir() and has_summary(d) and scenario_selected(d.name)]
     found.sort(key=lambda lp: _natural_key(lp[0]))
     if not found and has_summary(root):
         found = [(root.name, root)]
@@ -418,13 +420,45 @@ def resolve_summary_scenarios(summary_dir,
     return relabelled
 
 
+_SCENARIO_FILTER: set[str] | None = None     # set by --scenarios (see add_summary_arg)
+
+
+def scenario_selected(name: str) -> bool:
+    """True if scenario folder *name* passes the --scenarios filter (stem or
+    pretty label, case-insensitive); everything passes when no filter is set."""
+    if not _SCENARIO_FILTER:
+        return True
+    return name.lower() in _SCENARIO_FILTER or pretty_label(name).lower() in _SCENARIO_FILTER
+
+
+def set_scenario_filter(names) -> None:
+    """Restrict summary-mode scenario discovery to these stems / pretty labels."""
+    global _SCENARIO_FILTER
+    _SCENARIO_FILTER = {n.lower() for n in names} if names else None
+
+
+class _ScenarioFilterAction(argparse.Action):
+    def __call__(self, parser, namespace, values, option_string=None):
+        setattr(namespace, self.dest, values)
+        set_scenario_filter(values)
+
+
 def add_summary_arg(parser) -> None:
-    """Add the --summary-dir flag that switches a figure script to summary mode."""
+    """Add the --summary-dir flag that switches a figure script to summary mode,
+    and --scenarios to plot a subset of the discovered scenario folders."""
     parser.add_argument(
         "--summary-dir", default=None, metavar="DIR",
         help="Read pre-computed summary CSVs (from export_summary_data.py) under "
              "this root instead of raw runs. Scenario subdirectories are "
-             "auto-discovered; all are plotted (full gradient or N-scenario set).",
+             "auto-discovered; all are plotted (full gradient or N-scenario set) "
+             "unless --scenarios narrows them.",
+    )
+    parser.add_argument(
+        "--scenarios", nargs="+", default=None, metavar="NAME", action=_ScenarioFilterAction,
+        help="Summary mode: plot only these scenarios (folder stems such as "
+             "climate_June_heatwave, or display labels such as 'June heatwave'; "
+             "case-insensitive). Include the baseline explicitly, e.g. "
+             "--scenarios climate_ambient_temp climate_June_heatwave climate_July_heatwave.",
     )
 
 
