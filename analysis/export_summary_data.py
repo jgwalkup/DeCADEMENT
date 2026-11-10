@@ -945,22 +945,111 @@ def _group_by_community(scenario_list) -> list[list[tuple[str, Path]]]:
     return [by_comm[k] for k in sorted(by_comm)]
 
 
+CHECKPOINT_NAME = "export_checkpoint.pkl"
+
+# Transient dfs errors (see run_multi_climate_simulations.fs_retry): ECOMM 70,
+# EREMOTEIO 121, EIO 5, ESTALE 116, ETIMEDOUT 110, spurious EEXIST 17.
+_TRANSIENT_ERRNO = {5, 17, 70, 110, 116, 121}
+FS_RETRY_WAITS = (60, 120, 240, 300, 300, 300, 300, 300, 300, 300)
+
+
+def fs_retry(fn, what):
+    """Call fn(), retrying on transient file-system errors (up to ~45 min)."""
+    for attempt, wait in enumerate(FS_RETRY_WAITS + (None,), start=1):
+        try:
+            return fn()
+        except OSError as e:
+            if e.errno not in _TRANSIENT_ERRNO or wait is None:
+                raise
+            try:
+                print(f"  !! {what}: attempt {attempt} failed ({e}); retrying in {wait} s",
+                      flush=True)
+            except OSError:
+                pass            # the log itself may be on the failing file system
+            time.sleep(wait)
+
+
+def _save_checkpoint(path: Path, accs: dict, done: set, labels: list, communities: list):
+    """Atomically write the accumulators and the set of folded communities."""
+    import pickle
+    t0 = time.perf_counter()
+    payload = {"export_version": EXPORT_VERSION, "labels": list(labels),
+               "communities": list(communities), "done": sorted(done), "accs": accs}
+    tmp = path.with_suffix(".tmp")
+
+    def _write():
+        with open(tmp, "wb") as fh:
+            pickle.dump(payload, fh, protocol=pickle.HIGHEST_PROTOCOL)
+        os.replace(tmp, path)
+    fs_retry(_write, f"writing {path.name}")
+    print(f"  checkpoint: {len(done)} communities folded -> {path.name} "
+          f"({path.stat().st_size / 1e9:.2f} GB, {time.perf_counter() - t0:.0f} s)", flush=True)
+
+
+def _load_checkpoint(path: Path, labels: list, communities: list):
+    """Return (accs, done) from a checkpoint made for the same export, else None."""
+    import pickle
+    if not path.exists():
+        return None
+    with open(path, "rb") as fh:
+        payload = pickle.load(fh)
+    problems = []
+    if payload.get("export_version") != EXPORT_VERSION:
+        problems.append(f"export_version {payload.get('export_version')} != {EXPORT_VERSION}")
+    if payload.get("labels") != list(labels):
+        problems.append("scenario set differs")
+    if payload.get("communities") != list(communities):
+        problems.append("community set differs")
+    if problems:
+        sys.exit(f"ERROR: {path} does not match this export ({'; '.join(problems)}); "
+                 f"delete it or use a new --out-dir.")
+    done = set(payload["done"])
+    print(f"  Resuming from {path.name}: {len(done)} communities already folded", flush=True)
+    return payload["accs"], done
+
+
 def _stream_load_and_fold(scenario_list, n_jobs: int, accs: dict[str, "_StreamAgg"],
-                          stage_dir: str | None = None):
+                          stage_dir: str | None = None,
+                          checkpoint: Path | None = None, checkpoint_every: int = 0,
+                          done_set: set | None = None):
     """Load every community's runs (bounded parallel) and fold each run into
     its scenario's accumulator, discarding as we go.
 
     Outstanding futures are capped at n_jobs so completed run dicts are folded
     and freed instead of piling up in the result queue.  Memory: each worker
     peaks at ~0.4 GB and each finished community is ~0.3 GB of frames until it
-    is folded (2190-day runs, 100 taxa), so budget ~1 GB per worker plus ~2 GB
-    for the accumulators and the main process."""
-    groups = _group_by_community(scenario_list)
+    is folded (2190-day runs, 100 taxa).  A worker returns all scenario runs
+    of its community together, so the per-worker peak scales with the number
+    of scenarios: ~0.4 GB + ~0.25 GB per scenario, plus ~2 GB for the
+    accumulators and the main process (8 scenarios × 32 workers OOM'd at 48 GB)."""
+    all_groups = _group_by_community(scenario_list)
+    labels = [label for label, _ in scenario_list]
+    all_names = [g[0][1].name for g in all_groups]
+    done_set = set() if done_set is None else done_set
+    groups = [g for g in all_groups if g[0][1].name not in done_set]
     n = len(groups)
+    since_ckpt = 0
 
     def _fold(results):
         for label, community, d in results:
             accs[label].fold(d, community)
+
+    def _after(name):
+        """Bookkeeping after one community is folded (checkpoint every N)."""
+        nonlocal since_ckpt
+        done_set.add(name)
+        since_ckpt += 1
+        if checkpoint is not None and checkpoint_every and since_ckpt >= checkpoint_every:
+            _save_checkpoint(checkpoint, accs, done_set, labels, all_names)
+            since_ckpt = 0
+
+    def _final():
+        if checkpoint is not None and since_ckpt:
+            _save_checkpoint(checkpoint, accs, done_set, labels, all_names)
+
+    if n == 0:
+        print("  nothing left to fold", flush=True)
+        return
 
     if n_jobs <= 1 or n <= 1:
         for i, jobs in enumerate(groups):
@@ -968,6 +1057,8 @@ def _stream_load_and_fold(scenario_list, n_jobs: int, accs: dict[str, "_StreamAg
             _fold(res)
             n_ok = sum(d is not None for _, _, d in res)
             print(f"  [{i+1}/{n}] {jobs[0][1].name}  {n_ok}/{len(jobs)} runs ok", flush=True)
+            _after(jobs[0][1].name)
+        _final()
         return
 
     max_outstanding = n_jobs
@@ -1001,10 +1092,12 @@ def _stream_load_and_fold(scenario_list, n_jobs: int, accs: dict[str, "_StreamAg
                 del res
                 done += 1
                 print(f"  [{done}/{n}] {name}", flush=True)
+                _after(name)
                 if submitted < n:
                     jobs = groups[submitted]
                     futures[ex.submit(_compute_community, jobs, stage_dir)] = jobs[0][1].name
                     submitted += 1
+    _final()
 
 
 # ── CSV writer ────────────────────────────────────────────────────────────────
@@ -1017,14 +1110,17 @@ def write_pair(out_dir: Path, stem: str,
         return
     mean_path = out_dir / f"{stem}_mean.csv"
     sd_path   = out_dir / f"{stem}_sd.csv"
-    if isinstance(mean, pd.Series):
-        mean.to_csv(mean_path, header=["mean"])
-        if std is not None:
-            std.to_csv(sd_path, header=["sd"])
-    else:
-        mean.to_csv(mean_path)
-        if std is not None:
-            std.to_csv(sd_path)
+
+    def _write():
+        if isinstance(mean, pd.Series):
+            mean.to_csv(mean_path, header=["mean"])
+            if std is not None:
+                std.to_csv(sd_path, header=["sd"])
+        else:
+            mean.to_csv(mean_path)
+            if std is not None:
+                std.to_csv(sd_path)
+    fs_retry(_write, f"writing {stem}")
 
 
 # ── Pulse aggregation ─────────────────────────────────────────────────────────
@@ -1169,11 +1265,27 @@ def main():
              "filesystem (many small reads stall; one sequential copy does not).",
     )
     parser.add_argument(
+        "--checkpoint-every", type=int, default=50, metavar="N",
+        help="Save the fold state (accumulators + folded community list) to "
+             "<out-dir>/export_checkpoint.pkl every N communities so an "
+             "interrupted export (time limit, OOM, node failure) can continue "
+             "with --resume.  0 disables.  Default 50.",
+    )
+    parser.add_argument(
+        "--resume", action="store_true",
+        help="Continue from <out-dir>/export_checkpoint.pkl if it exists (same "
+             "scenarios, communities and code version required); already-folded "
+             "communities are skipped.  Use the same --base/--out-dir as before.",
+    )
+    parser.add_argument(
         "--jobs", "-j", type=int, default=1, metavar="N",
         help="Number of parallel worker processes for per-run loading. "
              "1 (default) = serial; 0 = auto ($SLURM_CPUS_PER_TASK or all cores); "
-             "N = use N workers (clamped to available CPUs).  Memory: about "
-             "1 GB per worker plus 2 GB (six 365-day pulses, 100 taxa).",
+             "N = use N workers (clamped to available CPUs).  Memory: each "
+             "worker holds all scenario runs of one community, so budget about "
+             "0.4 GB + 0.25 GB per scenario per worker, plus 2 GB (six 365-day "
+             "pulses, 100 taxa): ~1.1 GB/worker for 3 scenarios (37 GB observed "
+             "at 32 workers), ~2.5 GB/worker for 8 scenarios.",
     )
 
     args = parser.parse_args()
@@ -1218,7 +1330,24 @@ def main():
     if args.stage_dir:
         Path(args.stage_dir).mkdir(parents=True, exist_ok=True)
         print(f"  Staging communities through {args.stage_dir}")
-    _stream_load_and_fold(scenario_list, n_jobs, accs, args.stage_dir)
+    ckpt_path = root_out / CHECKPOINT_NAME
+    done_set = None
+    if args.resume:
+        loaded = _load_checkpoint(ckpt_path, [l for l, _ in scenario_list],
+                                  [g[0][1].name for g in _group_by_community(scenario_list)])
+        if loaded is not None:
+            accs, done_set = loaded
+        else:
+            print(f"  --resume: no {CHECKPOINT_NAME} in {root_out}; starting fresh", flush=True)
+    elif ckpt_path.exists():
+        print(f"  NOTE: {ckpt_path} exists but --resume not given; it will be overwritten "
+              f"at the next checkpoint", flush=True)
+    _stream_load_and_fold(scenario_list, n_jobs, accs, args.stage_dir,
+                          checkpoint=ckpt_path if args.checkpoint_every else None,
+                          checkpoint_every=args.checkpoint_every, done_set=done_set)
+    # The checkpoint is kept until every output file is written (see the end of
+    # main), so a failure during the writing phase can also be resumed: with all
+    # communities folded, --resume skips straight to writing.
     for a in accs.values():
         a.finalize()
     gc.collect()
@@ -1458,6 +1587,11 @@ def main():
     pulse_sd_df.to_csv(root_out   / "pulse_summary_sd.csv")
     print(f"  pulse_summary_mean.csv")
     print(f"  pulse_summary_sd.csv")
+    if ckpt_path.exists():
+        try:
+            ckpt_path.unlink()
+        except OSError:
+            pass
     print(f"\nDone.  All output written to {root_out}\n")
 
 
