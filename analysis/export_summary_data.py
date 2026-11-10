@@ -126,6 +126,7 @@ import sys
 import time
 import warnings
 from concurrent.futures import ProcessPoolExecutor, wait, FIRST_COMPLETED
+from concurrent.futures.process import BrokenProcessPool
 from pathlib import Path
 
 import numpy as np
@@ -1064,39 +1065,68 @@ def _stream_load_and_fold(scenario_list, n_jobs: int, accs: dict[str, "_StreamAg
     max_outstanding = n_jobs
     print(f"  Streaming {n} communities across {n_jobs} workers "
           f"(≤{max_outstanding} in flight)...", flush=True)
-    done = submitted = 0
+    done = 0
+    pending = list(groups)          # communities not yet folded, in order
+
     # One fresh worker process per community: a long-lived worker's RSS creeps
     # up with heap fragmentation over hundreds of communities (observed: 32
     # workers exceeding 40 GB), and a new process costs ~1 s against ~2 min
     # of compute.  max_tasks_per_child needs Python 3.11+.
-    try:
-        ex = ProcessPoolExecutor(max_workers=n_jobs, max_tasks_per_child=1)
-    except TypeError:
-        ex = ProcessPoolExecutor(max_workers=n_jobs)
-    with ex:
+    def _new_pool():
+        try:
+            return ProcessPoolExecutor(max_workers=n_jobs, max_tasks_per_child=1)
+        except TypeError:
+            return ProcessPoolExecutor(max_workers=n_jobs)
+
+    # A worker that dies before returning (e.g. its start-up os.chdir() into a
+    # dfs working directory fails during an outage) breaks the whole pool:
+    # every later submit raises BrokenProcessPool.  Rebuild the pool, put the
+    # in-flight communities back on the queue and carry on after a pause.
+    pool_restarts = 0
+    while pending:
+        ex = _new_pool()
         futures = {}
-        while submitted < min(max_outstanding, n):
-            jobs = groups[submitted]
-            futures[ex.submit(_compute_community, jobs, stage_dir)] = jobs[0][1].name
-            submitted += 1
-        while futures:
-            finished, _pending = wait(set(futures), return_when=FIRST_COMPLETED)
-            for fut in finished:
-                name = futures.pop(fut)
-                try:
-                    res = fut.result()
-                except Exception as e:
-                    res = []
-                    print(f"  [community {name}] FAILED: {e}", flush=True)
-                _fold(res)
-                del res
-                done += 1
-                print(f"  [{done}/{n}] {name}", flush=True)
-                _after(name)
-                if submitted < n:
-                    jobs = groups[submitted]
-                    futures[ex.submit(_compute_community, jobs, stage_dir)] = jobs[0][1].name
-                    submitted += 1
+        try:
+            with ex:
+                while pending and len(futures) < max_outstanding:
+                    jobs = pending.pop(0)
+                    futures[ex.submit(_compute_community, jobs, stage_dir)] = jobs
+                while futures:
+                    finished, _ = wait(set(futures), return_when=FIRST_COMPLETED)
+                    for fut in finished:
+                        jobs = futures.pop(fut)
+                        name = jobs[0][1].name
+                        try:
+                            res = fut.result()
+                        except BrokenProcessPool:
+                            futures[fut] = jobs       # not folded: re-queue it too
+                            raise
+                        except Exception as e:
+                            res = []
+                            print(f"  [community {name}] FAILED: {e}", flush=True)
+                        _fold(res)
+                        del res
+                        done += 1
+                        print(f"  [{done}/{n}] {name}", flush=True)
+                        _after(name)
+                        if pending:
+                            jobs = pending.pop(0)
+                            futures[ex.submit(_compute_community, jobs, stage_dir)] = jobs
+        except BrokenProcessPool as e:
+            lost = list(futures.values())
+            pending = lost + pending
+            pool_restarts += 1
+            if pool_restarts > len(FS_RETRY_WAITS):
+                raise
+            wait_s = FS_RETRY_WAITS[pool_restarts - 1]
+            print(f"  !! worker pool broken ({e}); {len(lost)} in-flight communities "
+                  f"re-queued, restarting the pool in {wait_s} s "
+                  f"(restart {pool_restarts}/{len(FS_RETRY_WAITS)})", flush=True)
+            try:
+                ex.shutdown(wait=False, cancel_futures=True)
+            except Exception:
+                pass
+            time.sleep(wait_s)
     _final()
 
 
