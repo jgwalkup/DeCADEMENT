@@ -924,12 +924,8 @@ def _compute_community(jobs: list[tuple[str, Path]],
     try:
         if stage_dir:
             jobs, root = _stage_community(jobs, Path(stage_dir))
-        for label, rd in jobs:
-            try:
-                out.append((label, rd.name, _pack(compute_run(rd))))
-            except Exception as e:                      # one bad run must not sink the community
-                print(f"  [run {rd.name} / {label}] FAILED: {e}", flush=True)
-                out.append((label, rd.name, None))
+        for label, rd in jobs:                          # a failed run fails the whole community,
+            out.append((label, rd.name, _pack(compute_run(rd))))   # so scenarios stay paired
     finally:
         clear_cache()
         if root is not None:
@@ -1067,6 +1063,7 @@ def _stream_load_and_fold(scenario_list, n_jobs: int, accs: dict[str, "_StreamAg
           f"(≤{max_outstanding} in flight)...", flush=True)
     done = 0
     pending = list(groups)          # communities not yet folded, in order
+    retried, failed = set(), []     # a failed community is queued once more, then given up
 
     # One fresh worker process per community: a long-lived worker's RSS creeps
     # up with heap fragmentation over hundreds of communities (observed: 32
@@ -1102,13 +1099,21 @@ def _stream_load_and_fold(scenario_list, n_jobs: int, accs: dict[str, "_StreamAg
                             futures[fut] = jobs       # not folded: re-queue it too
                             raise
                         except Exception as e:
-                            res = []
-                            print(f"  [community {name}] FAILED: {e}", flush=True)
-                        _fold(res)
-                        del res
-                        done += 1
-                        print(f"  [{done}/{n}] {name}", flush=True)
-                        _after(name)
+                            res = None
+                            if name in retried:
+                                failed.append(name)
+                                print(f"  [community {name}] FAILED again: {e}", flush=True)
+                            else:
+                                retried.add(name)
+                                pending.append(jobs)
+                                print(f"  [community {name}] FAILED, queued for one retry: {e}",
+                                      flush=True)
+                        if res is not None:
+                            _fold(res)
+                            del res
+                            done += 1
+                            print(f"  [{done}/{n}] {name}", flush=True)
+                            _after(name)
                         if pending:
                             jobs = pending.pop(0)
                             futures[ex.submit(_compute_community, jobs, stage_dir)] = jobs
@@ -1128,6 +1133,11 @@ def _stream_load_and_fold(scenario_list, n_jobs: int, accs: dict[str, "_StreamAg
                 pass
             time.sleep(wait_s)
     _final()
+    if failed:
+        sys.exit(f"ERROR: {len(failed)} communit{'y' if len(failed) == 1 else 'ies'} could not be "
+                 f"read and {'is' if len(failed) == 1 else 'are'} not in the checkpoint: "
+                 f"{', '.join(sorted(failed))}.  No tables written.  Resubmit the same command "
+                 f"with --resume to retry only these; if one keeps failing, check its run folders.")
 
 
 # ── CSV writer ────────────────────────────────────────────────────────────────
