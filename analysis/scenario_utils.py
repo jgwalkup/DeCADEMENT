@@ -351,20 +351,25 @@ def _natural_key(name: str):
             for t in _re.split(r"(\d+)", str(name))]
 
 
+BASELINE_SCENARIO = "climate_ambient_temp"   # listed first by discover_summary_scenarios
+
+
 def discover_summary_scenarios(root: Path) -> list[tuple[str, Path]]:
     """Auto-detect summary scenario subdirectories under *root*.
 
     A subdirectory qualifies if it contains at least one <stem>_mean.csv.
-    Returns [(label, path)] in natural-sorted order (numeric-aware, so a
-    temperature gradient comes out T3, T9, T15, ...).  Falls back to treating
-    *root* itself as a single scenario when it directly contains summary files.
+    Returns [(label, path)] with the baseline (BASELINE_SCENARIO, if present)
+    first — the figure scripts take the first scenario as the baseline — and
+    the rest in natural-sorted order (numeric-aware, so a temperature gradient
+    comes out T3, T9, T15, ...).  Falls back to treating *root* itself as a
+    single scenario when it directly contains summary files.
     """
     root = Path(root)
     if not root.exists():
         return []
     found = [(d.name, d) for d in root.iterdir()
              if d.is_dir() and has_summary(d) and scenario_selected(d.name)]
-    found.sort(key=lambda lp: _natural_key(lp[0]))
+    found.sort(key=lambda lp: (lp[0] != BASELINE_SCENARIO, _natural_key(lp[0])))
     if not found and has_summary(root):
         found = [(root.name, root)]
     return found
@@ -592,12 +597,13 @@ def plot_order(labels: list[str]) -> list[str]:
     return labels[1:] + labels[:1]
 
 
-def legend_baseline_first(ax, labels: list[str], **kwargs):
-    """ax.legend with the baseline entry first and the others in display order."""
+def legend_baseline_first(ax, labels: list[str], fig=None, **kwargs):
+    """Legend of ax's lines with the baseline entry first and the others in
+    display order; drawn on ax, or on fig (one legend for all panels) if given."""
     handles, labs = ax.get_legend_handles_labels()
     rank = {lab: i for i, lab in enumerate(labels)}
     order = sorted(range(len(labs)), key=lambda i: rank.get(labs[i], len(rank) + i))
-    return ax.legend([handles[i] for i in order], [labs[i] for i in order], **kwargs)
+    return (fig or ax).legend([handles[i] for i in order], [labs[i] for i in order], **kwargs)
 
 
 # ── Aggregation helpers ───────────────────────────────────────────────────────

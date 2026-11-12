@@ -288,6 +288,16 @@ def _legend_ncols(n: int) -> int:
     return 5
 
 
+def _shared_legend(fig, axes) -> None:
+    """One legend below the panels (they show the same scenarios)."""
+    ax = next((a for a in axes if a.get_legend_handles_labels()[0]), None)
+    if ax is not None:
+        legend_baseline_first(ax, scen_labels, fig=fig, loc="upper center",
+                              bbox_to_anchor=(0.5, 0.0),
+                              ncols=_legend_ncols(len(scen_labels)),
+                              framealpha=0.85, fontsize=8)
+
+
 # ────────────────────────────────────────────────────────────────────────────────
 # Fig 1: System-level CUE and CAE — all scenarios overlaid
 # ────────────────────────────────────────────────────────────────────────────────
@@ -338,13 +348,10 @@ for ax, key, ylabel, title in [
     ax.set_title(title)
     ax.set_ylim(0, 1)
     ax.spines[["top", "right"]].set_visible(False)
-    legend_baseline_first(ax, scen_labels, loc="upper center",
-                          bbox_to_anchor=(0.5, -0.20),
-                          ncols=_legend_ncols(len(scen_labels)),
-                          framealpha=0.85, fontsize=8)
     add_year_labels(ax, COL_START, COL_END, N_YEARS, DAYS_PER_YEAR)
 
 fig1.tight_layout()
+_shared_legend(fig1, axes1)
 fig1.savefig(FIG_DIR / "fig1_system_cue_cae.png", dpi=150, bbox_inches="tight")
 plt.close(fig1); print("Saved fig1")
 
@@ -401,13 +408,10 @@ for ax, key, ylabel, title in [
     ax.set_title(title)
     ax.set_ylim(0, 1)
     ax.spines[["top", "right"]].set_visible(False)
-    legend_baseline_first(ax, scen_labels, loc="upper center",
-                          bbox_to_anchor=(0.5, -0.20),
-                          ncols=_legend_ncols(len(scen_labels)),
-                          framealpha=0.85, fontsize=8)
     add_year_labels(ax, COL_START, COL_END, N_YEARS, DAYS_PER_YEAR)
 
 fig2.tight_layout()
+_shared_legend(fig2, axes2)
 fig2.savefig(FIG_DIR / "fig2_comm_mean_cue_cae.png", dpi=150, bbox_inches="tight")
 plt.close(fig2); print("Saved fig2")
 
