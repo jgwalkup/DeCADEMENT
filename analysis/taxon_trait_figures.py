@@ -62,13 +62,14 @@ from scenario_utils import pretty_label                         # noqa: E402
 from taxon_snapshot_figures import read_snapshots               # noqa: E402
 
 SUMMED = ["cells", "biomass_C", "hsp_pool_C", "hsp_C", "hsp_E", "maintenance_E", "production_E",
-          "endo_resp_C", "uptake_C", "biosynthesis_C", "enzyme_C"]
+          "endo_resp_C", "uptake_C", "biosynthesis_C", "enzyme_C", "osmolyte_C", "osmo_pool_C",
+          "transport_E", "enzyme_E", "osmolyte_E"]
 CMAP = "viridis"
 
 # (key, title, unit, difference shown as % of the reference)
 QUANTITIES = [
-    ("biomass_C",   "Biomass C",                 "% of reference",       True),
-    ("cells",       "Living cells",              "% of reference",       True),
+    ("biomass_C",   "Biomass C",                 "% change from {ref}",  True),
+    ("cells",       "Living cells",              "% change from {ref}",  True),
     ("alive_share", "Communities where alive",   "share of communities", False),
     ("hsp_share",   "HSP pool share of biomass", "C C⁻¹",                False),
     ("hsp_C_pb",    "HSP production",            "C d⁻¹ per biomass C",  False),
@@ -95,10 +96,20 @@ def taxon_table(snap: Path, scenario: str, window: int) -> pd.DataFrame:
         out["maint_E_pb"] = s.maintenance_E / s.biomass_C
         out["maint_share_E"] = s.maintenance_E / s.production_E
         out["endo_pb"] = s.endo_resp_C / s.biomass_C
+        # realized production and energy budget terms, for the per-taxon table
+        out["uptake_C_pb"] = s.uptake_C / s.biomass_C
+        out["enz_C_pb"] = s.enzyme_C / s.biomass_C
+        out["osmo_C_pb"] = s.osmolyte_C / s.biomass_C
+        out["osmo_share"] = s.osmo_pool_C / s.biomass_C
+        out["prod_E_pb"] = s.production_E / s.biomass_C
+        out["transport_E_pb"] = s.transport_E / s.biomass_C
+        out["enz_E_pb"] = s.enzyme_E / s.biomass_C
+        out["osmo_E_pb"] = s.osmolyte_E / s.biomass_C
         out["cue"] = s[w[1]] / s[w[0]]
         # share of the day's uptake that becomes biomass (0-1), and net change of
         # biomass C per unit biomass and day over the window (negative = shrinking)
         out["growth_yield"] = (s.biosynthesis_C - s.enzyme_C) / s.uptake_C
+        out["energy_frac"] = (s.uptake_C - s.biosynthesis_C) / s.uptake_C   # share of uptake C sent to energy
         out["net_growth"] = s[w[1]] / window / s.biomass_C
     return out.replace([np.inf, -np.inf], np.nan)
 
@@ -115,7 +126,7 @@ def _colorbar(fig, axes, norm, trait):
     fig.colorbar(sm, ax=list(axes), label=trait, shrink=0.8, pad=0.015)
 
 
-def fig_deltas(delta, trait, norm, heatwaves, window, label, out, keys=None):
+def fig_deltas(delta, trait, norm, heatwaves, window, label, ref, out, keys=None):
     """Treatment − reference against day, one line per taxon; `keys` picks the
     quantities (default all)."""
     quantities = [q for q in QUANTITIES if keys is None or q[0] in keys]
@@ -135,7 +146,7 @@ def fig_deltas(delta, trait, norm, heatwaves, window, label, out, keys=None):
             ax.axvspan(a, b + 1, color="0.88", zorder=0)
         ax.axhline(0, color="k", lw=0.7)
         ax.set_title(f"Δ {title.format(w=window)}", fontsize=10)
-        ax.set_ylabel(unit, fontsize=9)
+        ax.set_ylabel(unit.format(ref=ref), fontsize=9)
         ax.set_xlabel("day")
         ax.set_xlim(days[0], days[-1])
     _colorbar(fig, axes.ravel(), norm, trait.name)
@@ -145,7 +156,7 @@ def fig_deltas(delta, trait, norm, heatwaves, window, label, out, keys=None):
     print(f"Saved {out}")
 
 
-def fig_at_day(delta, trait, norm, day, window, label, out):
+def fig_at_day(delta, trait, norm, day, window, label, ref, out):
     d = delta.xs(day, level="day")
     x = trait.reindex(d.index)
     fig, axes = plt.subplots(2, 4, figsize=(19, 7.2), squeeze=False, layout="constrained")
@@ -157,7 +168,7 @@ def fig_at_day(delta, trait, norm, day, window, label, out):
             xs = np.array([x.min(), x.max()])
             ax.plot(xs, a + b * xs, color="k", lw=1)
         ax.set_title(f"Δ {title.format(w=window)}{_rho(x, d[key])}", fontsize=10)
-        ax.set_ylabel(unit, fontsize=9)
+        ax.set_ylabel(unit.format(ref=ref), fontsize=9)
         ax.set_xlabel(trait.name)
     fig.suptitle(f"{label} on day {day}: one point per taxon, against {trait.name}")
     fig.savefig(out, dpi=150)
@@ -235,7 +246,8 @@ def main():
     trait = traits[a.trait]
     norm = plt.Normalize(trait.min(), trait.max())
     treat_name, ref_name = a.contrast.split(":")
-    label = f"{pretty_label(treat_name)} − {pretty_label(ref_name)}"
+    ref_label = pretty_label(ref_name)
+    label = f"{pretty_label(treat_name)} − {ref_label}"
     tag = f"{treat_name}_minus_{ref_name}"
 
     tables = {}
@@ -252,15 +264,19 @@ def main():
             sys.exit(f"ERROR: day {d} is not a snapshot day")
 
     heatwaves = parse_heatwaves(a.heatwave)
-    fig_deltas(delta, trait, norm, heatwaves, window, label, out_dir / f"taxon_deltas_{tag}.png")
-    fig_deltas(delta, trait, norm, heatwaves, window, label, out_dir / f"taxon_deltas_biomass_cells_{tag}.png",
+    fig_deltas(delta, trait, norm, heatwaves, window, label, ref_label, out_dir / f"taxon_deltas_{tag}.png")
+    fig_deltas(delta, trait, norm, heatwaves, window, label, ref_label,
+               out_dir / f"taxon_deltas_biomass_cells_{tag}.png",
                keys=("biomass_C", "cells"))
-    fig_at_day(delta, trait, norm, a.at_day, window, label, out_dir / f"taxon_at_day{a.at_day}_{tag}.png")
+    fig_at_day(delta, trait, norm, a.at_day, window, label, ref_label,
+               out_dir / f"taxon_at_day{a.at_day}_{tag}.png")
     fig_potential(tables, [ref_name, treat_name], trait, norm, [a.first_day, a.at_day], label,
                   out_dir / f"potential_vs_realized_{tag}.png")
     fig_maintenance(treat, ref, trait, norm, a.at_day, window, label, out_dir / f"maintenance_{tag}.png")
 
-    extra = ["hsp_E_pb", "maint_share_E", "growth_yield", "net_growth", "n_communities"]
+    extra = ["hsp_E_pb", "maint_share_E", "growth_yield", "net_growth", "energy_frac", "uptake_C_pb", "enz_C_pb",
+             "osmo_C_pb", "osmo_share", "prod_E_pb", "transport_E_pb", "enz_E_pb", "osmo_E_pb",
+             "n_communities"]
     table = pd.concat([treat[keys + extra].add_suffix("_treatment"), ref[keys + extra].add_suffix("_reference"),
                        delta.add_suffix("_delta")], axis=1).reset_index()
     table.insert(1, a.trait, table.taxon.map(trait))

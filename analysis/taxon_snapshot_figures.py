@@ -71,8 +71,8 @@ SUMMED = ["cells", "biomass_C", "hsp_pool_C", "hsp_E", "maintenance_E", "product
 
 # (key, panel title, y label of the paired difference, relative change in %)
 QUANTITIES = [
-    ("biomass_C",     "Biomass C",                "% of reference",      True),
-    ("cells",         "Living cells",             "% of reference",      True),
+    ("biomass_C",     "Biomass C",                "% change from {ref}", True),
+    ("cells",         "Living cells",             "% change from {ref}", True),
     ("taxa_alive",    "Taxa alive",               "taxa",                False),
     ("hsp_share",     "HSP pool share of biomass", "C C⁻¹",              False),
     ("hsp_E_pb",      "HSP energy cost",          "E d⁻¹ per biomass C", False),
@@ -155,7 +155,7 @@ def _grid(n, ncol=5):
     return fig, axes.ravel()[:n]
 
 
-def fig_by_day(stats, label, class_labels, heatwaves, window, trait, out):
+def fig_by_day(stats, label, ref, class_labels, heatwaves, window, trait, out):
     days = np.sort(stats.day.unique())
     lo, hi = days[0], days[-1]
     colors = plt.cm.viridis(np.linspace(0, 0.92, len(class_labels)))
@@ -170,7 +170,7 @@ def fig_by_day(stats, label, class_labels, heatwaves, window, trait, out):
         _shade(ax, heatwaves, lo, hi)
         ax.axhline(0, color="k", lw=0.7)
         ax.set_title(f"Δ {title.format(w=window)}", fontsize=10)
-        ax.set_ylabel(ylab, fontsize=9)
+        ax.set_ylabel(ylab.format(ref=ref), fontsize=9)
         ax.set_xlabel("day")
         ax.tick_params(labelsize=8)
     h, l = axes[0].get_legend_handles_labels()
@@ -183,7 +183,7 @@ def fig_by_day(stats, label, class_labels, heatwaves, window, trait, out):
     print(f"Saved {out}")
 
 
-def fig_by_class(all_stats, day, class_labels, window, trait, out):
+def fig_by_class(all_stats, ref, day, class_labels, window, trait, out):
     quantities = [q for q in QUANTITIES if q[0] != "weighted_trait"]
     fig, axes = _grid(len(quantities))
     x = np.arange(1, len(class_labels) + 1)
@@ -193,7 +193,7 @@ def fig_by_class(all_stats, day, class_labels, window, trait, out):
             ax.errorbar(x, s["mean"], yerr=s.ci95, lw=1.3, marker="o", ms=4, label=label, **style)
         ax.axhline(0, color="k", lw=0.7)
         ax.set_title(f"Δ {title.format(w=window)}", fontsize=10)
-        ax.set_ylabel(ylab, fontsize=9)
+        ax.set_ylabel(ylab.format(ref=ref), fontsize=9)
         ax.set_xlabel(f"{trait} class (1 = lowest)")
         ax.set_xticks(x)
         ax.tick_params(labelsize=8)
@@ -252,10 +252,12 @@ def main():
         stats = contrast_stats(tables[treat], tables[ref])
         all_stats[label] = stats
         rows.append(stats.assign(contrast=label))
-        fig_by_day(stats, label, class_labels, heatwaves, window, a.trait,
+        fig_by_day(stats, label, pretty_label(ref), class_labels, heatwaves, window, a.trait,
                    out_dir / f"by_day_{a.trait}_{treat}_minus_{ref}.png")
     if a.at_day in set(rows[0].day):
-        fig_by_class(all_stats, a.at_day, class_labels, window, a.trait,
+        refs = {pretty_label(r) for _, r in contrasts}     # name the reference if they share one
+        fig_by_class(all_stats, refs.pop() if len(refs) == 1 else "the scenario without the wave",
+                     a.at_day, class_labels, window, a.trait,
                      out_dir / f"by_class_{a.trait}_day{a.at_day}.png")
     else:
         print(f"  day {a.at_day} is not a snapshot day: by-class figure skipped")
