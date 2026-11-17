@@ -1289,6 +1289,11 @@ def main():
              "(default: <base>/export_summary_data).",
     )
     parser.add_argument(
+        "--communities-file", default=None, metavar="FILE",
+        help="Use only the communities named in FILE (run folder names such as "
+             "community_0001_s0, one per line), e.g. a subset for a first look.",
+    )
+    parser.add_argument(
         "--all-communities", action="store_true",
         help="Fold every run found.  By default only communities present in "
              "every scenario are used (so scenario means are paired over the "
@@ -1334,6 +1339,14 @@ def main():
     if not scenario_list:
         sys.exit("ERROR: no scenarios resolved.")
     scenario_list, skipped = _pair_communities(scenario_list, keep_all=args.all_communities)
+    if args.communities_file:
+        wanted = {ln.strip() for ln in Path(args.communities_file).read_text().splitlines() if ln.strip()}
+        scenario_list = [(label, [rd for rd in runs if rd.name in wanted]) for label, runs in scenario_list]
+        found = {rd.name for _, runs in scenario_list for rd in runs}
+        print(f"--communities-file: {len(found)} of the {len(wanted)} communities listed are used"
+              + (f" ({len(wanted - found)} not complete in every scenario)" if wanted - found else ""))
+        if not found:
+            sys.exit("ERROR: none of the communities in --communities-file is available.")
 
     n_jobs = _resolve_jobs(args.jobs)
     if n_jobs > 1:

@@ -341,6 +341,8 @@ def main() -> None:
     ap.add_argument("--window", type=int, default=7, help="days in the trailing sums (default 7)")
     ap.add_argument("--scenarios", nargs="+", default=None, help="scenario folder names to include (default all)")
     ap.add_argument("--communities", nargs="+", default=None, help="run folder names to include (default all)")
+    ap.add_argument("--communities-file", default=None, metavar="FILE",
+                    help="file of run folder names to include, one per line (as --communities)")
     ap.add_argument("-j", "--jobs", type=int, default=0, help="workers (0 = $SLURM_CPUS_PER_TASK or all cores)")
     ap.add_argument("--format", choices=("parquet", "csv"), default="parquet")
     ap.add_argument("--overwrite", action="store_true", help="redo communities that already have a part file")
@@ -364,8 +366,11 @@ def main() -> None:
     runs = {s: {r.name: r for r in pick_runs(d, min_cols=100)} for s, d in found}
     scenarios = [s for s, _ in found]
     names = sorted(set.intersection(*(set(r) for r in runs.values())))
-    if args.communities:
-        names = [n for n in names if n in set(args.communities)]
+    wanted = set(args.communities or [])
+    if args.communities_file:
+        wanted |= {ln.strip() for ln in Path(args.communities_file).read_text().splitlines() if ln.strip()}
+    if wanted:
+        names = [n for n in names if n in wanted]
     if not names:
         sys.exit("ERROR: no community is complete in every scenario")
     print(f"{len(scenarios)} scenarios x {len(names)} communities x {len(days)} days "

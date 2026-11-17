@@ -200,10 +200,14 @@ _p = _ap.ArgumentParser(description="absolute_c_pathway_figures.py (multi-scenar
                         formatter_class=_ap.RawDescriptionHelpFormatter)
 add_scenario_args(_p)
 add_summary_arg(_p)
+_p.add_argument("--basis", choices=["per_microbe", "total", "per_biomass"], default=None,
+                help="Basis of the pathway series: per_biomass = grid total / total microbial "
+                     "biomass C (default with --summary-dir); total = summed over the grid; "
+                     "per_microbe = mean across taxa of the per-alive-microbe rate (the only "
+                     "basis raw runs hold, and the default without --summary-dir). The basis is "
+                     "the suffix of the file names.")
 _p.add_argument("--per-biomass", action="store_true",
-                help="Normalise all pathway series by total microbial biomass C "
-                     "(system_microbial_biomass_C) instead of alive microbe count. "
-                     "Changes y-axis to model units per unit biomass C.")
+                help="Same as --basis per_biomass.")
 _args = _p.parse_args()
 
 from pathlib import Path as _Path
@@ -223,6 +227,17 @@ _SUMMARY_STEMS = {
     "total_cost":   None,
 }
 _MBC_STEM = "system_microbial_biomass_C"
+
+# Basis of the pathway series. The summary export holds every community series on
+# three bases (comm_<x>_per_microbe, _total, _per_biomass), each averaged over
+# communities, so the basis is chosen by reading the matching series.
+# --per-biomass is kept as another way to write --basis per_biomass.
+BASIS = _args.basis or ("per_biomass" if (_args.per_biomass or _args.summary_dir) else "per_microbe")
+if BASIS != "per_microbe" and not _args.summary_dir:
+    raise SystemExit("ERROR: --basis total / per_biomass need --summary-dir "
+                     "(raw runs hold the per-microbe series only).")
+_SUMMARY_STEMS = {k: (v.replace("_per_microbe", f"_{BASIS}") if v else None)
+                  for k, v in _SUMMARY_STEMS.items()}
 
 if _args.summary_dir:
     # ── Summary mode (all discovered scenarios → full gradient / N-scenario) ────
@@ -323,44 +338,11 @@ warm_sd = scen_data[_l1 + "_sd"]
 scenarios = [(lab, scen_data[lab], scen_data[lab + "_sd"]) for lab in scen_labels]
 
 
-# ── Normalise all series by gridsize ─────────────────────────────────────────
-print(f"Grid size     : {GRIDSIZE} cells  (normalising all series by {GRIDSIZE})")
-for _label in scen_labels:
-    scen_data[_label] = {
-        k: normalise_by_gridsize(v, GRIDSIZE)
-        for k, v in scen_data[_label].items()
-    }
-    if _label + '_sd' in scen_data:
-        scen_data[_label + '_sd'] = {
-            k: normalise_by_gridsize(v, GRIDSIZE)
-            for k, v in scen_data[_label + '_sd'].items()
-        }
 
-# ── Optional per-biomass normalisation ───────────────────────────────────────
-PER_BIOMASS = getattr(_args, "per_biomass", False)
-if PER_BIOMASS:
-    _missing_mbc = [l for l in scen_labels if mbc_data.get(l) is None]
-    if _missing_mbc:
-        print(f"WARNING: --per-biomass requested but MBC series not available for: "
-              f"{_missing_mbc}. Per-biomass normalisation requires --summary-dir.")
-        PER_BIOMASS = False
-    else:
-        print("Applying per-biomass normalisation (dividing by system_microbial_biomass_C)")
-        for _label in scen_labels:
-            _mbc = mbc_data[_label]
-            def _div_by_mbc(s, mbc=_mbc):
-                if s is None:
-                    return None
-                return s.div(mbc.reindex(s.index)).replace([float("inf"),
-                                                            float("-inf")], float("nan"))
-            scen_data[_label] = {k: _div_by_mbc(v)
-                                 for k, v in scen_data[_label].items()}
-            # SD: propagate as s_sd / mbc (ignore mbc uncertainty — mbc_sd not loaded)
-            scen_data[_label + "_sd"] = {k: _div_by_mbc(v)
-                                         for k, v in scen_data[_label + "_sd"].items()}
-
-NORM_LABEL = "per unit biomass C" if PER_BIOMASS else "per alive microbe"
-NORM_SUFFIX = "_per_biomass" if PER_BIOMASS else ""
+# ── Basis labels ─────────────────────────────────────────────────────────────
+NORM_LABEL = {"per_microbe": "per alive microbe", "total": "summed over the grid",
+              "per_biomass": "per unit biomass C"}[BASIS]
+NORM_SUFFIX = f"_{BASIS}"
 
 # ────────────────────────────────────────────────────────────────────────────
 # Fig 1: Stacked absolute C cost pathways — one panel per scenario

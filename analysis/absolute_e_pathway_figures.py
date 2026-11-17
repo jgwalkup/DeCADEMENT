@@ -181,10 +181,14 @@ _p.add_argument("--treatment-map",   nargs="+", default=None, metavar="DIR=LABEL
 _p.add_argument("--palette",         default="temperature", metavar="PALETTE",
                 help="Colour palette: 'temperature' (default, blue->orange->red) "
                      "or 'discrete' (fixed categorical colours).")
+_p.add_argument("--basis", choices=["per_microbe", "total", "per_biomass"], default=None,
+                help="Basis of the pathway series: per_biomass = grid total / total microbial "
+                     "biomass C (default with --summary-dir); total = summed over the grid; "
+                     "per_microbe = mean across taxa of the per-alive-microbe rate (the only "
+                     "basis raw runs hold, and the default without --summary-dir). The basis is "
+                     "the suffix of the file names.")
 _p.add_argument("--per-biomass",     action="store_true",
-                help="Normalise all pathway series by total microbial biomass C "
-                     "(system_microbial_biomass_C) instead of alive microbe count. "
-                     "Requires --summary-dir.")
+                help="Same as --basis per_biomass.")
 _p.add_argument("--fig-dir",         default=None,
                 help="Output directory for figures")
 _p.add_argument("--years",           nargs="+", type=int, default=None, metavar="YEAR",
@@ -222,6 +226,17 @@ _SUMMARY_STEMS = {
     "net_gain":    None,
 }
 _MBC_STEM = "system_microbial_biomass_C"
+
+# Basis of the pathway series. The summary export holds every community series on
+# three bases (comm_<x>_per_microbe, _total, _per_biomass), each averaged over
+# communities, so the basis is chosen by reading the matching series.
+# --per-biomass is kept as another way to write --basis per_biomass.
+BASIS = _args.basis or ("per_biomass" if (_args.per_biomass or _args.summary_dir) else "per_microbe")
+if BASIS != "per_microbe" and not _args.summary_dir:
+    raise SystemExit("ERROR: --basis total / per_biomass need --summary-dir "
+                     "(raw runs hold the per-microbe series only).")
+_SUMMARY_STEMS = {k: (v.replace("_per_microbe", f"_{BASIS}") if v else None)
+                  for k, v in _SUMMARY_STEMS.items()}
 
 if _args.summary_dir:
     # ── Summary mode (all discovered scenarios → full gradient / N-scenario) ────
@@ -337,32 +352,10 @@ scenarios = [
     for label, color, dat, sd in scenarios
 ]
 
-# ── Optional per-biomass normalisation ───────────────────────────────────────
-PER_BIOMASS = getattr(_args, "per_biomass", False)
-if PER_BIOMASS:
-    _missing_mbc = [l for l, _, _, _ in scenarios if mbc_data.get(l) is None]
-    if _missing_mbc:
-        print(f"WARNING: --per-biomass requested but MBC series not available for: "
-              f"{_missing_mbc}. Per-biomass normalisation requires --summary-dir.")
-        PER_BIOMASS = False
-    else:
-        print("Applying per-biomass normalisation (dividing by system_microbial_biomass_C)")
-        def _div_by_mbc(s, mbc):
-            if s is None:
-                return None
-            _mbc_r = mbc.reindex(s.index)
-            return s.div(_mbc_r).replace([float("inf"), float("-inf")], float("nan"))
-        scenarios = [
-            (label, color,
-             {k: _div_by_mbc(v, filter_series(mbc_data[label], COL_START, COL_END))
-              for k, v in dat.items()},
-             {k: _div_by_mbc(v, filter_series(mbc_data[label], COL_START, COL_END))
-              for k, v in sd.items()})
-            for label, color, dat, sd in scenarios
-        ]
-
-NORM_LABEL  = "per unit biomass C" if PER_BIOMASS else "per alive microbe"
-NORM_SUFFIX = "_per_biomass" if PER_BIOMASS else ""
+# ── Basis labels ─────────────────────────────────────────────────────────────
+NORM_LABEL = {"per_microbe": "per alive microbe", "total": "summed over the grid",
+              "per_biomass": "per unit biomass C"}[BASIS]
+NORM_SUFFIX = f"_{BASIS}"
 
 n_scen = len(scenarios)
 # =============================================================================
