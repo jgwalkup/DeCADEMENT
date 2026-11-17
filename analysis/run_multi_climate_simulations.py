@@ -30,8 +30,8 @@ Branching from a shared spin-up (runtime.txt: branch_pulse, --spinup-climate)
 ------------------------------------------------------------------------------
   With 'branch_pulse B' (B > 0) in runtime.txt, each community runs pulses 1..B
   once with the --spinup-climate file, including the end-of-pulse-B
-  repopulation. The full model state (grid, output buffers and the random
-  state) is then copied, and every climate scenario continues from that copy
+  repopulation. The model state at that point (grid, output buffers and the
+  random state) is kept, and every climate scenario continues from it
   for pulses B+1..pulse, using the scenario's Temp and Psi. Pulses after the
   branch = pulse - B, e.g. pulse 6 / branch_pulse 5 gives one branch year.
   No branch_pulse line (or 0) gives straight runs as before.
@@ -47,7 +47,11 @@ Branching from a shared spin-up (runtime.txt: branch_pulse, --spinup-climate)
   therefore reproduces a straight run of the same scenario exactly.
 
   The spin-up state is saved to <output-dir>/spinup/<community>_s<seed>.pkl
-  (--no-save-spinup to skip; about 360 MB at 40 x 40). --reuse-spinup loads
+  (--no-save-spinup to skip). Only what the spin-up changed is stored: the
+  pools, accumulators, output series and random state, not the per-cell trait
+  tables that initialization rebuilds from the inputs and seed. On restore the
+  model is initialized again and the stored parts replace the fresh ones.
+  --reuse-spinup loads
   that file instead of simulating, if it was made with the same community,
   seed, branch_pulse, runtime settings (pulse excepted), spin-up climate,
   input files and model code — e.g. to add a scenario or a branch year later,
@@ -133,7 +137,9 @@ Options
 """
 
 import argparse
+import hashlib
 import os
+import pickle
 import sys
 import tempfile
 import time
@@ -574,14 +580,105 @@ def run_simulation(runtime, output_format, community_dir, climate_path,
 #
 # With branch_pulse B > 0 in runtime.txt, each community is simulated for
 # pulses 1..B once with the --spinup-climate file (including the end-of-pulse-B
-# repopulation). The complete model state (grid, output buffers and numpy's
-# random state) is then copied, and every climate scenario continues from that
-# copy for pulses B+1..pulse, with the scenario's Temp and Psi series replacing
+# repopulation). The model state at that point (grid, output buffers and
+# numpy's random state) is kept, and every climate scenario continues from it
+# for pulses B+1..pulse, with the scenario's Temp and Psi series replacing
 # the spin-up's. Because the guard below requires every scenario to equal the
 # spin-up climate before the branch day, a branched run reproduces a straight
 # run of the scenario exactly, at a fraction of the cost.
 
-SPINUP_FORMAT = 1
+SPINUP_FORMAT = 2     # 2: only the parts of the state the spin-up changed
+
+
+# The spin-up state is stored as a difference from a freshly initialized model.
+# Most of the model's memory is per-cell copies of taxon traits and the input
+# data (several GB at 100 x 100), all fixed after initialization and rebuilt
+# exactly by setup_model with the same inputs and seed. What the spin-up
+# changed (pools, accumulators, output series) is found by comparing every
+# attribute of Grid and Output, and every entry of their dict attributes, with
+# a fresh build. Comparison is by the bytes each value pickles to, so a value
+# is only left out when it is identical to the fresh one. All stored values
+# are pickled together, so objects shared between them stay shared.
+
+def _digest(obj):
+    return hashlib.sha256(
+        pickle.dumps(obj, protocol=pickle.HIGHEST_PROTOCOL)).digest()
+
+
+def _fingerprint(obj):
+    """Digest of every attribute of obj (dict attributes per entry)."""
+    fp = {}
+    for k, v in vars(obj).items():
+        if type(v) is dict:
+            fp[k] = ('dict', list(v), {kk: _digest(vv) for kk, vv in v.items()})
+        else:
+            fp[k] = ('obj', _digest(v))
+    return fp
+
+
+def _changed_parts(obj, fp):
+    """The attributes (and dict entries) of obj that differ from fingerprint fp."""
+    attrs, items = {}, {}
+    for k, v in vars(obj).items():
+        ref = fp.get(k)
+        if type(v) is dict and ref is not None and ref[0] == 'dict':
+            _, ref_keys, ref_d = ref
+            changed = {kk: vv for kk, vv in v.items()
+                       if ref_d.get(kk) != _digest(vv)}
+            if changed or list(v) != ref_keys:
+                items[k] = (list(v), changed)
+        elif ref is None or ref[0] != 'obj' or ref[1] != _digest(v):
+            attrs[k] = v
+    return {'attrs': attrs, 'items': items, 'order': list(vars(obj)),
+            'removed': [k for k in fp if k not in vars(obj)]}
+
+
+def _apply_changed_parts(obj, parts):
+    """Turn a fresh build into the stored state (inverse of _changed_parts)."""
+    d = vars(obj)
+    for k in parts['removed']:
+        del d[k]
+    for k, (keys, changed) in parts['items'].items():
+        cur = d[k]                              # keep the dict object itself
+        merged = {kk: changed[kk] if kk in changed else cur[kk] for kk in keys}
+        cur.clear()
+        cur.update(merged)
+    d.update(parts['attrs'])
+    if list(d) != parts['order']:
+        ordered = {k: d[k] for k in parts['order']}
+        d.clear()
+        d.update(ordered)
+
+
+class SpinupState:
+    """The stored difference plus what is needed to rebuild the fresh model."""
+    def __init__(self, payload, community_dir, spinup_path, comm_seed,
+                 src_dir, input_dir):
+        self.payload       = payload
+        self.community_dir = community_dir
+        self.spinup_path   = spinup_path
+        self.comm_seed     = comm_seed
+        self.src_dir       = src_dir
+        self.input_dir     = input_dir
+
+
+def _quiet_setup(runtime, community_dir, spinup_path, src_dir, input_dir):
+    import contextlib
+    with open(os.devnull, 'w') as null, contextlib.redirect_stdout(null):
+        return setup_model(runtime, community_dir, spinup_path, src_dir, input_dir)
+
+
+def restore_spinup(state):
+    """Return (Ecosystem, Output_init, numpy random state) at the branch point."""
+    _import_model(state.src_dir)
+    stored = pickle.loads(state.payload)
+    np.random.seed(state.comm_seed)
+    Ecosystem, Output_init = _quiet_setup(stored['runtime'].copy(),
+                                          state.community_dir, state.spinup_path,
+                                          state.src_dir, state.input_dir)
+    _apply_changed_parts(Ecosystem, stored['grid'])
+    _apply_changed_parts(Output_init, stored['output'])
+    return Ecosystem, Output_init, stored['rng']
 
 
 def read_climate_series(path):
@@ -624,7 +721,6 @@ def check_branch_climates(spinup_path, scenarios, n_days, branch_day):
 
 
 def file_digest(path):
-    import hashlib
     h = hashlib.sha256()
     with open(path, 'rb') as fh:
         for block in iter(lambda: fh.read(1 << 20), b''):
@@ -635,7 +731,6 @@ def file_digest(path):
 def inputs_digest(src_dir, input_dir, community_dir):
     """One digest over the model code, the input folder's files (climate
     subfolders and runtime.txt excepted) and the community's files."""
-    import hashlib
     h = hashlib.sha256()
     files = (sorted(Path(src_dir).glob('*.py'))
              + sorted(f for f in Path(input_dir).iterdir()
@@ -668,8 +763,8 @@ _LAST_SPINUP_LOADED = False     # set by run_spinup: state came from the saved p
 def run_spinup(runtime, community_dir, spinup_path, branch_pulse, comm_seed,
                src_dir, input_dir, spinup_file, reuse, save, quiet=False):
     """
-    Return the pickled spin-up state (bytes): (Ecosystem, Output_init,
-    numpy random state) at the end of pulse branch_pulse.
+    Return the spin-up state (SpinupState) at the end of pulse branch_pulse;
+    restore_spinup turns it into (Ecosystem, Output_init, numpy random state).
 
     reuse: load spinup_file if it exists and was made with the same community,
            seed, branch_pulse, runtime settings (pulse excepted) and spin-up
@@ -677,7 +772,6 @@ def run_spinup(runtime, community_dir, spinup_path, branch_pulse, comm_seed,
     save:  write the state to spinup_file after simulating.
     """
     global _LAST_SPINUP_LOADED
-    import pickle
     meta = spinup_metadata(runtime, community_dir, comm_seed, spinup_path,
                            branch_pulse, src_dir, input_dir)
 
@@ -686,12 +780,13 @@ def run_spinup(runtime, community_dir, spinup_path, branch_pulse, comm_seed,
         with open(spinup_file, 'rb') as fh:
             stored_meta = pickle.load(fh)
             if stored_meta == meta:
-                state = fh.read()
+                payload = fh.read()
                 _LAST_SPINUP_LOADED = True
                 print(f"  Spin-up loaded from {spinup_file} "
-                      f"({len(state) / 1e6:.0f} MB, {_fmt_time(time.perf_counter() - t0)})",
+                      f"({len(payload) / 1e6:.0f} MB, {_fmt_time(time.perf_counter() - t0)})",
                       flush=True)
-                return state
+                return SpinupState(payload, community_dir, spinup_path,
+                                   comm_seed, src_dir, input_dir)
         changed = sorted(k for k in meta if stored_meta.get(k) != meta[k])
         print(f"  Spin-up file {spinup_file.name} does not match this run "
               f"(differs in: {', '.join(changed)}); simulating the spin-up.",
@@ -699,8 +794,17 @@ def run_spinup(runtime, community_dir, spinup_path, branch_pulse, comm_seed,
 
     _LAST_SPINUP_LOADED = False
     _import_model(src_dir)          # pickle needs the model classes importable
-    np.random.seed(comm_seed)
     run_start = time.perf_counter()
+    setup_runtime = runtime.copy()
+    # Fingerprint a fresh build first (then drop it), so that only what the
+    # spin-up changes is stored.
+    np.random.seed(comm_seed)
+    fresh_grid, fresh_output = _quiet_setup(setup_runtime.copy(), community_dir,
+                                            spinup_path, src_dir, input_dir)
+    fp_grid, fp_output = _fingerprint(fresh_grid), _fingerprint(fresh_output)
+    del fresh_grid, fresh_output
+
+    np.random.seed(comm_seed)
     print(f"  Spin-up: pulses 1-{branch_pulse} with {Path(spinup_path).name}",
           flush=True)
     Ecosystem, Output_init = setup_model(runtime, community_dir, spinup_path,
@@ -713,35 +817,38 @@ def run_spinup(runtime, community_dir, spinup_path, branch_pulse, comm_seed,
     print(f"    {'Wall time (incl. init)':22s}  {_fmt_time(time.perf_counter() - run_start)}",
           flush=True)
 
-    state = pickle.dumps((Ecosystem, Output_init, np.random.get_state()),
-                         protocol=pickle.HIGHEST_PROTOCOL)
+    payload = pickle.dumps({'runtime': setup_runtime,
+                            'grid':    _changed_parts(Ecosystem, fp_grid),
+                            'output':  _changed_parts(Output_init, fp_output),
+                            'rng':     np.random.get_state()},
+                           protocol=pickle.HIGHEST_PROTOCOL)
+    state = SpinupState(payload, community_dir, spinup_path, comm_seed,
+                        src_dir, input_dir)
     if save:
         spinup_file.parent.mkdir(parents=True, exist_ok=True)
         tmp = spinup_file.with_suffix('.tmp')
         with open(tmp, 'wb') as fh:
             pickle.dump(meta, fh, protocol=pickle.HIGHEST_PROTOCOL)
-            fh.write(state)
+            fh.write(payload)
         os.replace(tmp, spinup_file)
-        print(f"  Spin-up state saved to {spinup_file} ({len(state) / 1e6:.0f} MB)",
+        print(f"  Spin-up state saved to {spinup_file} ({len(payload) / 1e6:.0f} MB)",
               flush=True)
     return state
 
 
 def export_spinup_output(state, output_format, branch_pulse, cycle,
-                         spinup_run_dir, src_dir):
+                         spinup_run_dir):
     """
     Write the spin-up's output once per community (split branched output):
     day-indexed tables up to the branch and the complete Initialization folder,
     to <output-dir>/spinup/<community>_s<seed>/. Skipped if already complete.
     """
-    import pickle
     from branch_output import split_run_output
     done = spinup_run_dir / 'SPINUP_OUTPUT_COMPLETE'
     if done.exists():
         print(f"  Spin-up output already in {spinup_run_dir}", flush=True)
         return
-    _import_model(src_dir)
-    Ecosystem, Output_init, _ = pickle.loads(state)
+    Ecosystem, Output_init, _ = restore_spinup(state)
     export_output(Output_init, output_format, spinup_run_dir.parent,
                   spinup_run_dir.name)
 
@@ -754,20 +861,18 @@ def export_spinup_output(state, output_format, branch_pulse, cycle,
 
 
 def run_branch(state, runtime, output_format, climate_path, branch_pulse,
-               output_path, outname, src_dir, quiet=False, spinup_run_dir=None):
+               output_path, outname, quiet=False, spinup_run_dir=None):
     """
     Continue a copy of the spin-up state under climate_path and export. With
     spinup_run_dir (split output), the day-indexed tables keep only the days
     from the branch on and Initialization only Temp.csv and Psi.csv.
     """
-    import pickle
-    _import_model(src_dir)
     col = runtime.columns[0]
     pulse = int(runtime.loc['pulse', col])
     cycle = int(runtime.loc['end_time', col])
 
     run_start = time.perf_counter()
-    Ecosystem, Output_init, rng_state = pickle.loads(state)
+    Ecosystem, Output_init, rng_state = restore_spinup(state)
 
     # Swap in the scenario climate: the grid reads Temp and Psi by day from
     # these two series, and the output object exports them as
@@ -1222,12 +1327,32 @@ def main():
                 except OSError:
                     pass
 
+            # Finished scenario runs are kept only when every scenario of the
+            # community is finished. If some are missing, all are rerun in this
+            # task: runs made in separate jobs can land on different hardware
+            # and then are not bit-identical before their climates diverge.
+            if skip_here and len(scenarios) > 1:
+                try:
+                    _n_done = sum(
+                        fs_retry(lambda s=s: run_output_complete(
+                                     (output_dir if s['stem'] is None
+                                      else output_dir / s['stem']) / outname, split_output),
+                                 f"checking {outname}")
+                        for s in scenarios)
+                except OSError:
+                    _n_done = 0                      # unreadable: rerun them all
+                if 0 < _n_done < len(scenarios):
+                    print(f"  {_n_done} of {len(scenarios)} scenarios of {comm_name} are "
+                          f"complete: rerunning all of them so they stay paired", flush=True)
+                if _n_done < len(scenarios):
+                    skip_here = False
+
             spinup_run_dir = None
             if state is not None and split_output:
                 spinup_run_dir = output_dir / 'spinup' / outname
                 try:
                     export_spinup_output(state, output_format, branch_pulse,
-                                         cycle, spinup_run_dir, src_dir)
+                                         cycle, spinup_run_dir)
                 except Exception as e:
                     print(f"  !! SPIN-UP OUTPUT FAILED: {e}", flush=True)
                     traceback.print_exc()
@@ -1283,7 +1408,6 @@ def main():
                             branch_pulse  = branch_pulse,
                             output_path   = out_path,
                             outname       = outname,
-                            src_dir       = src_dir,
                             quiet         = args.quiet,
                             spinup_run_dir= spinup_run_dir,
                         )
@@ -1326,6 +1450,7 @@ def main():
         print(f"\nFailed runs ({n_failed}):")
         for comm, scenario, err in failed:
             print(f"  {comm} [{scenario}]: {err}")
+        sys.exit(1)             # so the scheduler reports the task as failed
 
 
 if __name__ == '__main__':

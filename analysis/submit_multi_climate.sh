@@ -430,7 +430,18 @@ fi
 
 # ── Working directory ------------------------------------------------------------
 # Run from the project root so relative paths (src/, input/, analysis/) resolve.
-cd "${PROJECT_ROOT}"
+# The file system can be unreachable for minutes when a task starts: retry, and
+# stop the task if it stays unreachable (a failed cd used to leave it in /tmp).
+IN_ROOT=0
+for WAIT_S in 0 60 120 240 300 300; do
+    sleep \${WAIT_S}
+    if cd "${PROJECT_ROOT}" 2>/dev/null; then IN_ROOT=1; break; fi
+    echo "  cannot enter ${PROJECT_ROOT} on \$(hostname) (waited \${WAIT_S} s); retrying" >&2
+done
+if [[ \${IN_ROOT} -ne 1 ]]; then
+    echo "ERROR: ${PROJECT_ROOT} is unreachable on \$(hostname); task not run." >&2
+    exit 1
+fi
 
 # ── Diagnostic info --------------------------------------------------------------
 echo "======================================================================"

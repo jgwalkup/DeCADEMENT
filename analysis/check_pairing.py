@@ -15,6 +15,10 @@ branch on; the spin-up days are shared by construction, so only the branch days 
 A paired run's output matches the baseline exactly until its climate differs. Output that differs before the
 climate does means the runs did not start from the same random state, and paired comparisons between them are
 not valid.
+
+Missing values (NaN) at the same place in both runs count as equal. A run whose output holds NaN is reported as
+NAN with the first day it appears (whether or not it is paired): its output is not usable from that day on.
+The exit code is 1 if any run is UNPAIRED or NAN.
 """
 import argparse
 import os
@@ -60,8 +64,20 @@ def first_climate_diff(a_clim, b_clim):
     return min(days) if days else None
 
 
+def first_nan_day(ser):
+    """First day whose end state holds a NaN in any series, or None."""
+    first = None
+    for x in ser.values():
+        d = np.flatnonzero(np.isnan(x.to_numpy(dtype=float)).any(axis=0))
+        if d.size:
+            day = int(x.columns[d[0]]) - 1
+            first = day if first is None else min(first, day)
+    return first
+
+
 def first_output_diff(a_ser, b_ser):
-    """First day whose end state differs in any series (-1 = initial state), or None."""
+    """First day whose end state differs in any series (-1 = initial state), or None.
+    NaN in both runs at the same place is not a difference."""
     first = None
     for f in SERIES:
         if f not in a_ser or f not in b_ser:
@@ -69,7 +85,8 @@ def first_output_diff(a_ser, b_ser):
         a, b = a_ser[f].align(b_ser[f], fill_value=0.0)
         a = a[sorted(a.columns, key=int)]
         b = b[a.columns]
-        d = np.flatnonzero((a.to_numpy() != b.to_numpy()).any(axis=0))
+        av, bv = a.to_numpy(dtype=float), b.to_numpy(dtype=float)
+        d = np.flatnonzero(((av != bv) & ~(np.isnan(av) & np.isnan(bv))).any(axis=0))
         if d.size:
             # column labels are absolute output days (label k = after day k-1),
             # also in split branched output, which starts at the branch day
@@ -86,16 +103,22 @@ def check_community(args):
     are looked up there when the run folder has none.
     """
     run, scenarios = args
-    lines, n_ok, n_bad = [], 0, 0
+    lines, n_ok, n_bad, n_nan = [], 0, 0, 0
     base_clim = _load_climate(run)
     base_ser = _load_series(run)
+    base_nan = first_nan_day(base_ser)
+    if base_nan is not None:
+        n_nan += 1
+        lines.append(f"{run.name:24s} {run.parent.name:24s} NAN      output holds NaN from day {base_nan}")
     for sc in scenarios:
         other = sc / run.name
         if not other.is_dir():
             lines.append(f"{run.name:24s} {sc.name:24s} missing")
             continue
+        other_ser = _load_series(other)
         c = first_climate_diff(base_clim, _load_climate(other))
-        o = first_output_diff(base_ser, _load_series(other))
+        o = first_output_diff(base_ser, other_ser)
+        nan_day = first_nan_day(other_ser)
         if o is None:
             ok, msg = True, "output identical throughout"
         elif c is None:
@@ -107,7 +130,10 @@ def check_community(args):
         n_ok += ok
         n_bad += not ok
         lines.append(f"{run.name:24s} {sc.name:24s} {'PAIRED  ' if ok else 'UNPAIRED'} {msg}")
-    return lines, n_ok, n_bad
+        if nan_day is not None:
+            n_nan += 1
+            lines.append(f"{run.name:24s} {sc.name:24s} NAN      output holds NaN from day {nan_day}")
+    return lines, n_ok, n_bad, n_nan
 
 
 def main():
@@ -127,18 +153,19 @@ def main():
     runs = sorted(p for p in base.iterdir() if p.is_dir())
     jobs = a.jobs or int(os.environ.get("SLURM_CPUS_PER_TASK", 0)) or os.cpu_count() or 1
     tasks = [(run, scenarios) for run in runs]
-    n_bad = n_ok = 0
+    n_bad = n_ok = n_nan = 0
     if jobs > 1 and len(tasks) > 1:
         from multiprocessing import Pool
         it = Pool(jobs).imap(check_community, tasks, chunksize=1)
     else:
         it = map(check_community, tasks)
-    for lines, ok, bad in it:
+    for lines, ok, bad, nan in it:
         n_ok += ok
         n_bad += bad
+        n_nan += nan
         print("\n".join(lines), flush=True)
-    print(f"\n{n_ok} paired, {n_bad} not paired")
-    sys.exit(1 if n_bad else 0)
+    print(f"\n{n_ok} paired, {n_bad} not paired" + (f", {n_nan} run(s) with NaN output" if n_nan else ""))
+    sys.exit(1 if (n_bad or n_nan) else 0)
 
 
 if __name__ == "__main__":
